@@ -31,6 +31,17 @@ See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the full Phase 1 / Phase 2 scop
 - **Idle character** — robot walks a slow circle near the workspace (procedural animation, no rig)
 - **Workspace** — table, tray, locomotion-enabled floor
 
+<table>
+<tr>
+<td width="50%"><img src="docs/images/tray.png" alt="Component tray with all 8 parts" /><br/><sub>Tray with all eight grabbable parts: 2 LEDs, 2 resistors, 3 wires (short/medium/long), 1 battery.</sub></td>
+<td width="50%"><img src="docs/images/breadboard.png" alt="Breadboard with placement guides" /><br/><sub>Breadboard with transparent placement guides — ghosts show the target circuit. Toggle with <kbd>G</kbd>.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/assembled.png" alt="Assembled circuit, LED lit" /><br/><sub>Assembled target circuit. <code>CircuitEvalSystem</code> closes the loop and <code>LedState.lit</code> flips → red LED glows.</sub></td>
+<td width="50%"><img src="docs/images/robot.png" alt="Idle robot character" /><br/><sub>Idle robot character walks a slow circle next to the workspace (procedural — body bobs, looks at direction of motion).</sub></td>
+</tr>
+</table>
+
 ### Interactions
 - **`DistanceGrabbable`** — point with controller ray + trigger to grab from anywhere at the table
 - **Magnetic snap** — release a part within 27 mm of two valid sockets and it auto-aligns

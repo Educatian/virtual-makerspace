@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import {
   AssetManager,
   AssetManifest,
@@ -205,7 +206,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   spawnWire(world, [0.4, Y, -0.94], 0.24, 0xfdd835);
 
   const { scene: robotMesh } = AssetManager.getGLTF("robot")!;
-  robotMesh.scale.setScalar(0.02);
+  robotMesh.scale.setScalar(1.0);
   const bbox = new Box3().setFromObject(robotMesh);
   robotMesh.position.y -= bbox.min.y;
   const robotWrapper = new Group();
@@ -218,4 +219,21 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     walkSpeed: 0.25,
     bobAmplitude: 0.04,
   });
+
+  if (import.meta.env.DEV) {
+    (window as Window & { __VM?: unknown }).__VM = {
+      world,
+      SnapSystem,
+      robot: robotWrapper,
+      components: {
+        Snappable,
+        SnapTarget,
+        SocketGrid,
+        CircuitNode,
+        WireEnds,
+        LedState,
+        PowerSource,
+      },
+    };
+  }
 });
