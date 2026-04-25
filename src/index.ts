@@ -168,7 +168,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     }
   });
 
-  world
+  const hudEntity = world
     .createTransformEntity()
     .addComponent(PanelUI, {
       config: "./ui/hud.json",
@@ -224,7 +224,10 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     (window as Window & { __VM?: unknown }).__VM = {
       world,
       SnapSystem,
+      HoverPreviewSystem,
+      Follower,
       robot: robotWrapper,
+      hud: hudEntity,
       components: {
         Snappable,
         SnapTarget,

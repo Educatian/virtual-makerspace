@@ -37,8 +37,15 @@ See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the full Phase 1 / Phase 2 scop
 <td width="50%"><img src="docs/images/breadboard.png" alt="Breadboard with placement guides" /><br/><sub>Breadboard with transparent placement guides — ghosts show the target circuit. Toggle with <kbd>G</kbd>.</sub></td>
 </tr>
 <tr>
+<td width="50%"><img src="docs/images/in-progress.png" alt="Mid-assembly state" /><br/><sub>Mid-assembly: battery + medium wire snapped, LED still in the tray. Circuit not yet closed.</sub></td>
+<td width="50%"><img src="docs/images/hover-preview.png" alt="Hover preview markers" /><br/><sub><code>HoverPreviewSystem</code> — green socket markers light up while a part is held within 27 mm of two valid sockets.</sub></td>
+</tr>
+<tr>
 <td width="50%"><img src="docs/images/assembled.png" alt="Assembled circuit, LED lit" /><br/><sub>Assembled target circuit. <code>CircuitEvalSystem</code> closes the loop and <code>LedState.lit</code> flips → red LED glows.</sub></td>
-<td width="50%"><img src="docs/images/robot.png" alt="Idle robot character" /><br/><sub>Idle robot character walks a slow circle next to the workspace (procedural — body bobs, looks at direction of motion).</sub></td>
+<td width="50%"><img src="docs/images/wands.png" alt="Controller wands in XR session" /><br/><sub>Controller wands visible after entering an XR session (via IWER's <code>RemoteControlInterface</code>). Spectator-style 3rd-person view.</sub></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="docs/images/robot.png" alt="Idle robot character" width="700" /><br/><sub>Idle robot character walks a slow circle next to the workspace (procedural — body bobs, looks at direction of motion).</sub></td>
 </tr>
 </table>
 
