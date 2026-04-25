@@ -1,14 +1,203 @@
-# IWSDK Starter Template
+# Virtual Makerspace
 
-This folder is a source template used by `scripts/generate-starters.cjs` to produce 8 runnable variants:
+> A research-grade WebXR prototype for studying embodied learning behavior in an electronics-breadboard task.
 
-- `starter-<vr|ar>-<manual|metaspatial>-<ts|js>`
+![Workspace overview](docs/images/hero.png)
 
-Do not run this template directly. The generator will:
+Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, deploys to any WebXR headset (Meta Quest 2/3/Pro), and instruments every grasp, snap, and circuit-state change with high-resolution telemetry.
 
-- Copy a variant-specific `src/index.ts` (see `src/index-*.ts`).
-- Install the matching Vite config from `configs/`.
-- Keep only the required metaspatial folder (renamed to `metaspatial`).
-- Prune unused assets and dev dependencies.
+---
 
-UI is defined in `ui/welcome.uikitml`; the Vite UIKitML plugin compiles it to `public/ui/welcome.json` during build in generated variants.
+## What is this?
+
+A virtual electronics makerspace where a participant assembles a simple LED circuit on a breadboard using grabbable virtual components — battery, LEDs, resistors, wires. Every action is captured as a structured telemetry event for later analysis of exploration, manipulation, failure, and recovery patterns.
+
+The artifact is a **study apparatus**, not a consumer product. The design prioritizes:
+
+- **Total observability** — every grasp, release, snap, and circuit change is a typed event in IndexedDB
+- **Productive Failure** framing (Kapur 2008) — minimal scaffolding, the participant must figure out the topology themselves
+- **Deterministic replay potential** — the event log is a source-of-truth that can re-render the session
+- **Same-build cross-site** — WebXR + bundled assets means a study in Seoul and a replication in Atlanta use bit-identical stimuli
+
+See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the full Phase 1 / Phase 2 scope and telemetry schema.
+
+---
+
+## Features
+
+### Scene
+- **Procedural breadboard** — 16 cols × 12 rows = 192 sockets rendered as a single InstancedMesh, with red/blue power-rail stripes and a center channel
+- **Grabbable parts** — 2 LEDs, 2 resistors, 3 wires (short/medium/long), 1 9V battery — all with magnetic snap-on-release
+- **Idle character** — robot walks a slow circle near the workspace (procedural animation, no rig)
+- **Workspace** — table, tray, locomotion-enabled floor
+
+### Interactions
+- **`DistanceGrabbable`** — point with controller ray + trigger to grab from anywhere at the table
+- **Magnetic snap** — release a part within 27 mm of two valid sockets and it auto-aligns
+- **Hover preview** — green socket markers appear at the would-snap position while a part is held
+- **Auto tray return** — release in empty space and the part flies back to its tray slot
+- **Live circuit evaluation** — union-find over electrical nets; LED `emissiveIntensity` jumps to 1.8 the moment a closed loop forms across battery terminals
+
+### Researcher tools
+- **Step HUD** — head-locked instruction panel via `Follower`, peripheral lower-front position, auto-detects current step from snap state
+- **Placement guides** — transparent ghost meshes show the target circuit on the breadboard. Toggle with `G` key
+- **Telemetry log** — IndexedDB ring buffer, NDJSON export. Open browser console:
+  ```js
+  await window.telemetry.download();   // saves telemetry-{sessionId}.ndjson
+  await window.telemetry.export();     // returns event array
+  await window.telemetry.clear();      // resets the DB
+  ```
+
+### Telemetry events captured
+| Event | Payload |
+|---|---|
+| `session_start` | `{ iwsdk_version, user_agent }` |
+| `session_end` | `{ reason }` (fired on `beforeunload`) |
+| `grab_start` | `{ entity_id }` |
+| `grab_end` | `{ entity_id, held_duration_ms, snapped }` |
+| `socket_connect` | `{ entity_id, socket_a, socket_b }` |
+| `socket_disconnect` | `{ entity_id, socket_a, socket_b }` |
+| `led_state_change` | `{ entity_id, lit }` |
+| `step_advance` | `{ step, total, completed }` |
+| `ui_interaction` | `{ element_id, action }` |
+
+Each event includes envelope fields: `event_id` (UUID), `session_id`, `timestamp_ms`, `frame_time_ms`.
+
+---
+
+## Quick start
+
+```bash
+npm install
+npm run dev
+```
+
+Open `https://localhost:8081/` in a desktop browser to preview the scene (no XR controllers, just camera view).
+
+### On a Meta Quest
+
+1. Quest and dev PC on the **same Wi-Fi**
+2. Open Meta Quest Browser on the headset
+3. Navigate to `https://<your-pc-lan-ip>:8081/` (the "Network" URL printed by Vite at startup)
+4. Accept the self-signed certificate warning
+5. Tap **Enter VR**
+
+If LAN access is blocked (corporate Wi-Fi, client isolation), use Chrome DevTools port-forwarding via `chrome://inspect/#devices` over USB. Full guide: [iwsdk.dev — Testing Experience](https://iwsdk.dev/guides/02-testing-experience.html).
+
+---
+
+## Architecture
+
+ECS via [`elics`](https://github.com/pmndrs/elics), reactive signals via [`@preact/signals-core`](https://github.com/preactjs/signals), Three.js rendering via IWSDK's `super-three` fork.
+
+### Components
+
+```
+src/components/
+├── socket-grid.ts       # breadboard layout (cols, pitch, channel gap)
+├── snap.ts              # Snappable (lead offsets, current sockets), SnapTarget
+├── circuit.ts           # CircuitNode, WireEnds, LedState, PowerSource
+└── idle-character.ts    # circular walk parameters
+```
+
+### Systems
+
+```
+src/systems/
+├── snap-system.ts            # pointerup → magnetic snap; emits grab/snap telemetry
+├── snap-helpers.ts           # findBestSnap() — shared by SnapSystem + HoverPreview
+├── hover-preview-system.ts   # green socket markers while a part is held
+├── circuit-eval-system.ts    # union-find net connectivity → LED emissiveIntensity
+├── hud-system.ts             # step instructions auto-tracked from snap state
+└── idle-character-system.ts  # procedural walk loop with lookAt facing direction
+```
+
+### Data flow
+
+```
+controller pointerdown  ─────┐
+                              ├─→ SnapSystem clears sockets, emits grab_start
+                              │
+controller pointerup    ─────┤
+                              ├─→ SnapSystem.tryToSnap()
+                              │     ├─→ findBestSnap → snap transform
+                              │     │     └─→ emits socket_connect
+                              │     └─→ no snap → return to spawnPos
+                              ↓
+                       CircuitEvalSystem (every frame)
+                              ├─→ build union-find on wires + resistors
+                              ├─→ for each LED: check leads vs battery terminals
+                              └─→ if topology change: led_state_change + visual update
+                              ↓
+                       HudSystem (every frame)
+                              ├─→ first unsatisfied step = current step
+                              └─→ on change: setProperties on UIKit text + step_advance
+```
+
+---
+
+## Tech stack
+
+| Layer | Library |
+|---|---|
+| Framework | [`@iwsdk/core`](https://www.npmjs.com/package/@iwsdk/core) 0.3.1 |
+| ECS | [`elics`](https://github.com/pmndrs/elics) (via IWSDK) |
+| 3D | [`super-three`](https://www.npmjs.com/package/super-three) 0.181 |
+| Spatial UI | [`@pmndrs/uikit`](https://github.com/pmndrs/uikit) |
+| Manipulation | [`@pmndrs/handle`](https://github.com/pmndrs/handle) + [`@pmndrs/pointer-events`](https://github.com/pmndrs/pointer-events) |
+| Reactivity | [`@preact/signals-core`](https://github.com/preactjs/signals) |
+| Build | Vite 7 + [`@iwsdk/vite-plugin-dev`](https://www.npmjs.com/package/@iwsdk/vite-plugin-dev) (IWER emulator + MCP) |
+| Telemetry | IndexedDB + NDJSON export |
+| Screenshots | Playwright (see `scripts/screenshot.mjs`) |
+
+---
+
+## Status
+
+**Phase 1 (MVP) — implemented**
+- Solo breadboard scene, snap interactions, circuit evaluation, telemetry, step HUD, placement guides
+
+**Phase 2 — planned**
+- 2-3 person collaborative mode (Colyseus + LiveKit voice)
+- Avatar presence (head + 2 hands), object ownership transfer
+- Researcher spectator URL (`/spectate?session=...`)
+- Shared partner-gaze as the headline experimental manipulation
+
+**Phase 3 — backlog**
+- Affective / LLM-driven tutoring agent (in-scene 3D embodiment, telemetry → LLM context)
+- Additional maker tasks (modular synth as the strongest 2nd-task candidate — same socket+wire ECS abstraction)
+- Replayable session viewer with head/hand pose snapshots
+
+See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the detailed roadmap.
+
+---
+
+## Repository layout
+
+```
+virtual-makerspace/
+├── src/
+│   ├── index.ts               # World.create + scene composition
+│   ├── breadboard.ts          # createBreadboard() builder + socket position helper
+│   ├── spawn-components.ts    # spawnLed, spawnResistor, spawnWire, spawnBattery
+│   ├── placement-guides.ts    # transparent target-circuit ghosts on the board
+│   ├── telemetry.ts           # IndexedDB-backed event log
+│   ├── components/            # ECS component definitions
+│   └── systems/               # ECS systems
+├── ui/
+│   └── hud.uikitml            # step-by-step HUD panel (compiles to public/ui/hud.json)
+├── public/
+│   └── gltf/robot/            # idle character mesh
+├── docs/
+│   ├── mvp-scope.md           # Phase 1/2 scope + telemetry schema
+│   └── images/                # README screenshots
+├── scripts/
+│   └── screenshot.mjs         # Playwright capture script for README hero shots
+└── CLAUDE.md                  # IWSDK best practices for Claude Code
+```
+
+---
+
+## License
+
+Internal research prototype — not licensed for redistribution at this time.
