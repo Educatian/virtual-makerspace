@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Virtual Makerspace — User Tutorial</title>
+    <style>
+      :root {
+        --bg: #0f1216;
+        --panel: #171c22;
+        --ink: #e7edf3;
+        --muted: #9fb0bf;
+        --accent: #4ea1ff;
+        --line: #28323c;
+        --good: #34c759;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+      .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px 96px; }
+      header {
+        padding: 56px 20px 40px;
+        text-align: center;
+        background: radial-gradient(900px 320px at 50% -40%, #1d2a3a 0%, var(--bg) 70%);
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 { margin: 0 0 8px; font-size: 2rem; letter-spacing: -0.02em; }
+      header p { margin: 0 auto; max-width: 620px; color: var(--muted); }
+      .badge {
+        display: inline-block; margin-top: 16px; padding: 5px 12px;
+        font-size: 0.82rem; color: var(--muted);
+        border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
+      }
+      nav {
+        position: sticky; top: 0; z-index: 5;
+        background: rgba(15,18,22,0.92); backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+        padding: 10px 20px; font-size: 0.86rem;
+      }
+      nav .inner { max-width: 880px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+      nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+      nav a:hover { color: var(--accent); }
+      h2 {
+        margin: 52px 0 14px; font-size: 1.4rem; letter-spacing: -0.01em;
+        padding-bottom: 8px; border-bottom: 1px solid var(--line);
+      }
+      h3 { margin: 28px 0 8px; font-size: 1.08rem; color: #cfe0ee; }
+      a { color: var(--accent); }
+      code, kbd {
+        font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.88em;
+      }
+      code { background: #11161c; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+      kbd {
+        background: #222b34; border: 1px solid #3a4753; border-bottom-width: 2px;
+        border-radius: 5px; padding: 1px 7px;
+      }
+      pre {
+        background: #11161c; border: 1px solid var(--line); border-radius: 10px;
+        padding: 14px 16px; overflow-x: auto; font-size: 0.86rem; line-height: 1.5;
+      }
+      figure { margin: 18px 0 6px; }
+      figure img {
+        width: 100%; display: block; border-radius: 12px;
+        border: 1px solid var(--line); background: #000;
+      }
+      figcaption { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
+      .note {
+        margin: 16px 0; padding: 12px 16px; border-left: 3px solid var(--accent);
+        background: #131a22; border-radius: 0 10px 10px 0; color: #cfddea;
+      }
+      .note.ok { border-left-color: var(--good); }
+      table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 0.94rem; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: #cfe0ee; font-weight: 600; }
+      ol, ul { padding-left: 22px; }
+      li { margin: 5px 0; }
+      .role { font-weight: 600; }
+      .role.a { color: #4ea1ff; }
+      .role.b { color: #ff6b6b; }
+      footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Virtual Makerspace — User Tutorial</h1>
+      <p>
+        Build an LED circuit on a breadboard in VR. This guide covers both the
+        single-user (solo) flow and the two-person collaborative (CPS) mode. It
+        runs right in the headset browser, no install required.
+      </p>
+      <div class="badge">Meta Quest 2 / 3 / Pro (browser WebXR) · also opens on desktop as a 3rd-person preview</div>
+    </header>
+
+    <nav>
+      <div class="inner">
+        <a href="#goal">0. Goal</a>
+        <a href="#start">1. Before you start</a>
+        <a href="#space">2. The workspace</a>
+        <a href="#build">3. Build (solo)</a>
+        <a href="#controls">4. Controls</a>
+        <a href="#collab">5. Collaborative mode</a>
+        <a href="#research">6. For researchers</a>
+        <a href="#trouble">7. Troubleshooting</a>
+      </div>
+    </nav>
+
+    <div class="wrap">
+      <h2 id="goal">0. What you will build</h2>
+      <p>
+        The goal is to assemble a <strong>closed circuit</strong> on the
+        breadboard, current flows from the battery, through the LED, and back to
+        the battery, so the LED lights up.
+      </p>
+      <figure>
+        <img src="images/hero.png" alt="First-person view at the start of the task" />
+        <figcaption>The first thing you see in the headset: a workbench with a breadboard in the center and a parts tray on the right.</figcaption>
+      </figure>
+
+      <h2 id="start">1. Before you start</h2>
+      <ol>
+        <li>Turn on your Meta Quest headset and open the <strong>Meta Quest Browser</strong>.</li>
+        <li>
+          Go to the deployment URL: <code>https://virtual-makerspace.pages.dev</code>
+          <ul>
+            <li>Solo practice: <code>…/?mode=solo</code></li>
+            <li>With a research identifier: <code>…/?mode=solo&amp;pid=&lt;participantID&gt;&amp;cond=&lt;condition&gt;</code></li>
+          </ul>
+        </li>
+        <li>When the page loads, gaze at (or click with your controller) the <strong><code>Enter XR</code></strong> button at the top of the screen.</li>
+      </ol>
+      <figure>
+        <img src="images/wands.png" alt="Enter XR button and controllers" />
+        <figcaption>Pressing <code>Enter XR</code> starts the immersive VR session. Your two controllers (or tracked hands) appear in front of the workbench.</figcaption>
+      </figure>
+      <div class="note">If a permission prompt appears, allow it. Collaborative/voice mode also asks for the microphone (it is skipped automatically when voice is not configured).</div>
+
+      <h2 id="space">2. Touring the workspace</h2>
+      <h3>The breadboard</h3>
+      <figure>
+        <img src="images/breadboard.png" alt="Breadboard close-up" />
+        <figcaption>The white board with a grid of holes (sockets) is the breadboard. You insert a component's legs (leads) into these holes to connect it. The red/blue stripes along the top and bottom edges are the power rails.</figcaption>
+      </figure>
+      <h3>The parts tray</h3>
+      <figure>
+        <img src="images/tray.png" alt="Parts tray" />
+        <figcaption>The blue tray on the right holds the parts: a 9V battery, LEDs, resistors, and jumper wires of different colors and lengths. Pick up what you need and bring it to the breadboard.</figcaption>
+      </figure>
+      <p>If you look around the bench you will see a small <strong>robot character</strong> wandering. It is ambient flavor and is not interactive.</p>
+
+      <h2 id="build">3. Building the circuit (solo)</h2>
+      <h3>3-1. Pick up a part</h3>
+      <ul>
+        <li><strong>Controller:</strong> point at the part and pull the <strong>trigger</strong> to grab it (you can grab from a distance).</li>
+        <li><strong>Hand tracking:</strong> move your hand near the part and make a <strong>grab gesture</strong>.</li>
+      </ul>
+      <h3>3-2. Line it up with the sockets</h3>
+      <figure>
+        <img src="images/hover-preview.png" alt="Snap preview with green markers" />
+        <figcaption>Hold a part near the holes and <strong>green markers</strong> preview where it will snap. Release the trigger (or open your hand) and it snaps magnetically to the nearest valid sockets. Release in empty space and it returns to the tray.</figcaption>
+      </figure>
+      <h3>3-3. Connect in order</h3>
+      <ol>
+        <li>Place the <strong>battery</strong> on the board.</li>
+        <li>Run a <strong>jumper wire</strong> from the battery (+) toward the LED.</li>
+        <li>Insert the <strong>LED</strong> (mind the polarity).</li>
+        <li>Use the <strong>second wire</strong> to return from the LED to the battery (−), closing the loop.</li>
+      </ol>
+      <figure>
+        <img src="images/in-progress.png" alt="In progress, battery and one wire placed" />
+        <figcaption>About half assembled. The <strong>step HUD</strong> panel floating in front of you auto-detects which part to place next. Toggle the placement guides with <kbd>G</kbd> (on desktop).</figcaption>
+      </figure>
+      <h3>3-4. Done: the LED lights up</h3>
+      <figure>
+        <img src="images/assembled.png" alt="Completed circuit, LED lit" />
+        <figcaption>A closed loop: battery → blue wire → LED → red wire → battery. When the LED glows red, you have succeeded. (Circuit closure is computed from the connection topology, not a full electrical simulation.)</figcaption>
+      </figure>
+      <div class="note">Stuck? Pick a part back up to disconnect it and try a different socket. Failing and retrying is part of the learning design.</div>
+
+      <h2 id="controls">4. Controls at a glance</h2>
+      <table>
+        <thead><tr><th>Action</th><th>Controller</th><th>Hand tracking</th></tr></thead>
+        <tbody>
+          <tr><td>Grab a part</td><td>Aim + pull <strong>trigger</strong></td><td>Touch the part and <strong>grab</strong></td></tr>
+          <tr><td>Release / place</td><td>Release the trigger</td><td>Open your hand</td></tr>
+          <tr><td>Move (teleport)</td><td>Thumbstick</td><td>—</td></tr>
+          <tr><td>Toggle guides (desktop)</td><td><kbd>G</kbd></td><td><kbd>G</kbd></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="collab">5. Collaborative mode (two people)</h2>
+      <p>
+        In collaborative mode <strong>two people build one circuit at the same
+        bench</strong>. The parts are split in two, so <strong>neither person can
+        finish the circuit alone</strong> and you have to cooperate.
+      </p>
+      <ul>
+        <li><span class="role a">Role A (power):</span> battery + blue jumper wire</li>
+        <li><span class="role b">Role B (load):</span> LED + red jumper wire</li>
+      </ul>
+
+      <h3>5-1. Join the same room</h3>
+      <p>Both people open the <strong>same <code>room</code> code</strong> with different roles:</p>
+      <pre>Role A:  https://virtual-makerspace.pages.dev/?mode=collab&amp;role=A&amp;room=demo1&amp;pid=alice&amp;nick=Alice
+Role B:  https://virtual-makerspace.pages.dev/?mode=collab&amp;role=B&amp;room=demo1&amp;pid=bob&amp;nick=Bob</pre>
+      <p>Only the <code>room</code> value needs to match (use any code in place of <code>demo1</code>). <code>pid</code> is the participant identifier and <code>nick</code> is the display name.</p>
+
+      <h3>5-2. Seeing your partner</h3>
+      <figure>
+        <img src="images/collab-wide.png" alt="Collaboration, partner avatar across the bench" />
+        <figcaption>A translucent colored sphere is your partner's head; two colored boxes are their hands. <span class="role a">Role A is blue</span>, <span class="role b">Role B is red</span> (the figure above shows a red = Role B partner). The smiling figure on the left is the ambient robot, not the partner.</figcaption>
+      </figure>
+      <figure>
+        <img src="images/collab.png" alt="Collaboration, partner reaching toward the board" />
+        <figcaption>Your partner holds their part and reaches toward the shared breadboard. Only one person can hold a given part at a time; release it and your partner can take over.</figcaption>
+      </figure>
+
+      <h3>5-3. Build together</h3>
+      <ol>
+        <li>Confirm out loud what each of you is holding (when voice is enabled).</li>
+        <li><span class="role a">Role A</span> places the battery and blue wire; <span class="role b">Role B</span> places the LED and red wire.</li>
+        <li>When both partners' parts are correctly connected, the LED lights up. <strong>Completion is a joint achievement.</strong></li>
+      </ol>
+      <div class="note ok">Voice: the microphone connects automatically in collaborative mode (when voice credentials are configured on the server). If not configured, everything else still works without audio.</div>
+
+      <h2 id="research">6. Notes for researchers</h2>
+      <ul>
+        <li><strong>Session mode / condition</strong> are controlled by URL parameters: <code>mode=solo|collab</code>, <code>role=A|B</code>, <code>room=&lt;code&gt;</code>, <code>pid=&lt;participantID&gt;</code>, <code>nick=&lt;name&gt;</code>, <code>cond=&lt;condition&gt;</code>.</li>
+        <li><strong>Telemetry:</strong> grabs/placements/circuit changes plus, in collaborative mode, CPS signals (<em>joint gaze, partner orient, handoff, turn-take</em>) are recorded against the PISA 2015 12-cell framework. Events accumulate in browser IndexedDB and export as NDJSON at session end.</li>
+        <li><strong>Analysis:</strong> <code>python scripts/analyze_session.py &lt;export.ndjson&gt;</code> prints validation + a session summary + a CPS timeline + a PISA 12-cell tally.</li>
+        <li>Architecture, deployment, and voice setup: see <a href="phase2-cps.md">docs/phase2-cps.md</a>.</li>
+      </ul>
+
+      <h2 id="trouble">7. Troubleshooting</h2>
+      <table>
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>No <code>Enter XR</code> button</td><td>Confirm the URL is HTTPS and you are in the Quest Browser. Reload the page.</td></tr>
+          <tr><td>Can't grab a part</td><td>Make sure the pointer is aimed at the part. If it is too far, teleport closer.</td></tr>
+          <tr><td>LED won't light after placing</td><td>Check that all four parts are connected and the loop is closed. Pick a part back up to adjust its position.</td></tr>
+          <tr><td>Partner not visible in collab</td><td>Confirm both people use the same <code>room</code> code and different <code>role</code> values.</td></tr>
+          <tr><td>Scene feels heavy / slow</td><td>Close other browser tabs and apps, then reload. (The physics engine is disabled, so memory pressure is low.)</td></tr>
+        </tbody>
+      </table>
+
+      <footer>
+        Questions or improvement requests: open an issue at
+        <a href="https://github.com/Educatian/virtual-makerspace">Educatian/virtual-makerspace</a>.
+      </footer>
+    </div>
+  </body>
+</html>
