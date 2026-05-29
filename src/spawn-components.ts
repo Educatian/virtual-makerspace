@@ -38,8 +38,10 @@ export function spawnLed(
   world: World,
   position: [number, number, number],
   color: number,
+  partId?: string,
 ) {
   const group = new Group();
+  if (partId) group.userData.partId = partId;
 
   const body = new Mesh(
     new SphereGeometry(0.015, 18, 14),
@@ -79,8 +81,10 @@ export function spawnResistor(
   world: World,
   position: [number, number, number],
   bandColor = 0xc8a060,
+  partId?: string,
 ) {
   const group = new Group();
+  if (partId) group.userData.partId = partId;
 
   const body = new Mesh(
     new CylinderGeometry(0.0075, 0.0075, 0.048, 16),
@@ -124,8 +128,10 @@ export function spawnWire(
   position: [number, number, number],
   length: number,
   color: number,
+  partId?: string,
 ) {
   const group = new Group();
+  if (partId) group.userData.partId = partId;
 
   const body = new Mesh(
     new CylinderGeometry(0.0036, 0.0036, length, 12),
@@ -167,8 +173,10 @@ export function spawnWire(
 export function spawnBattery(
   world: World,
   position: [number, number, number],
+  partId?: string,
 ) {
   const group = new Group();
+  if (partId) group.userData.partId = partId;
 
   const body = new Mesh(
     new BoxGeometry(0.060, 0.042, 0.036),

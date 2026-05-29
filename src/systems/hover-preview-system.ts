@@ -10,13 +10,15 @@ import { SocketGrid } from "../components/socket-grid.js";
 import { Snappable, SnapTarget } from "../components/snap.js";
 import { findBestSnap } from "./snap-helpers.js";
 
+const MAX_HELD = 2;
+
 export class HoverPreviewSystem extends createSystem({
   snappables: { required: [Snappable] },
   snapTargets: { required: [SnapTarget, SocketGrid, Transform] },
 }) {
   private heldEntities = new Set<number>();
-  private highlightA!: Mesh;
-  private highlightB!: Mesh;
+  private markersA: Mesh[] = [];
+  private markersB: Mesh[] = [];
 
   init() {
     const geo = new SphereGeometry(0.012, 14, 10);
@@ -26,12 +28,16 @@ export class HoverPreviewSystem extends createSystem({
       opacity: 0.65,
       depthWrite: false,
     });
-    this.highlightA = new Mesh(geo, mat);
-    this.highlightB = new Mesh(geo, mat);
-    this.highlightA.visible = false;
-    this.highlightB.visible = false;
-    this.scene.add(this.highlightA);
-    this.scene.add(this.highlightB);
+    for (let i = 0; i < MAX_HELD; i++) {
+      const a = new Mesh(geo, mat);
+      const b = new Mesh(geo, mat);
+      a.visible = false;
+      b.visible = false;
+      this.world.createTransformEntity(a);
+      this.world.createTransformEntity(b);
+      this.markersA.push(a);
+      this.markersB.push(b);
+    }
 
     this.queries.snappables.subscribe("qualify", (entity) => {
       const obj = entity.object3D;
@@ -46,22 +52,23 @@ export class HoverPreviewSystem extends createSystem({
   }
 
   update(): void {
-    let shown = false;
+    let slot = 0;
     for (const entity of this.queries.snappables.entities) {
+      if (slot >= MAX_HELD) break;
       if (!this.heldEntities.has(entity.index)) continue;
       const result = findBestSnap(entity, this.queries.snapTargets.entities);
       if (result) {
-        this.highlightA.position.copy(result.socketAWorld);
-        this.highlightB.position.copy(result.socketBWorld);
-        this.highlightA.visible = true;
-        this.highlightB.visible = true;
-        shown = true;
-        break;
+        // findBestSnap returns module-scoped vectors; copy out before next call.
+        this.markersA[slot].position.copy(result.socketAWorld);
+        this.markersB[slot].position.copy(result.socketBWorld);
+        this.markersA[slot].visible = true;
+        this.markersB[slot].visible = true;
+        slot++;
       }
     }
-    if (!shown) {
-      this.highlightA.visible = false;
-      this.highlightB.visible = false;
+    for (let i = slot; i < MAX_HELD; i++) {
+      this.markersA[i].visible = false;
+      this.markersB[i].visible = false;
     }
   }
 }

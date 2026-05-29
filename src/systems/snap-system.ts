@@ -8,6 +8,11 @@ import {
 import { SocketGrid } from "../components/socket-grid.js";
 import { Snappable, SnapTarget } from "../components/snap.js";
 import { telemetry } from "../telemetry.js";
+import {
+  dispatchGrab,
+  dispatchRelease,
+  dispatchSnap,
+} from "./network-sync-system.js";
 import { findBestSnap } from "./snap-helpers.js";
 
 export class SnapSystem extends createSystem({
@@ -26,12 +31,14 @@ export class SnapSystem extends createSystem({
       const obj = entity.object3D;
       if (!obj) return;
 
+      const partId = obj.userData?.partId as string | undefined;
       const onPointerDown = () => {
         const wasA = entity.getValue(Snappable, "leadASocket")!;
         const wasB = entity.getValue(Snappable, "leadBSocket")!;
         if (wasA >= 0 || wasB >= 0) {
           telemetry.log("socket_disconnect", {
             entity_id: entity.index,
+            part_id: partId,
             socket_a: wasA,
             socket_b: wasB,
           });
@@ -39,7 +46,11 @@ export class SnapSystem extends createSystem({
         entity.setValue(Snappable, "leadASocket", -1);
         entity.setValue(Snappable, "leadBSocket", -1);
         this.grabStartTimes.set(entity.index, performance.now());
-        telemetry.log("grab_start", { entity_id: entity.index });
+        telemetry.log("grab_start", {
+          entity_id: entity.index,
+          part_id: partId,
+        });
+        if (partId) dispatchGrab(partId);
       };
       const onPointerUp = () => {
         const startedAt = this.grabStartTimes.get(entity.index);
@@ -49,9 +60,11 @@ export class SnapSystem extends createSystem({
         const snapped = this.tryToSnap(entity);
         telemetry.log("grab_end", {
           entity_id: entity.index,
+          part_id: partId,
           held_duration_ms: heldMs,
           snapped,
         });
+        if (!snapped && partId) dispatchRelease(partId);
       };
 
       obj.addEventListener("pointerdown", onPointerDown);
@@ -62,6 +75,8 @@ export class SnapSystem extends createSystem({
   update(): void {}
 
   private tryToSnap(entity: Entity): boolean {
+    const obj = entity.object3D;
+    const partId = obj?.userData?.partId as string | undefined;
     const result = findBestSnap(entity, this.queries.snapTargets.entities);
     if (result) {
       this.snapTo(entity, result.socketAWorld, result.socketBWorld);
@@ -69,9 +84,24 @@ export class SnapSystem extends createSystem({
       entity.setValue(Snappable, "leadBSocket", result.socketB);
       telemetry.log("socket_connect", {
         entity_id: entity.index,
+        part_id: partId,
         socket_a: result.socketA,
         socket_b: result.socketB,
       });
+      if (partId && obj) {
+        dispatchSnap(
+          partId,
+          result.socketA,
+          result.socketB,
+          [obj.position.x, obj.position.y, obj.position.z],
+          [
+            obj.quaternion.x,
+            obj.quaternion.y,
+            obj.quaternion.z,
+            obj.quaternion.w,
+          ],
+        );
+      }
       return true;
     }
     this.returnToSpawn(entity);

@@ -1,0 +1,551 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtual-makerspace.pages.dev/schemas/telemetry-v1.json",
+  "title": "Virtual Makerspace CPS Telemetry Event (v1)",
+  "description": "Per-line NDJSON envelope + per-event payload contract for the Virtual Makerspace dyadic CPS instrumentation. Every telemetry.log() line MUST validate against this schema. timestamp_ms is wall-clock (Date.now); frame_time_ms is monotonic per-session (performance.now - sessionStartMs). server_ts / server_time_ms inside CPS+voice payloads are realtime.serverTimeNow (clock-synced across the dyad) — the cross-participant join key. Use frame_time_ms for within-client ordering/durations; timestamp_ms / server_ts for cross-client alignment. Payload contracts are derived directly from the emitting call sites in src/ (single source of truth); fields a call site omits (e.g. part_id on solo distractor parts that carry no userData.partId) are NOT required.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "session_id",
+    "participant_id",
+    "mode",
+    "role",
+    "room",
+    "condition",
+    "event_type",
+    "timestamp_ms",
+    "frame_time_ms",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "session_id": { "type": "string", "format": "uuid" },
+    "participant_id": { "type": "string" },
+    "mode": { "type": "string", "enum": ["solo", "collab"] },
+    "role": { "type": "string", "enum": ["A", "B", "SOLO"] },
+    "room": { "type": "string" },
+    "condition": { "type": "string" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "session_start",
+        "session_end",
+        "ui_interaction",
+        "led_state_change",
+        "circuit_state_change",
+        "circuit_closed_success",
+        "step_advance",
+        "partner_join",
+        "partner_leave",
+        "server_led_state",
+        "avatar_spawn",
+        "avatar_despawn",
+        "socket_disconnect",
+        "grab_start",
+        "grab_end",
+        "socket_connect",
+        "joint_gaze_start",
+        "joint_gaze_end",
+        "partner_orient_start",
+        "partner_orient_end",
+        "joint_attention_sample",
+        "handoff",
+        "voice_unavailable",
+        "voice_connected",
+        "voice_error",
+        "voice_disconnected",
+        "voice_speaking_state",
+        "turn_take"
+      ]
+    },
+    "timestamp_ms": { "type": "number", "minimum": 0 },
+    "frame_time_ms": { "type": "number", "minimum": 0 },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event_type": { "const": "session_start" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["iwsdk_version", "user_agent", "mode", "role", "room", "condition"],
+            "additionalProperties": false,
+            "properties": {
+              "iwsdk_version": { "type": "string" },
+              "user_agent": { "type": "string" },
+              "mode": { "type": "string" },
+              "role": { "type": "string" },
+              "room": { "type": "string" },
+              "condition": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "session_end" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["reason"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "ui_interaction" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["element_id", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "element_id": { "type": "string" },
+              "action": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "led_state_change" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["entity_id", "lit"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": "integer" },
+              "lit": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "circuit_state_change" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["closed", "components_in_loop"],
+            "additionalProperties": false,
+            "properties": {
+              "closed": { "type": "boolean" },
+              "components_in_loop": { "type": "array", "items": { "type": "integer" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "circuit_closed_success" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["led_entity_id", "time_to_close_ms", "components_in_loop"],
+            "additionalProperties": false,
+            "properties": {
+              "led_entity_id": { "type": "integer" },
+              "time_to_close_ms": { "type": "number" },
+              "components_in_loop": { "type": "array", "items": { "type": "integer" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "step_advance" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["step", "total", "completed"],
+            "additionalProperties": false,
+            "properties": {
+              "step": { "type": "integer" },
+              "total": { "type": "integer" },
+              "completed": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "partner_join" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["partner_pid", "partner_role", "partner_nickname"],
+            "additionalProperties": false,
+            "properties": {
+              "partner_pid": { "type": "string" },
+              "partner_role": { "type": "string" },
+              "partner_nickname": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "partner_leave" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["partner_pid"],
+            "additionalProperties": false,
+            "properties": {
+              "partner_pid": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "server_led_state" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["lit"],
+            "additionalProperties": false,
+            "properties": {
+              "lit": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "avatar_spawn" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["partner_pid", "partner_role"],
+            "additionalProperties": false,
+            "properties": {
+              "partner_pid": { "type": "string" },
+              "partner_role": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "avatar_despawn" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["partner_pid"],
+            "additionalProperties": false,
+            "properties": {
+              "partner_pid": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "socket_disconnect" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["entity_id", "socket_a", "socket_b"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": "integer" },
+              "part_id": { "type": "string" },
+              "socket_a": { "type": "integer" },
+              "socket_b": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "grab_start" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["entity_id"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": "integer" },
+              "part_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "grab_end" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["entity_id", "held_duration_ms", "snapped"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": "integer" },
+              "part_id": { "type": "string" },
+              "held_duration_ms": { "type": "number" },
+              "snapped": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "socket_connect" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["entity_id", "socket_a", "socket_b"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": "integer" },
+              "part_id": { "type": "string" },
+              "socket_a": { "type": "integer" },
+              "socket_b": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "joint_gaze_start" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["target", "local_angle_deg", "partner_angle_deg", "server_ts"],
+            "additionalProperties": false,
+            "properties": {
+              "target": { "type": "string" },
+              "local_angle_deg": { "type": "number" },
+              "partner_angle_deg": { "type": "number" },
+              "server_ts": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "joint_gaze_end" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["target", "duration_ms", "server_ts"],
+            "additionalProperties": false,
+            "properties": {
+              "target": { "type": "string" },
+              "duration_ms": { "type": "number" },
+              "reason": { "type": "string" },
+              "server_ts": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "partner_orient_start" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["partner_pid", "angle_deg", "distance_m", "server_ts"],
+            "additionalProperties": false,
+            "properties": {
+              "partner_pid": { "type": "string" },
+              "angle_deg": { "type": "number" },
+              "distance_m": { "type": "number" },
+              "server_ts": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "partner_orient_end" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["partner_pid", "duration_ms", "server_ts"],
+            "additionalProperties": false,
+            "properties": {
+              "partner_pid": { "type": "string" },
+              "duration_ms": { "type": "number" },
+              "reason": { "type": "string" },
+              "server_ts": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "joint_attention_sample" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "jg_active",
+              "jg_angle_local_deg",
+              "jg_angle_partner_deg",
+              "orient_active",
+              "orient_angle_deg",
+              "partner_distance_m",
+              "partner_present",
+              "window_ms",
+              "server_ts"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "jg_active": { "type": "boolean" },
+              "jg_angle_local_deg": { "type": "number" },
+              "jg_angle_partner_deg": { "type": "number" },
+              "orient_active": { "type": "boolean" },
+              "orient_angle_deg": { "type": "number" },
+              "partner_distance_m": { "type": "number" },
+              "partner_present": { "type": "boolean" },
+              "window_ms": { "type": "number" },
+              "server_ts": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "handoff" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["entity_id", "part_id", "from_pid", "to_pid", "gap_ms", "server_ts"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": ["integer", "null"] },
+              "part_id": { "type": "string" },
+              "from_pid": { "type": "string" },
+              "to_pid": { "type": "string" },
+              "gap_ms": { "type": "number" },
+              "server_ts": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "voice_unavailable" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["status"],
+            "additionalProperties": false,
+            "properties": {
+              "status": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "voice_connected" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["room"],
+            "additionalProperties": false,
+            "properties": {
+              "room": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "voice_error" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["message"],
+            "additionalProperties": false,
+            "properties": {
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "voice_disconnected" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "voice_speaking_state" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["peer_id", "speaking", "server_time_ms"],
+            "additionalProperties": false,
+            "properties": {
+              "peer_id": { "type": "string" },
+              "speaking": { "type": "boolean" },
+              "server_time_ms": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "turn_take" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["previous_speaker", "new_speaker", "gap_ms", "overlap_ms", "server_time_ms"],
+            "additionalProperties": false,
+            "properties": {
+              "previous_speaker": { "type": ["string", "null"] },
+              "new_speaker": { "type": "string" },
+              "gap_ms": { "type": "number" },
+              "overlap_ms": { "type": "number" },
+              "server_time_ms": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

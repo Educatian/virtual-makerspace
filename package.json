@@ -9,14 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@iwsdk/core": "0.3.1",
+    "@iwsdk/core": "0.4.1",
+    "livekit-client": "^2.19.0",
     "three": "npm:super-three@0.181.0"
   },
   "devDependencies": {
     "@felixtz/iwsdk-rag-mcp": "^0.3.1",
+    "@iwsdk/vite-plugin-dev": "0.4.1",
+    "@iwsdk/vite-plugin-uikitml": "0.4.1",
     "@meta-quest/hzdb": "^1.0.0",
-    "@iwsdk/vite-plugin-dev": "0.3.1",
-    "@iwsdk/vite-plugin-uikitml": "0.3.1",
     "@types/three": "*",
     "typescript": "^5.5.0",
     "vite": "^7.1.4",
