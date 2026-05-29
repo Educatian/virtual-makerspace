@@ -68,7 +68,13 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   features: {
     locomotion: { useWorker: true },
     grabbing: true,
-    physics: true,
+    // physics intentionally OFF: no entity uses PhysicsBody/PhysicsShape, and
+    // enabling it eagerly downloads + compiles the ~2 MB Havok wasm at startup —
+    // a needless memory/load cost that hurts Meta Quest 2 (6 GB, mobile XR2).
+    // Grab uses @pmndrs/handle (not physics) and locomotion uses
+    // LocomotionEnvironment (the floor), so neither needs physics.
+    // Re-enable when Module 2 (mechanical assembly) adds rigid bodies.
+    physics: false,
     sceneUnderstanding: false,
     environmentRaycast: false,
   },
