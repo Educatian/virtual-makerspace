@@ -50,8 +50,14 @@ function buildAvatar(role: string): AvatarMeshes {
   const group = new Object3D();
   group.name = `remote-avatar-${role}`;
 
+  // The group stays at world origin; head/hands receive WORLD-space poses as
+  // their (local == world) positions. Park them underground until the first
+  // pose arrives so a freshly-joined avatar isn't shown sitting at the origin.
+  const HIDDEN_Y = -5;
+
   const head = new Mesh(new SphereGeometry(0.11, 18, 14), mat);
   head.name = "head";
+  head.position.set(0, HIDDEN_Y, 0);
   group.add(head);
 
   // Forehead "eye" cue so the user can tell which way partner is facing
@@ -65,10 +71,12 @@ function buildAvatar(role: string): AvatarMeshes {
   const handGeo = new BoxGeometry(0.06, 0.04, 0.09);
   const left = new Mesh(handGeo, mat);
   left.name = "left-hand";
+  left.position.set(0, HIDDEN_Y, 0);
   group.add(left);
 
   const right = new Mesh(handGeo, mat);
   right.name = "right-hand";
+  right.position.set(0, HIDDEN_Y, 0);
   group.add(right);
 
   return {
@@ -77,11 +85,13 @@ function buildAvatar(role: string): AvatarMeshes {
     head,
     left,
     right,
-    targetHeadPos: new Vector3(),
+    // Targets start underground too, so the lerp keeps the avatar hidden until
+    // a real pose is received (then it lerps up to the partner's world pose).
+    targetHeadPos: new Vector3(0, HIDDEN_Y, 0),
     targetHeadQuat: new Quaternion(),
-    targetLeftPos: new Vector3(),
+    targetLeftPos: new Vector3(0, HIDDEN_Y, 0),
     targetLeftQuat: new Quaternion(),
-    targetRightPos: new Vector3(),
+    targetRightPos: new Vector3(0, HIDDEN_Y, 0),
     targetRightQuat: new Quaternion(),
   };
 }
@@ -134,7 +144,9 @@ export class RemoteAvatarSystem extends createSystem({}) {
     if (player.pid === telemetry.participantId) return; // skip self
     if (this.avatars.has(player.pid)) return;
     const av = buildAvatar(player.role);
-    av.group.position.set(0, -5, 0);
+    // Group at world origin: head/hands are positioned in WORLD space (the
+    // server streams world poses), so the parent must not add any offset.
+    av.group.position.set(0, 0, 0);
     av.entity = this.world.createTransformEntity(av.group);
     this.avatars.set(player.pid, av);
     telemetry.log("avatar_spawn", {
