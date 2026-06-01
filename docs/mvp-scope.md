@@ -2,7 +2,7 @@
 
 Research-grade VR prototype for studying learning behavior in an electronics-breadboard makerspace.
 
-Draft: 2026-04-24
+Draft: 2026-04-24; updated 2026-05-31 after Phase 2 CPS implementation
 
 ---
 
@@ -38,22 +38,25 @@ Single-user VR. All telemetry local-to-client, POSTed to research server on sess
 
 **Explicit non-goals for Phase 1:** networking, voice, multi-user state sync, avatars.
 
-### Phase 2 — Optional collaborative mode (2–3 users)
+### Phase 2 — Collaborative CPS mode (2 users, implemented)
 
-Add Colyseus server and LiveKit voice. Solo experience from Phase 1 is unchanged when client connects to no room.
+Add a Cloudflare Durable Object realtime worker and optional LiveKit voice. Solo experience from Phase 1 is unchanged when the client runs without a collab room.
 
 **Deliverables:**
-- Colyseus server (Node.js) with `MakerspaceRoom` schema (participants, breadboard state, held objects).
-- Avatar presence: head + 2 hands per participant (IWSDK pose → Colyseus state at ~20 Hz).
-- Object ownership model: one participant holds a component at a time; soft-takeover on request.
-- Voice: LiveKit room per Colyseus room; join on room entry.
-- Desktop spectator: researcher joins as `role: observer` (no avatar, read-only).
-- Server-side event log: unified across all participants in a room, single source of truth for analysis.
+- Durable Object `MakerspaceRoom` with authoritative participants, part ownership, snap state, LED state, and pose relay.
+- Avatar presence: head + 2 hands per participant (IWSDK pose → worker state at ~15 Hz).
+- Asymmetric jigsaw task: role A owns the power half, role B owns the load half; neither can close the circuit alone.
+- Object ownership model: one participant holds a component at a time; server ignores conflicting grabs.
+- Voice: optional LiveKit room per worker room; join on room entry when credentials are configured.
+- Server-side event log: persisted room-level NDJSON export via `GET /room/<code>/telemetry`, with client IndexedDB as backup.
+- CPS signal layer: joint gaze, joint attention samples, partner orientation, handoff, voice speaking state, and turn-taking.
 
 **Open design decisions (Phase 2):**
 - Avatar representation (capsule vs. simple humanoid vs. VRM)
 - Conflict resolution when two hands grab same object (first-come-first-served vs. tug)
-- Server hosting (Railway / Fly.io / self-host on department server — depends on IRB)
+- Shared partner-gaze visibility on/off as an experimental manipulation
+- Empirical calibration thresholds for joint gaze, partner orientation, and handoff windows
+- LiveKit Egress + local Whisper transcription pipeline
 
 ### Phase 3 — Extensions (placeholders, not in MVP)
 
@@ -140,15 +143,24 @@ interface Pose {
 
 | event_type | Payload |
 |---|---|
-| `peer_join` | `{ peer_id, role: 'participant' \| 'observer' }` |
-| `peer_leave` | `{ peer_id, reason }` |
-| `object_ownership_transfer` | `{ entity_id, from, to }` |
-| `voice_speaking_state` | `{ peer_id, speaking: boolean }` *(from LiveKit)* |
+| `partner_join` | `{ partner_pid, partner_role, partner_nickname }` |
+| `partner_leave` | `{ partner_pid }` |
+| `avatar_spawn` | `{ partner_pid }` |
+| `avatar_despawn` | `{ partner_pid }` |
+| `joint_gaze_start/end` | `{ partner_pid, target_id, server_time_ms, ... }` |
+| `joint_attention_sample` | `{ partner_pid, target_id, server_time_ms, ... }` |
+| `partner_orient_start/end` | `{ partner_pid, server_time_ms, ... }` |
+| `handoff` | `{ from_pid, to_pid, part_id, server_time_ms }` |
+| `voice_connected` | `{ room }` |
+| `voice_unavailable` | `{ status }` |
+| `voice_error` | `{ message }` |
+| `voice_speaking_state` | `{ peer_id, speaking: boolean, server_time_ms }` *(from LiveKit)* |
+| `turn_take` | `{ previous_speaker, new_speaker, gap_ms, overlap_ms, server_time_ms }` |
 
 ### Storage / export
 
 - **Phase 1:** Client-side IndexedDB ring buffer (~100 MB). Export as gzipped NDJSON at session end; manual upload to Vercel Blob or research server.
-- **Phase 2:** Stream events to Colyseus server (single source of truth across participants). Server batches and writes NDJSON per room. Client also keeps local copy as backup.
+- **Phase 2:** Stream events to the Durable Object room. The worker persists ordered telemetry events in DO storage and exports NDJSON at `GET /room/<code>/telemetry`. Client IndexedDB also keeps a local backup.
 - **Anonymization:** `participant_id` is a random per-session UUID by default; mapping to real IDs kept in a separate encrypted lookup owned by the researcher, never in telemetry files.
 
 ---
@@ -163,18 +175,16 @@ interface Pose {
 
 ## Success criteria (Phase 2)
 
-- 3 participants + 1 observer can connect to a room, speak, and interact for ≥ 15 min without disconnect.
-- Server-side event log is byte-identical to merged client logs (no loss).
+- 2 participants can connect to a room, speak when LiveKit is configured, and interact for ≥ 15 min without disconnect.
+- Server-side event log covers all client-sent CPS events and exports as valid `schemas/telemetry-v1.json` NDJSON.
 - Object ownership transfers feel responsive (< 150 ms perceived latency).
 
 ---
 
-## Next implementation steps (not yet tasks)
+## Next implementation steps
 
-1. Replace the scaffolded `src/index.ts`, `src/robot.ts`, `src/panel.ts` demo content with a minimal breadboard scene skeleton.
-2. Define custom ECS components: `SocketGrid`, `CircuitNode`, `WireEnds`, `LedState`, `PowerSource`.
-3. Build telemetry system (`src/systems/TelemetrySystem.ts`) as an ECS system that subscribes to events and writes to IndexedDB ring buffer.
-4. Author `schemas/telemetry-v0.1.json` (JSON Schema) for validation.
-5. Stand up `npm run dev` + connect Claude Code MCP for agentic iteration on the scene.
-
-Once Phase 1 is validated with a solo pilot, Phase 2 networking work begins in a separate branch.
+1. Configure production LiveKit credentials and verify `/token/<room>` returns a token JSON or controlled 503.
+2. Run in-headset dyad pilot on Quest 2/3 and validate joint gaze / partner orientation thresholds against video.
+3. Connect LiveKit Egress to audio storage and run local Whisper transcription on JACOB GPU.
+4. Merge client exports and worker NDJSON on `server_time_ms`, then run `python scripts/analyze_session.py <export.ndjson> --strict`.
+5. Decide whether shared partner-gaze visibility is a main experimental manipulation or a Phase 3 extension.

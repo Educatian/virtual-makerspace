@@ -117,15 +117,63 @@ export class MakerspaceRoom {
   players: Map<string, PlayerState> = new Map();
   parts: Map<string, PartState> = new Map();
   ledLit: boolean = false;
-  telemetryLog: unknown[] = [];
+  telemetryCount: number = 0;
+  private readonly ready: Promise<void>;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
     for (const p of defaultParts()) this.parts.set(p.id, p);
+    this.ready = this.loadPersistedState();
+  }
+
+  private async loadPersistedState(): Promise<void> {
+    this.telemetryCount =
+      (await this.state.storage.get<number>("telemetryCount")) ?? 0;
+  }
+
+  private telemetryKey(index: number): string {
+    return `telemetry:${index.toString().padStart(10, "0")}`;
+  }
+
+  private async appendTelemetry(event: unknown): Promise<string> {
+    const eid = (event as { event_id?: string }).event_id ?? "";
+    const index = this.telemetryCount;
+    this.telemetryCount += 1;
+    await this.state.storage.put({
+      [this.telemetryKey(index)]: event,
+      telemetryCount: this.telemetryCount,
+    });
+    return eid;
+  }
+
+  private async exportTelemetry(): Promise<Response> {
+    const lines: string[] = [];
+    let startAfter: string | undefined;
+    while (true) {
+      const stored = await this.state.storage.list<unknown>({
+        prefix: "telemetry:",
+        startAfter,
+        limit: 1000,
+      });
+      if (stored.size === 0) break;
+      for (const event of stored.values()) {
+        lines.push(JSON.stringify(event));
+      }
+      if (stored.size < 1000) break;
+      startAfter = [...stored.keys()][stored.size - 1];
+    }
+    const ndjson = lines.join("\n");
+    return new Response(ndjson, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "X-Telemetry-Count": String(this.telemetryCount),
+      },
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
+    await this.ready;
     const upgrade = request.headers.get("Upgrade");
     if (upgrade !== "websocket") {
       const url = new URL(request.url);
@@ -134,16 +182,11 @@ export class MakerspaceRoom {
           players: [...this.players.values()],
           parts: [...this.parts.values()],
           ledLit: this.ledLit,
-          telemetryCount: this.telemetryLog.length,
+          telemetryCount: this.telemetryCount,
         });
       }
       if (url.pathname === "/telemetry") {
-        const ndjson = this.telemetryLog
-          .map((e) => JSON.stringify(e))
-          .join("\n");
-        return new Response(ndjson, {
-          headers: { "Content-Type": "application/x-ndjson" },
-        });
+        return this.exportTelemetry();
       }
       return new Response("Expected WebSocket", { status: 426 });
     }
@@ -156,7 +199,7 @@ export class MakerspaceRoom {
     server.addEventListener("message", (evt) => {
       try {
         const msg = JSON.parse(evt.data as string) as ClientMsg;
-        this.handleMessage(sessionId, msg);
+        void this.handleMessage(sessionId, msg);
       } catch (e) {
         this.send(server, {
           t: "error",
@@ -186,7 +229,8 @@ export class MakerspaceRoom {
     }
   }
 
-  handleMessage(sessionId: string, msg: ClientMsg): void {
+  async handleMessage(sessionId: string, msg: ClientMsg): Promise<void> {
+    await this.ready;
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
@@ -278,8 +322,7 @@ export class MakerspaceRoom {
         break;
       }
       case "telemetry": {
-        this.telemetryLog.push(msg.event);
-        const eid = (msg.event as { event_id?: string }).event_id ?? "";
+        const eid = await this.appendTelemetry(msg.event);
         this.send(session.socket, { t: "telemetryAck", event_id: eid });
         break;
       }
@@ -446,17 +489,28 @@ export default {
     }
 
     // /room/:code  -> WS upgrade
-    const m = url.pathname.match(/^\/room\/([a-zA-Z0-9_-]{1,32})$/);
+    // /room/:code/state and /room/:code/telemetry -> room diagnostics/export
+    const m = url.pathname.match(
+      /^\/room\/([a-zA-Z0-9_-]{1,32})(\/state|\/telemetry)?$/,
+    );
     if (m) {
       const roomCode = m[1].toLowerCase();
       const id = env.ROOM.idFromName(roomCode);
       const stub = env.ROOM.get(id);
+      if (m[2]) {
+        const roomUrl = new URL(request.url);
+        roomUrl.pathname = m[2];
+        return stub.fetch(new Request(roomUrl, request));
+      }
       return stub.fetch(request);
     }
 
-    return new Response("vm-realtime worker — POST /room/:code (WS)", {
+    return new Response(
+      "vm-realtime worker — WS /room/:code, GET /room/:code/state, GET /room/:code/telemetry",
+      {
       status: 200,
       headers: corsHeaders,
-    });
+      },
+    );
   },
 };

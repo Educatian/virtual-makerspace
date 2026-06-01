@@ -30,6 +30,7 @@ class Telemetry {
   private buffer: TelemetryEvent[] = [];
   private db: IDBDatabase | null = null;
   private flushTimer: number | null = null;
+  private flushing: Promise<void> | null = null;
 
   constructor() {
     this.sessionId = crypto.randomUUID();
@@ -114,14 +115,30 @@ class Telemetry {
   }
 
   private flush(): void {
+    void this.flushNow();
+  }
+
+  private async flushNow(): Promise<void> {
+    if (this.flushing) await this.flushing;
     if (!this.db || this.buffer.length === 0) return;
     const batch = this.buffer.splice(0);
-    const tx = this.db.transaction(STORE, "readwrite");
-    const store = tx.objectStore(STORE);
-    for (const e of batch) store.add(e);
+    this.flushing = new Promise((resolve) => {
+      const tx = this.db!.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => {
+        this.buffer.unshift(...batch);
+        console.warn("[telemetry] IndexedDB flush failed", tx.error);
+        resolve();
+      };
+      for (const e of batch) store.put(e);
+    });
+    await this.flushing;
+    this.flushing = null;
   }
 
   async export(): Promise<TelemetryEvent[]> {
+    await this.flushNow();
     if (!this.db) return [];
     return new Promise((resolve) => {
       const tx = this.db!.transaction(STORE, "readonly");

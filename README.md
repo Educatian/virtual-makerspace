@@ -10,12 +10,13 @@ Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, dep
 
 ## What is this?
 
-A virtual electronics makerspace where a participant assembles a simple LED circuit on a breadboard using grabbable virtual components — battery, LEDs, resistors, wires. Every action is captured as a structured telemetry event for later analysis of exploration, manipulation, failure, and recovery patterns.
+A virtual electronics makerspace where participants assemble a simple LED circuit on a breadboard using grabbable virtual components — battery, LEDs, resistors, wires. Every action is captured as a structured telemetry event for later analysis of exploration, manipulation, failure, recovery, and dyadic collaborative problem-solving patterns.
 
 The artifact is a **study apparatus**, not a consumer product. The design prioritizes:
 
 - **Total observability** — every grasp, release, snap, and circuit change is a typed event in IndexedDB
 - **Productive Failure** framing (Kapur 2008) — minimal scaffolding, the participant must figure out the topology themselves
+- **Collaborative Problem-Solving instrumentation** — Phase 2 dyads are aligned to the PISA 2015 CPS matrix
 - **Deterministic replay potential** — the event log is a source-of-truth that can re-render the session
 - **Same-build cross-site** — WebXR + bundled assets means a study in Seoul and a replication in Atlanta use bit-identical stimuli
 
@@ -65,6 +66,7 @@ See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the full Phase 1 / Phase 2 scop
   await window.telemetry.export();     // returns event array
   await window.telemetry.clear();      // resets the DB
   ```
+- **Collaborative session export** — the realtime worker persists room telemetry and exposes `GET /room/<code>/state` and `GET /room/<code>/telemetry` for diagnostics and NDJSON export.
 
 ### Telemetry events captured
 | Event | Payload |
@@ -78,6 +80,11 @@ See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the full Phase 1 / Phase 2 scop
 | `led_state_change` | `{ entity_id, lit }` |
 | `step_advance` | `{ step, total, completed }` |
 | `ui_interaction` | `{ element_id, action }` |
+| `joint_gaze_start/end` | `{ partner_pid, target_id, server_time_ms, ... }` |
+| `partner_orient_start/end` | `{ partner_pid, server_time_ms, ... }` |
+| `handoff` | `{ from_pid, to_pid, part_id, server_time_ms }` |
+| `voice_speaking_state` | `{ peer_id, speaking, server_time_ms }` |
+| `turn_take` | `{ previous_speaker, new_speaker, gap_ms, overlap_ms }` |
 
 Each event includes envelope fields: `event_id` (UUID), `session_id`, `timestamp_ms`, `frame_time_ms`.
 
@@ -152,20 +159,38 @@ controller pointerup    ─────┤
                               └─→ on change: setProperties on UIKit text + step_advance
 ```
 
+### Collaborative mode
+
+Phase 2 uses a Cloudflare Durable Object worker (`server/src/index.ts`) as the room authority. It replaces the earlier Colyseus plan.
+
+```
+Browser A (role=A) <-> WS /room/<code> <-> MakerspaceRoom Durable Object <-> WS /room/<code> <-> Browser B (role=B)
+                               |
+                               +-- GET /token/<code> for LiveKit voice JWTs
+                               +-- GET /room/<code>/telemetry for NDJSON export
+```
+
+- Role A owns the power half (battery + blue wire); Role B owns the load half (LED + red wire).
+- The server owns part state, pose relay, LED state, and persisted merged telemetry.
+- LiveKit is optional. Without credentials, `/token/<code>` returns `503 voice-not-configured` and the task still runs with state sync and non-voice CPS signals.
+- Full runbook: [`docs/phase2-cps.md`](docs/phase2-cps.md).
+- Worker smoke test: `npm run smoke:worker` checks `/health`, `/token/<room>`, WebSocket telemetry ACK, `/room/<room>/state`, and `/room/<room>/telemetry`.
+
 ---
 
 ## Tech stack
 
 | Layer | Library |
 |---|---|
-| Framework | [`@iwsdk/core`](https://www.npmjs.com/package/@iwsdk/core) 0.3.1 |
+| Framework | [`@iwsdk/core`](https://www.npmjs.com/package/@iwsdk/core) 0.4.1 |
 | ECS | [`elics`](https://github.com/pmndrs/elics) (via IWSDK) |
 | 3D | [`super-three`](https://www.npmjs.com/package/super-three) 0.181 |
 | Spatial UI | [`@pmndrs/uikit`](https://github.com/pmndrs/uikit) |
 | Manipulation | [`@pmndrs/handle`](https://github.com/pmndrs/handle) + [`@pmndrs/pointer-events`](https://github.com/pmndrs/pointer-events) |
 | Reactivity | [`@preact/signals-core`](https://github.com/preactjs/signals) |
 | Build | Vite 7 + [`@iwsdk/vite-plugin-dev`](https://www.npmjs.com/package/@iwsdk/vite-plugin-dev) (IWER emulator + MCP) |
-| Telemetry | IndexedDB + NDJSON export |
+| Telemetry | IndexedDB + NDJSON export; Durable Object room telemetry in collaborative mode |
+| Realtime | Cloudflare Durable Objects + WebSocket; optional LiveKit voice |
 | Screenshots | Playwright (see `scripts/screenshot.mjs`) |
 
 ---
@@ -175,11 +200,14 @@ controller pointerup    ─────┤
 **Phase 1 (MVP) — implemented**
 - Solo breadboard scene, snap interactions, circuit evaluation, telemetry, step HUD, placement guides
 
-**Phase 2 — planned**
-- 2-3 person collaborative mode (Colyseus + LiveKit voice)
-- Avatar presence (head + 2 hands), object ownership transfer
-- Researcher spectator URL (`/spectate?session=...`)
-- Shared partner-gaze as the headline experimental manipulation
+**Phase 2 — implemented**
+- 2-person asymmetric CPS mode with Cloudflare Durable Object room sync
+- Remote avatar presence (head + 2 hands), object ownership transfer, shared LED state
+- Optional LiveKit voice with speaking-state and turn-taking telemetry
+- CPS signal telemetry: joint gaze, partner orientation, handoff, voice state, turn-taking
+- Telemetry v1 JSON Schema and `scripts/analyze_session.py` for validation and CPS timeline summaries
+
+Remaining Phase 2 operations: configure production LiveKit credentials, calibrate CPS thresholds with pilot dyads, connect LiveKit Egress/Whisper transcription, and run in-headset 2-person validation.
 
 **Phase 3 — backlog**
 - Affective / LLM-driven tutoring agent (in-scene 3D embodiment, telemetry → LLM context)
@@ -207,9 +235,16 @@ virtual-makerspace/
 ├── public/
 │   └── gltf/robot/            # idle character mesh
 ├── docs/
+│   ├── phase2-cps.md          # CPS collaboration architecture/runbook
 │   ├── mvp-scope.md           # Phase 1/2 scope + telemetry schema
 │   └── images/                # README screenshots
+├── server/
+│   └── src/index.ts           # Cloudflare Durable Object realtime worker
+├── schemas/
+│   └── telemetry-v1.json      # Telemetry event contract
 ├── scripts/
+│   ├── analyze_session.py     # Validate/analyze NDJSON telemetry
+│   ├── smoke-worker.mjs       # Live worker route + WebSocket telemetry smoke test
 │   └── screenshot.mjs         # Playwright capture script for README hero shots
 └── CLAUDE.md                  # IWSDK best practices for Claude Code
 ```
