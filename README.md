@@ -13,6 +13,24 @@ This repository now contains two complementary prototypes:
 
 ![Unity Quest classroom pilot](docs/images/unity-quest-release.png)
 
+### Unity Quest activity walkthrough
+
+These Unity-rendered guide captures use demo room code `MS42Q7` to show the intended learner sequence. They document the interface states; final live validation still requires two physical Quest headsets.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/unity-activity/01-launch-and-open-menu.png" alt="Step 1: launch the Unity makerspace and open the room menu" /><br/><b>1. Launch and choose a role.</b> Both learners confirm the workbench is visible. One becomes the host; the other becomes the partner.</td>
+<td width="50%"><img src="docs/images/unity-activity/02-create-and-share-code.png" alt="Step 2: User A creates a Relay room and shares the code" /><br/><b>2. User A creates the room.</b> Select <code>CREATE</code>, then read the room code aloud to User B.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/unity-activity/03-join-and-check-voice.png" alt="Step 3: User B joins and both learners confirm Vivox voice" /><br/><b>3. User B joins and checks voice.</b> Enter the same code, select <code>JOIN</code>, confirm <code>2/2 CONNECTED</code>, and say “I can hear you.”</td>
+<td width="50%"><img src="docs/images/unity-activity/04-place-resistor-and-handoff.png" alt="Step 4: User A places the resistor and hands off the task" /><br/><b>4. User A places the resistor.</b> Explain the selected sockets, place the resistor, then hand the next decision to User B.</td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="docs/images/unity-activity/05-place-led-and-explain.png" alt="Step 5: User B places the LED and both learners explain and verify the circuit" width="760" /><br/><b>5. User B places the LED; both explain and verify.</b> Check LED polarity, complete the placement, and jointly explain why the circuit should work.</td>
+</tr>
+</table>
+
 Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, deploys to any WebXR headset (Meta Quest 2/3/Pro), and instruments every grasp, snap, and circuit-state change with high-resolution telemetry.
 
 ---

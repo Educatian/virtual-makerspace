@@ -29,6 +29,10 @@ In Unity, select `Virtual Makerspace > Build Prototype Scene`, or run:
 
 Live Vivox communication requires a linked Unity Dashboard project with Vivox enabled. Voice recording and transcription must only be added after participant consent.
 
+## Reproducing the README Screenshots
+
+Run `VirtualMakerspace.Editor.ActivityGuideCapture.Capture` in batch mode or from an editor command. It writes five 1280 × 720 Unity-rendered states to `Artifacts/UnityActivityGuide/`. The captures use a demo room code and do not claim a live two-headset session.
+
 ## Multiplayer and Voice
 
 The learner-facing HUD provides CREATE ROOM, JOIN ROOM, room-code entry, Relay status, voice status, participant status, CPS handoff guidance, and task progress. Authentication, Relay session creation, and Vivox channel joining have passed live Unity service smoke verification.
