@@ -1,0 +1,23 @@
+# Blender 4.5.11 LTS MTL File: 'None'
+# www.blender.org
+
+newmtl M_Brushed_Metal
+Ns 518.400024
+Ka 0.900000 0.900000 0.900000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 3
+map_Kd C:/Users/jewoo/Documents/New project/VirtualMakerspaceUnity/Assets/VirtualMakerspace/Art/PBRTextures/BrushedMetal_Albedo.png
+map_Bump -bm 0.380000 C:/Users/jewoo/Documents/New project/VirtualMakerspaceUnity/Assets/VirtualMakerspace/Art/PBRTextures/BrushedMetal_Normal.png
+
+newmtl M_LED_Red
+Ns 672.400024
+Ka 1.000000 1.000000 1.000000
+Kd 0.700000 0.020000 0.015000
+Ks 0.500000 0.500000 0.500000
+Ke 3.000000 0.030000 0.015000
+Ni 1.500000
+d 1.000000
+illum 2

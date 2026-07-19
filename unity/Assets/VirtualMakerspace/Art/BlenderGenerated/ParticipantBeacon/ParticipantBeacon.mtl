@@ -1,0 +1,34 @@
+# Blender 4.5.11 LTS MTL File: 'None'
+# www.blender.org
+
+newmtl M_Cyan_Emission
+Ns 722.500000
+Ka 1.000000 1.000000 1.000000
+Kd 0.020000 0.350000 0.480000
+Ks 0.500000 0.500000 0.500000
+Ke 0.060000 2.100000 3.000000
+Ni 1.500000
+d 1.000000
+illum 2
+
+newmtl M_Graphite
+Ns 462.399994
+Ka 0.250000 0.250000 0.250000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 3
+map_Kd C:/Users/jewoo/Documents/New project/VirtualMakerspaceUnity/Assets/VirtualMakerspace/Art/PBRTextures/Graphite_Albedo.png
+map_Bump -bm 0.380000 C:/Users/jewoo/Documents/New project/VirtualMakerspaceUnity/Assets/VirtualMakerspace/Art/PBRTextures/Graphite_Normal.png
+
+newmtl M_Green
+Ns 422.499969
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/jewoo/Documents/New project/VirtualMakerspaceUnity/Assets/VirtualMakerspace/Art/PBRTextures/GreenPlastic_Albedo.png
+map_Bump -bm 0.380000 C:/Users/jewoo/Documents/New project/VirtualMakerspaceUnity/Assets/VirtualMakerspace/Art/PBRTextures/GreenPlastic_Normal.png

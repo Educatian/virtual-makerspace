@@ -4,6 +4,15 @@
 
 ![Workspace overview](docs/images/hero.png)
 
+## Implementations
+
+This repository now contains two complementary prototypes:
+
+- **IWSDK WebXR** (repository root): browser-based breadboard study apparatus with telemetry.
+- **Unity Quest classroom pilot** ([`unity/`](unity/README.md)): native Quest 2/3 build with Relay room creation/joining, Vivox voice, XR direct/ray interaction, collaborative component handoff, embedded beginner guidance, and Blender/PBR makerspace assets.
+
+![Unity Quest classroom pilot](docs/images/unity-quest-release.png)
+
 Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, deploys to any WebXR headset (Meta Quest 2/3/Pro), and instruments every grasp, snap, and circuit-state change with high-resolution telemetry.
 
 ---

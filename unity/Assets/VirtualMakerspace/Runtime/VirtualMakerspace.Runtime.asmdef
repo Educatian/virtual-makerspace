@@ -1,0 +1,16 @@
+{
+  "name": "VirtualMakerspace.Runtime",
+  "rootNamespace": "VirtualMakerspace",
+  "references": [
+    "Unity.InputSystem",
+    "Unity.Netcode.Runtime",
+    "Unity.Netcode.Components",
+    "Unity.Services.Authentication",
+    "Unity.Services.Core",
+    "Unity.Services.Multiplayer",
+    "Unity.Services.Vivox",
+    "Unity.XR.CoreUtils",
+    "Unity.XR.Interaction.Toolkit",
+    "UnityEngine.UI"
+  ]
+}

@@ -1,0 +1,14 @@
+﻿{
+  "name": "VirtualMakerspace.Tests.EditMode",
+  "rootNamespace": "VirtualMakerspace.Tests",
+  "references": [
+    "VirtualMakerspace.Runtime",
+    "VirtualMakerspace.Editor",
+    "Unity.InputSystem",
+    "Unity.XR.Interaction.Toolkit",
+    "UnityEngine.UI"
+  ],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}
