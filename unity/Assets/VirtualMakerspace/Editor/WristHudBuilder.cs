@@ -65,8 +65,8 @@ namespace VirtualMakerspace.Editor
             Text voice = Text(root, "Voice Status", "VOICE  |  MIC ON", 15, FontStyle.Bold, Cyan, 292, 226, 210, 28);
 
             InputField input = Input(root, "Room Code Input", "MS42Q7", Surface, 24, 162, 238, 44);
-            Button create = Button(root, "Create Room", "CREATE", 278, 162, 112, 44, new Color(0.03f, 0.43f, 0.62f, 1f));
-            Button join = Button(root, "Join Room", "JOIN", 404, 162, 112, 44, new Color(0.08f, 0.55f, 0.43f, 1f));
+            Button create = Button(root, "Create Room", "CREATE ROOM", 278, 162, 112, 44, new Color(0.03f, 0.43f, 0.62f, 1f));
+            Button join = Button(root, "Join Room", "JOIN ROOM", 404, 162, 112, 44, new Color(0.08f, 0.55f, 0.43f, 1f));
 
             Text participants = Text(root, "Participants", "2/2 CONNECTED  |  DEMO USER A + B", 17,
                 FontStyle.Bold, Color.white, 24, 122, 492, 28);

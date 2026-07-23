@@ -18,8 +18,11 @@ namespace VirtualMakerspace.Sessions
         [SerializeField] private Text participantText;
         [SerializeField] private Text voiceText;
         [SerializeField] private Text guidanceText;
-        private bool attachedToWrist;
+        private GraphicRaycaster lobbyRaycaster;
+        private bool placedInWorld;
         private bool busy;
+
+        public bool ActivityUnlocked { get; private set; }
 
         public void Configure(MultiplayerSessionController sessionController, RectTransform root,
             InputField input, Button create, Button join, Text roomCode, Text connection,
@@ -46,15 +49,17 @@ namespace VirtualMakerspace.Sessions
 
         private void Start()
         {
+            lobbyRaycaster = hudRoot != null ? hudRoot.GetComponentInParent<GraphicRaycaster>() : null;
             ShowReadyState();
-            TryAttachToWrist();
+            TryPlaceInWorld();
+            session.ParticipantCountChanged += HandleParticipantCountChanged;
         }
 
         private void Update()
         {
-            if (!attachedToWrist && XRSettings.isDeviceActive)
+            if (!placedInWorld && XRSettings.isDeviceActive)
             {
-                TryAttachToWrist();
+                TryPlaceInWorld();
             }
         }
 
@@ -62,6 +67,10 @@ namespace VirtualMakerspace.Sessions
         {
             createButton.onClick.RemoveListener(CreateRoom);
             joinButton.onClick.RemoveListener(JoinRoom);
+            if (session != null)
+            {
+                session.ParticipantCountChanged -= HandleParticipantCountChanged;
+            }
         }
 
         public void CreateRoom()
@@ -81,7 +90,7 @@ namespace VirtualMakerspace.Sessions
             {
                 string code = await session.CreateRoomAsync();
                 roomCodeInput.text = code;
-                ShowConnectedState(code, "1/2 CONNECTED", "WAITING FOR PARTNER");
+                ShowConnectedState(code, "WAITING FOR PARTNER");
             }
             catch (Exception exception)
             {
@@ -95,7 +104,7 @@ namespace VirtualMakerspace.Sessions
             try
             {
                 await session.JoinRoomAsync(roomCodeInput.text);
-                ShowConnectedState(session.RoomCode, "2/2 CONNECTED", "PARTNER READY");
+                ShowConnectedState(session.RoomCode, "PARTNER READY");
             }
             catch (Exception exception)
             {
@@ -110,17 +119,24 @@ namespace VirtualMakerspace.Sessions
             participantText.text = "0/2 CONNECTED";
             voiceText.text = "VOICE  |  CONNECTS WITH ROOM";
             guidanceText.text = "CREATE A ROOM OR ENTER YOUR PARTNER'S CODE";
+            RestoreLobbyInput();
             SetInteractable(true);
         }
 
-        private void ShowConnectedState(string code, string participants, string guidance)
+        private void ShowConnectedState(string code, string guidance)
         {
             roomCodeText.text = "ROOM  " + code;
             connectionText.text = "ONLINE  |  SECURE RELAY";
-            participantText.text = participants;
-            voiceText.text = "VOICE  |  MIC ON";
-            guidanceText.text = guidance;
+            participantText.text = $"{Mathf.Clamp(session.ParticipantCount, 1, 2)}/2 CONNECTED";
+            voiceText.text = session.IsVoiceConnected ? "VOICE  |  MIC ON" : "VOICE  |  UNAVAILABLE";
+            guidanceText.text = string.IsNullOrWhiteSpace(session.VoiceWarning)
+                ? guidance
+                : "ROOM CONNECTED; CHECK VOICE SERVICE";
             SetInteractable(true);
+            if (session.ParticipantCount >= 2)
+            {
+                UnlockActivityInput();
+            }
         }
 
         private void SetBusy(string message)
@@ -132,6 +148,7 @@ namespace VirtualMakerspace.Sessions
 
         private void ShowError(Exception exception)
         {
+            RestoreLobbyInput();
             connectionText.text = "CONNECTION FAILED";
             guidanceText.text = exception.GetBaseException().Message.ToUpperInvariant();
             SetInteractable(true);
@@ -144,16 +161,76 @@ namespace VirtualMakerspace.Sessions
             joinButton.interactable = value;
         }
 
-        private void TryAttachToWrist()
+        private void HandleParticipantCountChanged(int count)
+        {
+            if (!session.IsConnected)
+            {
+                return;
+            }
+
+            int displayedCount = Mathf.Clamp(count, 1, 2);
+            participantText.text = $"{displayedCount}/2 CONNECTED";
+            if (displayedCount >= 2)
+            {
+                UnlockActivityInput();
+            }
+            else
+            {
+                RestoreLobbyInput();
+                guidanceText.text = "WAITING FOR PARTNER";
+            }
+        }
+
+        /// <summary>
+        /// Stops the completed lobby from intercepting XR rays so both learners can
+        /// immediately grab and place breadboard parts. The status HUD remains visible.
+        /// </summary>
+        public void UnlockActivityInput()
+        {
+            bool wasUnlocked = ActivityUnlocked;
+            lobbyRaycaster ??= hudRoot != null ? hudRoot.GetComponentInParent<GraphicRaycaster>() : null;
+            ActivityUnlocked = true;
+            busy = false;
+            createButton.interactable = false;
+            joinButton.interactable = false;
+            roomCodeInput.interactable = false;
+            guidanceText.text = "ACTIVITY UNLOCKED  |  USE TRIGGER TO GRAB PARTS";
+            if (lobbyRaycaster != null)
+            {
+                lobbyRaycaster.enabled = false;
+            }
+
+            if (!wasUnlocked)
+            {
+                Debug.Log($"VM_ACCEPTANCE ACTIVITY_UNLOCKED room={session.RoomCode} participants={session.ParticipantCount} voice={session.IsVoiceConnected}");
+            }
+        }
+
+        private void RestoreLobbyInput()
+        {
+            ActivityUnlocked = false;
+            if (roomCodeInput != null)
+            {
+                roomCodeInput.interactable = true;
+            }
+
+            if (lobbyRaycaster != null)
+            {
+                lobbyRaycaster.enabled = true;
+            }
+        }
+
+        private void TryPlaceInWorld()
         {
             if (!XRSettings.isDeviceActive || hudRoot == null) return;
-            GameObject leftController = GameObject.Find("Left Controller");
-            if (leftController == null) return;
-            hudRoot.SetParent(leftController.transform, false);
-            hudRoot.localPosition = new Vector3(0.06f, 0.10f, 0.14f);
-            hudRoot.localRotation = Quaternion.Euler(68f, 0f, 0f);
-            hudRoot.localScale = Vector3.one * 0.00072f;
-            attachedToWrist = true;
+            GameObject xrCamera = GameObject.Find("XR Camera");
+            if (xrCamera == null) return;
+            Transform cameraTransform = xrCamera.transform;
+            hudRoot.SetParent(null, true);
+            hudRoot.position = cameraTransform.TransformPoint(new Vector3(-0.42f, -0.10f, 0.92f));
+            hudRoot.rotation = cameraTransform.rotation * Quaternion.Euler(2f, 4f, 0f);
+            hudRoot.localScale = Vector3.one * 0.00084f;
+            placedInWorld = true;
         }
     }
 }

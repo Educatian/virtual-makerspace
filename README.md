@@ -13,6 +13,21 @@ This repository now contains two complementary prototypes:
 
 ![Unity Quest classroom pilot](docs/images/unity-quest-release.png)
 
+### Native Quest pilot release 1.0.7
+
+The current Unity pilot build fixes the Quest floating-2D launch path by declaring and explicitly launching the Meta VR activity category. It includes:
+
+- learner-facing **CREATE ROOM** and **JOIN ROOM** controls with a shared room code;
+- automatic stale-lobby cleanup and one retry before reporting a room failure;
+- Relay/Netcode two-person synchronization and Vivox group voice;
+- microphone permission gating before Vivox joins the audio channel;
+- automatic release of the lobby raycaster at `2/2 CONNECTED`, allowing Trigger interaction with breadboard parts; and
+- an acceptance collector that records immersive OpenXR focus, room, voice, and part-grab evidence from each physical Quest.
+
+Release verification: **29/29 Unity EditMode tests passed**, and independent Host/Guest player processes reached the same Relay room with Session `2/2` and Vivox connected. Physical Quest 2/3 acceptance remains an explicit field-test gate.
+
+[Download the 1.0.7 Quest student test package](https://drive.google.com/file/d/1pX_TYJHi6xuoEq30zDsJqzfQez7jupyn/view?usp=drivesdk)
+
 ### Unity Quest activity walkthrough
 
 These Unity-rendered guide captures use demo room code `MS42Q7` to show the intended learner sequence. They document the interface states; final live validation still requires two physical Quest headsets.

@@ -19,12 +19,13 @@ namespace VirtualMakerspace.Voice
                 throw new ArgumentException("A room code is required.", nameof(roomCode));
             }
 
-#if UNITY_ANDROID && !UNITY_EDITOR
-            if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Microphone))
+            await EnsureMicrophonePermissionAsync();
+
+            string requestedChannel = BuildChannelName(roomCode);
+            if (IsConnected && string.Equals(ChannelName, requestedChannel, StringComparison.Ordinal))
             {
-                UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Microphone);
+                return;
             }
-#endif
 
             await UnityServices.InitializeAsync();
             if (!AuthenticationService.Instance.IsSignedIn)
@@ -33,10 +34,47 @@ namespace VirtualMakerspace.Voice
             }
 
             await VivoxService.Instance.InitializeAsync();
-            await VivoxService.Instance.LoginAsync();
-            ChannelName = BuildChannelName(roomCode);
+            if (!VivoxService.Instance.IsLoggedIn)
+            {
+                await VivoxService.Instance.LoginAsync();
+            }
+
+            if (IsConnected)
+            {
+                await VivoxService.Instance.LeaveAllChannelsAsync();
+                IsConnected = false;
+            }
+
+            ChannelName = requestedChannel;
             await VivoxService.Instance.JoinGroupChannelAsync(ChannelName, ChatCapability.AudioOnly);
             IsConnected = true;
+            Debug.Log($"VM_ACCEPTANCE VOICE_CONNECTED channel={ChannelName} microphone=granted");
+        }
+
+        private static async Task EnsureMicrophonePermissionAsync()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            string permission = UnityEngine.Android.Permission.Microphone;
+            if (UnityEngine.Android.Permission.HasUserAuthorizedPermission(permission))
+            {
+                return;
+            }
+
+            var completion = new TaskCompletionSource<bool>();
+            var callbacks = new UnityEngine.Android.PermissionCallbacks();
+            callbacks.PermissionGranted += _ => completion.TrySetResult(true);
+            callbacks.PermissionDenied += _ => completion.TrySetResult(false);
+            callbacks.PermissionDeniedAndDontAskAgain += _ => completion.TrySetResult(false);
+            UnityEngine.Android.Permission.RequestUserPermission(permission, callbacks);
+
+            if (!await completion.Task)
+            {
+                throw new UnauthorizedAccessException(
+                    "Microphone permission is required for two-person voice communication.");
+            }
+#else
+            await Task.CompletedTask;
+#endif
         }
 
         public static string BuildChannelName(string roomCode)

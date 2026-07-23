@@ -13,6 +13,7 @@ using UnityEngine.XR.OpenXR;
 using UnityEngine.XR.OpenXR.Features;
 using UnityEngine.XR.OpenXR.Features.CompositionLayers;
 using UnityEngine.XR.OpenXR.Features.Interactions;
+using UnityEngine.XR.OpenXR.Features.MetaQuestSupport;
 
 namespace VirtualMakerspace.Editor
 {
@@ -86,6 +87,8 @@ namespace VirtualMakerspace.Editor
             }
             PlayerSettings.companyName = "University of Alabama";
             PlayerSettings.productName = "Virtual Makerspace CPS";
+            PlayerSettings.bundleVersion = "1.0.7";
+            PlayerSettings.Android.bundleVersionCode = 7;
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, PackageName);
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
@@ -135,6 +138,11 @@ namespace VirtualMakerspace.Editor
             if (openXrSettings == null)
             {
                 throw new InvalidOperationException($"OpenXR feature settings are unavailable: {group}");
+            }
+
+            if (group == BuildTargetGroup.Android)
+            {
+                EnableFeature<MetaQuestFeature>(openXrSettings);
             }
 
             EnableFeature<OculusTouchControllerProfile>(openXrSettings);

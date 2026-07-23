@@ -48,6 +48,7 @@ namespace VirtualMakerspace.Interaction
 
         private void OnGrabbed(SelectEnterEventArgs args)
         {
+            Debug.Log($"VM_ACCEPTANCE PART_GRABBED part={name} spawned={IsSpawned} owner={OwnerClientId}");
             if (IsSpawned)
             {
                 RequestOwnershipRpc();
@@ -79,6 +80,7 @@ namespace VirtualMakerspace.Interaction
         private void ApplyPlacement(int socketId, Vector3 position, Quaternion rotation)
         {
             transform.SetPositionAndRotation(position, rotation);
+            Debug.Log($"VM_ACCEPTANCE PART_PLACED part={name} socket={socketId} server={IsServer}");
             if (IsServer)
             {
                 SocketId.Value = socketId;

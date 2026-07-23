@@ -104,7 +104,7 @@ namespace VirtualMakerspace.Editor
             string hand = leftHand ? "LeftHand" : "RightHand";
             XRDirectInteractor direct = controller.GetComponent<XRDirectInteractor>()
                 ?? controller.AddComponent<XRDirectInteractor>();
-            direct.selectInput = ButtonReader("Select", $"<XRController>{{{hand}}}/gripPressed");
+            direct.selectInput = ButtonReader("Select", $"<XRController>{{{hand}}}/triggerPressed");
             direct.activateInput = ButtonReader("Activate", $"<XRController>{{{hand}}}/triggerPressed");
 
             Transform existingRay = controller.transform.Find("UI Ray");
@@ -118,7 +118,7 @@ namespace VirtualMakerspace.Editor
                 ?? rayObject.AddComponent<XRRayInteractor>();
             ray.enableUIInteraction = true;
             ray.maxRaycastDistance = 5f;
-            ray.selectInput = ButtonReader("Ray Select", $"<XRController>{{{hand}}}/gripPressed");
+            ray.selectInput = ButtonReader("Ray Select", $"<XRController>{{{hand}}}/triggerPressed");
             ray.activateInput = ButtonReader("Ray Activate", $"<XRController>{{{hand}}}/triggerPressed");
             ray.uiPressInput = ButtonReader("UI Press", $"<XRController>{{{hand}}}/triggerPressed");
 
@@ -173,6 +173,12 @@ namespace VirtualMakerspace.Editor
 
         private static void ConfigureNetworkPart(GameObject part)
         {
+            if (part == null)
+            {
+                throw new System.InvalidOperationException("Required breadboard part is missing from the release scene.");
+            }
+
+            EnsureInteractionCollider(part);
             Rigidbody body = part.GetComponent<Rigidbody>();
             if (body == null)
             {
@@ -200,6 +206,38 @@ namespace VirtualMakerspace.Editor
             if (part.GetComponent<NetworkBreadboardPart>() == null)
             {
                 part.AddComponent<NetworkBreadboardPart>();
+            }
+        }
+
+        private static void EnsureInteractionCollider(GameObject part)
+        {
+            Collider[] colliders = part.GetComponentsInChildren<Collider>(true);
+            if (colliders.Length == 0)
+            {
+                BoxCollider collider = part.AddComponent<BoxCollider>();
+                Renderer[] renderers = part.GetComponentsInChildren<Renderer>(true);
+                if (renderers.Length > 0)
+                {
+                    Bounds localBounds = new Bounds(
+                        part.transform.InverseTransformPoint(renderers[0].bounds.center),
+                        Vector3.zero);
+                    foreach (Renderer renderer in renderers)
+                    {
+                        Bounds worldBounds = renderer.bounds;
+                        Vector3 min = part.transform.InverseTransformPoint(worldBounds.min);
+                        Vector3 max = part.transform.InverseTransformPoint(worldBounds.max);
+                        localBounds.Encapsulate(min);
+                        localBounds.Encapsulate(max);
+                    }
+
+                    collider.center = localBounds.center;
+                    collider.size = localBounds.size;
+                }
+            }
+
+            foreach (Collider collider in part.GetComponentsInChildren<Collider>(true))
+            {
+                collider.isTrigger = false;
             }
         }
 

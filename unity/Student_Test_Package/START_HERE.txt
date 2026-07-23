@@ -1,0 +1,69 @@
+﻿VIRTUAL MAKERSPACE - STUDENT TEST PACKAGE
+
+CORRECTED QUEST BUILD
+Version 1.0.7 (versionCode 7)
+This build must open as full immersive VR, not as a floating 2D panel.
+
+
+WHAT TO DO
+
+1. Extract this entire ZIP file. Do not run the installer from inside the ZIP.
+2. Turn on the Meta Quest 2 or Quest 3.
+3. Connect the Quest to the Windows computer with a USB data cable.
+4. Double-click INSTALL_TO_QUEST.cmd.
+5. Put on the headset and approve USB debugging.
+6. If asked, run INSTALL_TO_QUEST.cmd one more time.
+7. Allow microphone access when the app starts.
+
+IMPORTANT: The installer removes any older Virtual Makerspace copy and its saved
+room state before installing. It then launches the app with Quest's immersive VR
+category, not the standard Android 2D launcher.
+
+TWO-PERSON TEST
+
+Student A:
+- Select CREATE ROOM.
+- Read the room code to Student B.
+
+Student B:
+- Enter the room code.
+- Select JOIN ROOM.
+- If this headset was already in another room, the app leaves that room automatically before joining.
+
+Both students:
+- Confirm that both headsets display the same room code.
+- Confirm voice communication.
+- Point at the resistor or LED and press the Trigger button to select it.
+- Move the part to a glowing breadboard socket and release Trigger.
+- Begin the breadboard activity.
+
+WHAT WAS FIXED IN 1.0.7
+
+- CREATE/JOIN now recovers from an existing room membership instead of returning "Player is already a member of the lobby."
+- Relay room success is no longer mislabeled as a full connection failure when voice has a separate problem.
+- The participant display follows the real session count.
+- The menu is placed in the room instead of staying attached to a controller.
+- Resistor and LED models now have XR hit targets and use the Trigger button shown in the guide.
+- A stale lobby membership is cleaned and retried once if the backend reports that the player is already a member.
+- When both learners reach 2/2 Connected, the lobby stops intercepting controller rays and the breadboard activity unlocks.
+- Independent Host and Guest player processes now verify Lobby, Relay/Netcode, and Vivox together before release.
+- Quest now waits for the microphone permission result before joining Vivox.
+- COLLECT_TEST_RESULTS.cmd records objective VR, room, voice, and interaction evidence after the two-person test.
+
+INSTALLER REVISION 2
+
+- Removes stale 1.0.4/1.0.5/1.0.6/1.0.7 app data before installation.
+- Refuses to continue unless the installed APK reports version 1.0.7.
+- Verifies the com.oculus.intent.category.VR manifest entry on the headset.
+- Starts UnityPlayerGameActivity directly through the immersive Quest VR intent.
+- Creates VirtualMakerspace_Device_Diagnostics.txt automatically for troubleshooting.
+
+AFTER THE TWO-PERSON TEST
+
+Keep each Quest connected to its Windows computer and run COLLECT_TEST_RESULTS.cmd.
+Send both generated VirtualMakerspace_Acceptance_Report files to the instructor.
+
+REQUIREMENT
+
+Developer Mode must already be enabled for each Quest headset. The first USB connection requires one approval inside the headset.
+
