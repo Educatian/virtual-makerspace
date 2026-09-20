@@ -1,6 +1,6 @@
 # Virtual Makerspace
 
-> A research-grade WebXR prototype for studying embodied learning behavior in an electronics-breadboard task.
+> A research-grade WebXR prototype for studying embodied learning behavior across four maker modules.
 
 ![Workspace overview](docs/images/hero.png)
 
@@ -31,13 +31,59 @@ These Unity-rendered guide captures use demo room code `MS42Q7` to show the inte
 </tr>
 </table>
 
-Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, deploys to any WebXR headset (Meta Quest 2/3/Pro), and instruments every grasp, snap, and circuit-state change with high-resolution telemetry.
+Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, deploys to any WebXR headset (Meta Quest 2/3/Pro), and instruments every grasp, snap, manipulation, and state change with high-resolution telemetry.
+
+## Desktop collaborative mode
+
+The default desktop workspace includes the Motherboard Circuit Lab and Smart Greenhouse studios, independent orbital cameras, text/voice discussion, magnetic placement, and independently draggable A/B endpoints for wires and irrigation hose.
+
+**Live collaboration room:** [vm.teachplay.dev/?room=7K3M&studio=circuit](https://vm.teachplay.dev/?room=7K3M&studio=circuit)
+
+Same-device tabs synchronize automatically through `BroadcastChannel`. For simultaneous users on different computers, start the WebSocket room relay and point the frontend at it:
+
+```powershell
+npm run collab
+$env:VITE_COLLAB_WS_URL='ws://localhost:8787'
+npm run dev
+```
+
+For a hosted build, the production path is Cloudflare Access + Workers/Durable Objects + Neon. Component bodies and the two cable endpoints use separate claim keys, so participants can edit different objects—or opposite ends of one cable—at the same time.
+
+### Production: Google login, Cloudflare rooms, Neon membership
+
+This path adds no frontend npm dependency. Cloudflare Access performs Google authentication before the app loads; the Worker reads the verified Access identity, Neon stores room membership, and one Durable Object coordinates each live room.
+
+1. Create a Neon project and run [`database/schema.sql`](database/schema.sql) in the Neon SQL Editor.
+2. In Cloudflare Workers & Pages, connect this repository. Use `npm run build` as the build command and `dist` as the asset directory. The Worker entry and Durable Object binding are defined in [`wrangler.jsonc`](wrangler.jsonc).
+3. Add the Neon connection string and administrator email list as encrypted Worker secrets named `DATABASE_URL` and `ADMIN_EMAILS`. Never expose either through a `VITE_` variable.
+4. In Cloudflare Zero Trust, add Google as the identity provider, then create a **hostname-based** Access application for the app hostname. Allow the intended email addresses or Google Workspace domain. Do not use Worker-level Access for this route: Cloudflare currently rejects WebSocket upgrades under that policy.
+5. Visit the protected hostname. Access redirects to Google automatically; after login, `/api/me` supplies the verified name and email, and entering a room records membership before opening the same-origin `/api/room` WebSocket.
+6. Check `/api/health` after signing in. It should report `authenticated: true`, `neonConfigured: true`, and `roomTransport: "durable-object-websocket"`.
+
+The local Vite build remains usable without Cloudflare: it shows a clearly labeled local-preview identity and keeps the existing same-tab or `server/collaboration.mjs` relay behavior.
+
+---
+
+## Four modules
+
+Pick a module via the URL: `?module=1` through `?module=4` (or by name).
+
+| # | Module | URL | Status | What you do |
+|---|---|---|---|---|
+| 1 | **Electronics Studio** | `?module=1` or `?module=electronics` | Implemented | Assemble an LED circuit on a breadboard — grab + snap battery, wires, LEDs, resistors |
+| 2 | **Mechanical Assembly** | `?module=2` or `?module=assembly` | Stub | Gear trains, bridge engineering, vehicle suspension (planned) |
+| 3 | **AI Training Studio** | `?module=3` or `?module=ai-training` | Prototype (Walk-Through Dataset) | Walk through a 3D point cloud, find mislabeled points, drag them to the correct class bin, watch model accuracy climb |
+| 4 | **Capstone** | `?module=4` or `?module=capstone` | Stub | Light-following robot — integrates M1 circuit + M2 chassis + M3 classifier |
+
+The four-module architecture comes from a Learning-Experience-Design (LXD) review: each module exercises a different interaction profile (snap-to-grid, multi-axis assembly, embodied data manipulation, integration), and a shared cross-module reflection layer captures Self-Regulated Learning telemetry.
+
+See [`docs/pedagogy-charter.md`](docs/pedagogy-charter.md) for the full LXD framing.
 
 ---
 
 ## What is this?
 
-A virtual electronics makerspace where a participant assembles a simple LED circuit on a breadboard using grabbable virtual components — battery, LEDs, resistors, wires. Every action is captured as a structured telemetry event for later analysis of exploration, manipulation, failure, and recovery patterns.
+A virtual makerspace where a participant assembles, manipulates, or labels things in VR using grabbable virtual components. Every action is captured as a structured telemetry event for later analysis of exploration, manipulation, failure, and recovery patterns.
 
 The artifact is a **study apparatus**, not a consumer product. The design prioritizes:
 
@@ -47,6 +93,20 @@ The artifact is a **study apparatus**, not a consumer product. The design priori
 - **Same-build cross-site** — WebXR + bundled assets means a study in Seoul and a replication in Atlanta use bit-identical stimuli
 
 See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the full Phase 1 / Phase 2 scope and telemetry schema.
+
+---
+
+## Module 3 — AI Training Studio (prototype)
+
+Built as the first net-new module after a Learning-Experience-Design review of the original concept. The 2D-panels-floating-in-3D approach was cut for being a "desktop dashboard with a headset on" — replaced by **Walk-Through Dataset**, an embodied data-labeling interaction.
+
+**Interaction:** A floating dataset cube on the table holds 80 data points (3 classes), with 16 mislabeled at start. Each point has an outer color (current label) and an inner cube (true class — visible on close inspection). Three colored bins sit at the table edge. Grab a point with the controller, drag to the correct bin, release. Accuracy meter updates live.
+
+**Telemetry:** `point_grab`, `point_label_change(point_id, old_class, new_class, true_class, was_correct, held_ms)`, `accuracy_tick` — research-comparable to M1's `grab_start` / `socket_connect` events.
+
+**Why this design (5-Component evaluation summary):**
+- **Clarity** strong (color match → correct), **Motivation** strong (accuracy ticks up), **Response** direct (grab + drop), **Satisfaction** multi-channel (color flip + sound + meter), **Fit** matches embodied-cognition spine.
+- Three other proposed M3 interactions (Sculpt the Boundary, Inside the Network, Bias Audit Room) were either cut (Inside the Network was a museum exhibit, not a maker action) or deferred (Bias Audit Room is the obvious next prototype).
 
 ---
 
@@ -222,22 +282,30 @@ See [`docs/mvp-scope.md`](docs/mvp-scope.md) for the detailed roadmap.
 ```
 virtual-makerspace/
 ├── src/
-│   ├── index.ts               # World.create + scene composition
-│   ├── breadboard.ts          # createBreadboard() builder + socket position helper
-│   ├── spawn-components.ts    # spawnLed, spawnResistor, spawnWire, spawnBattery
-│   ├── placement-guides.ts    # transparent target-circuit ghosts on the board
-│   ├── telemetry.ts           # IndexedDB-backed event log
-│   ├── components/            # ECS component definitions
-│   └── systems/               # ECS systems
+│   ├── index.ts               # World.create + module dispatch
+│   ├── module-selector.ts     # URL ?module= → module loader
+│   ├── modules/
+│   │   ├── types.ts           # VMModule interface
+│   │   ├── base.ts            # shared scene (floor, locomotion env)
+│   │   ├── electronics/       # M1 — breadboard circuit
+│   │   ├── assembly/          # M2 — mechanical assembly (stub)
+│   │   ├── ai-training/       # M3 — Walk-Through Dataset prototype
+│   │   └── capstone/          # M4 — integration project (stub)
+│   ├── breadboard.ts          # M1 board builder + socket position helper
+│   ├── spawn-components.ts    # M1 part spawners (Led, Resistor, Wire, Battery)
+│   ├── placement-guides.ts    # M1 target-circuit ghosts on the board
+│   ├── telemetry.ts           # IndexedDB-backed event log (shared)
+│   ├── components/            # ECS components shared across modules
+│   └── systems/               # ECS systems shared across modules
 ├── ui/
-│   └── hud.uikitml            # step-by-step HUD panel (compiles to public/ui/hud.json)
+│   └── hud.uikitml            # M1 step-by-step HUD panel
 ├── public/
-│   └── gltf/robot/            # idle character mesh
+│   └── gltf/robot/            # M1 idle character mesh
 ├── docs/
 │   ├── mvp-scope.md           # Phase 1/2 scope + telemetry schema
 │   └── images/                # README screenshots
 ├── scripts/
-│   └── screenshot.mjs         # Playwright capture script for README hero shots
+│   └── screenshot.mjs         # Playwright capture for README shots
 └── CLAUDE.md                  # IWSDK best practices for Claude Code
 ```
 

@@ -1,8 +1,15 @@
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
-const URL = process.env.URL ?? "https://localhost:8081/";
+const URL_BASE = process.env.URL ?? "https://localhost:8081/";
 const OUT_DIR = "docs/images";
+
+function urlWith(params) {
+  const u = new URL(URL_BASE);
+  u.searchParams.set("screenshot", "1");
+  for (const [k, v] of Object.entries(params ?? {})) u.searchParams.set(k, v);
+  return u.toString();
+}
 
 await mkdir(OUT_DIR, { recursive: true });
 
@@ -10,7 +17,7 @@ const browser = await chromium.launch({
   args: ["--ignore-certificate-errors"],
 });
 
-async function newPage(width = 1600, height = 900) {
+async function newPage(width = 1600, height = 900, params = {}) {
   const ctx = await browser.newContext({
     viewport: { width, height },
     ignoreHTTPSErrors: true,
@@ -20,7 +27,10 @@ async function newPage(width = 1600, height = 900) {
   page.on("console", (msg) => {
     if (msg.type() === "error") console.error("PAGE ERR:", msg.text());
   });
-  await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.goto(urlWith(params), {
+    waitUntil: "domcontentloaded",
+    timeout: 30000,
+  });
   await page.waitForFunction(() => (window).__VM !== undefined, { timeout: 15000 });
   await page.waitForTimeout(2500);
   return { page, ctx };
@@ -184,7 +194,45 @@ const installSnapHelpers = `(() => {
   await ctx.close();
 }
 
-// 6. Wands + workspace — IWER XR session shows controller meshes in spectator view
+// 6a. HUD panel — read default Follower position, place camera perpendicular
+{
+  const { page, ctx } = await newPage(1400, 700);
+  await page.waitForTimeout(2000); // ensure HUD asset + Follower have run
+  const hudPos = await page.evaluate(() => {
+    const { world, hud } = window.__VM;
+    hud.object3D.updateMatrixWorld(true);
+    const m = hud.object3D.matrixWorld.elements;
+    const headPos = { x: 0, y: 0, z: 0 };
+    if (world.player && world.player.head) {
+      world.player.head.updateMatrixWorld(true);
+      const hm = world.player.head.matrixWorld.elements;
+      headPos.x = hm[12];
+      headPos.y = hm[13];
+      headPos.z = hm[14];
+    }
+    return {
+      hx: m[12],
+      hy: m[13],
+      hz: m[14],
+      headX: headPos.x,
+      headY: headPos.y,
+      headZ: headPos.z,
+    };
+  });
+  console.log("HUD/head positions:", JSON.stringify(hudPos));
+  await page.evaluate(([hp]) => {
+    const w = window.__VM.world;
+    // Place camera exactly along the panel's normal axis. In default orientation,
+    // panel faces -Z. Place camera on -Z side at same Y for perpendicular view.
+    w.camera.position.set(hp.hx, hp.hy, hp.hz - 0.45);
+    w.camera.lookAt(hp.hx, hp.hy, hp.hz);
+  }, [hudPos]);
+  await page.waitForTimeout(500);
+  await shoot("hud", page);
+  await ctx.close();
+}
+
+// 6b. Wands + workspace — IWER XR session shows controller meshes in spectator view
 {
   const { page, ctx } = await newPage(1600, 900);
   await page.waitForTimeout(1500);
@@ -287,6 +335,138 @@ const installSnapHelpers = `(() => {
   await page.waitForTimeout(500);
   await setCamera(page, [-0.05, 1.05, -0.5], [-0.2, 0.88, -1.05]);
   await shoot("in-progress", page);
+  await ctx.close();
+}
+
+// 9. Snap-fail feedback markers (grey spheres at near-miss sockets)
+{
+  const { page, ctx } = await newPage(1400, 900);
+  await page.evaluate(installSnapHelpers);
+  await page.evaluate(() => {
+    const { getSocketLocalPosition, localToWorld, findEntities } =
+      window.__VM_HELPERS;
+    const { SocketGrid } = window.__VM.components;
+    const { board, leds } = findEntities();
+    const led = leds[0];
+    const cols = board.getValue(SocketGrid, "cols");
+    const rowsPerHalf = board.getValue(SocketGrid, "rowsPerHalf");
+    const pitch = board.getValue(SocketGrid, "pitch");
+    const channelGap = board.getValue(SocketGrid, "channelGap");
+    const sAW = localToWorld(
+      board.object3D,
+      getSocketLocalPosition(25, cols, rowsPerHalf, pitch, channelGap),
+    );
+    const sBW = localToWorld(
+      board.object3D,
+      getSocketLocalPosition(26, cols, rowsPerHalf, pitch, channelGap),
+    );
+    // Position LED slightly above (above snap threshold) to simulate near-miss
+    led.object3D.position.set((sAW.x + sBW.x) / 2, sAW.y + 0.06, (sAW.z + sBW.z) / 2);
+    led.object3D.updateMatrixWorld(true);
+    // Directly invoke the feedback API
+    const showFn = window.__VM_SHOW_SNAP_FAIL;
+    if (showFn) {
+      showFn(sAW, sBW, {
+        entityId: led.index,
+        socketA: 25,
+        socketB: 26,
+        distA: 0.06,
+        distB: 0.058,
+      });
+    }
+  });
+  await page.waitForTimeout(80);
+  await setCamera(page, [-0.2, 1.05, -0.5], [-0.2, 0.88, -1.05]);
+  await shoot("snap-fail", page);
+  await ctx.close();
+}
+
+// 10. Hypothesis card (re-grab triggered)
+{
+  const { page, ctx } = await newPage(1400, 900);
+  await page.evaluate(installSnapHelpers);
+  await page.evaluate(() => {
+    // Manually fire the regrab event to show the card
+    window.dispatchEvent(
+      new CustomEvent("vm:regrab_detected", { detail: { entity_id: -1 } }),
+    );
+  });
+  await page.waitForTimeout(1500); // Follower needs time to settle into position
+  await page.evaluate(() => {
+    const w = window.__VM.world;
+    // Frame camera on the hypothesis card (right-lower of player view)
+    w.camera.position.set(0.3, 1.4, 0.0);
+    w.camera.lookAt(0.3, 1.3, -0.6);
+  });
+  await page.waitForTimeout(400);
+  await shoot("hypothesis-card", page);
+  await ctx.close();
+}
+
+// 11. Attempt history panel populated (fire 3 distinct snapshots)
+{
+  const { page, ctx } = await newPage(1400, 900);
+  await page.evaluate(installSnapHelpers);
+  await page.evaluate(async () => {
+    const { snapEntityToSockets, findEntities, findWireByLength } =
+      window.__VM_HELPERS;
+    const { board, battery, leds, wires } = findEntities();
+    const mediumWire = findWireByLength(wires, 0.06);
+    const shortWire = findWireByLength(wires, 0.024);
+
+    // Helper to wait for next animation frame
+    const tick = () => new Promise((r) => requestAnimationFrame(r));
+
+    // Snapshot 1: just battery
+    if (battery && board) snapEntityToSockets(battery, board, 4, 20);
+    window.dispatchEvent(
+      new CustomEvent("vm:socket_connect", {
+        detail: { entity_id: battery.index, socket_a: 4, socket_b: 20 },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 1700));
+
+    // Snapshot 2: battery + medium wire
+    if (mediumWire && board) snapEntityToSockets(mediumWire, board, 20, 25);
+    window.dispatchEvent(
+      new CustomEvent("vm:socket_connect", {
+        detail: { entity_id: mediumWire.index, socket_a: 20, socket_b: 25 },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 1700));
+
+    // Snapshot 3: full circuit
+    if (leds[0] && board) snapEntityToSockets(leds[0], board, 25, 26);
+    if (shortWire && board) snapEntityToSockets(shortWire, board, 26, 10);
+    window.dispatchEvent(
+      new CustomEvent("vm:socket_connect", {
+        detail: { entity_id: shortWire.index, socket_a: 26, socket_b: 10 },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 1700));
+  });
+  await setCamera(page, [-0.2, 1.18, -0.85], [-0.2, 1.04, -1.2]);
+  await shoot("attempt-history", page);
+  await ctx.close();
+}
+
+// 12. PF condition HUD — single goal line, no progress bar
+{
+  const { page, ctx } = await newPage(1400, 700, { condition: "PF" });
+  await page.waitForTimeout(2000);
+  const hudPos = await page.evaluate(() => {
+    const { hud } = window.__VM;
+    hud.object3D.updateMatrixWorld(true);
+    const m = hud.object3D.matrixWorld.elements;
+    return { hx: m[12], hy: m[13], hz: m[14] };
+  });
+  await page.evaluate(([hp]) => {
+    const w = window.__VM.world;
+    w.camera.position.set(hp.hx, hp.hy, hp.hz - 0.45);
+    w.camera.lookAt(hp.hx, hp.hy, hp.hz);
+  }, [hudPos]);
+  await page.waitForTimeout(500);
+  await shoot("hud-pf", page);
   await ctx.close();
 }
 

@@ -1,0 +1,38 @@
+{
+  "name": "virtual-makerspace-live",
+  "main": "cloudflare/worker.js",
+  "compatibility_date": "2026-09-19",
+  "compatibility_flags": ["web_socket_auto_reply_to_close"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "PRECREATED_ROOMS": "7K3M"
+  },
+  "routes": [
+    {
+      "pattern": "vm.teachplay.dev",
+      "custom_domain": true
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAKERSPACE_ROOMS",
+        "class_name": "MakerspaceRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MakerspaceRoom"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

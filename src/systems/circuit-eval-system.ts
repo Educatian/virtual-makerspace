@@ -14,6 +14,7 @@ import {
 } from "../components/circuit.js";
 import { Snappable, SnapTarget } from "../components/snap.js";
 import { SocketGrid } from "../components/socket-grid.js";
+import { markTaskComplete } from "../task-progress.js";
 import { telemetry } from "../telemetry.js";
 
 function socketToNet(
@@ -137,6 +138,7 @@ export class CircuitEvalSystem extends createSystem({
           entity_id: led.index,
           lit,
         });
+        if (lit) markTaskComplete();
       }
       const mat = this.ledMaterials.get(led.index);
       if (mat) mat.emissiveIntensity = lit ? 1.8 : 0;

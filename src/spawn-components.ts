@@ -16,6 +16,7 @@ import {
   PowerSource,
   WireEnds,
 } from "./components/circuit.js";
+import { GazeTarget } from "./components/gaze-target.js";
 import { Snappable } from "./components/snap.js";
 
 const LEAD_LEN = 0.036;
@@ -38,6 +39,7 @@ export function spawnLed(
   world: World,
   position: [number, number, number],
   color: number,
+  gazeName?: string,
 ) {
   const group = new Group();
 
@@ -60,7 +62,7 @@ export function spawnLed(
 
   group.position.set(...position);
 
-  return world
+  const entity = world
     .createTransformEntity(group)
     .addComponent(DistanceGrabbable, {
       movementMode: MovementMode.MoveAtSource,
@@ -73,12 +75,15 @@ export function spawnLed(
     })
     .addComponent(CircuitNode)
     .addComponent(LedState);
+  if (gazeName) entity.addComponent(GazeTarget, { name: gazeName });
+  return entity;
 }
 
 export function spawnResistor(
   world: World,
   position: [number, number, number],
   bandColor = 0xc8a060,
+  gazeName?: string,
 ) {
   const group = new Group();
 
@@ -105,7 +110,7 @@ export function spawnResistor(
 
   group.position.set(...position);
 
-  return world
+  const entity = world
     .createTransformEntity(group)
     .addComponent(DistanceGrabbable, {
       movementMode: MovementMode.MoveAtSource,
@@ -117,6 +122,8 @@ export function spawnResistor(
       spawnPos: position,
     })
     .addComponent(CircuitNode);
+  if (gazeName) entity.addComponent(GazeTarget, { name: gazeName });
+  return entity;
 }
 
 export function spawnWire(
@@ -124,6 +131,7 @@ export function spawnWire(
   position: [number, number, number],
   length: number,
   color: number,
+  gazeName?: string,
 ) {
   const group = new Group();
 
@@ -150,7 +158,7 @@ export function spawnWire(
 
   group.position.set(...position);
 
-  return world
+  const entity = world
     .createTransformEntity(group)
     .addComponent(DistanceGrabbable, {
       movementMode: MovementMode.MoveAtSource,
@@ -162,11 +170,14 @@ export function spawnWire(
       spawnPos: position,
     })
     .addComponent(WireEnds);
+  if (gazeName) entity.addComponent(GazeTarget, { name: gazeName });
+  return entity;
 }
 
 export function spawnBattery(
   world: World,
   position: [number, number, number],
+  gazeName?: string,
 ) {
   const group = new Group();
 
@@ -200,7 +211,7 @@ export function spawnBattery(
 
   group.position.set(...position);
 
-  return world
+  const entity = world
     .createTransformEntity(group)
     .addComponent(DistanceGrabbable, {
       movementMode: MovementMode.MoveAtSource,
@@ -213,4 +224,6 @@ export function spawnBattery(
     })
     .addComponent(CircuitNode)
     .addComponent(PowerSource);
+  if (gazeName) entity.addComponent(GazeTarget, { name: gazeName });
+  return entity;
 }

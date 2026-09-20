@@ -40,6 +40,10 @@ coverage/
 # Temporary files
 .tmp/
 .temp/
+work/
+
+# Local agent configuration
+.claude/
 
 # Editor directories and files
 .vscode/*
@@ -64,6 +68,7 @@ coverage/
 public/gltf/generated/
 public/glxf/
 public/ui/
+
 # Unity local credentials and generated backups
 unity/ProjectSettings/Packages/com.unity.services.vivox/Settings.json
 unity/**/*.blend1*

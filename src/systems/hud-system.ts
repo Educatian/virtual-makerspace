@@ -15,12 +15,17 @@ import {
   WireEnds,
 } from "../components/circuit.js";
 import { Snappable } from "../components/snap.js";
+import { condition } from "../experiment.js";
 import { telemetry } from "../telemetry.js";
 
 interface Step {
   text: string;
   check: (sys: HudSystem) => boolean;
 }
+
+const PF_GOAL_TEXT =
+  "Build a circuit that lights the LED. Components are on the tray.";
+const COMPLETE_TEXT = "Circuit complete.";
 
 function isSnappedToSockets(
   entities: Iterable<Entity>,
@@ -64,41 +69,80 @@ export class HudSystem extends createSystem({
   ];
 
   private currentStepIdx = -1;
+  private completed = false;
+  private pendingComplete = false;
   private stepEl: UIKit.Text | null = null;
-  private progressEl: UIKit.Text | null = null;
+  private goalStartLogged = false;
+  private taskCompleteHandler = () => this.onTaskComplete();
 
   init() {
     this.queries.hud.subscribe("qualify", (entity) => {
       const doc = PanelDocument.data.document[entity.index] as UIKitDocument;
       if (!doc) return;
       this.stepEl = doc.getElementById("step") as UIKit.Text;
-      this.progressEl = doc.getElementById("progress") as UIKit.Text;
+      this.applyInitialText();
+      if (this.pendingComplete) this.markComplete();
     });
+
+    window.addEventListener("vm:task_complete", this.taskCompleteHandler);
+    this.cleanupFuncs.push(() =>
+      window.removeEventListener("vm:task_complete", this.taskCompleteHandler),
+    );
   }
 
   update(): void {
-    if (!this.stepEl || !this.progressEl) return;
+    if (!this.stepEl || this.completed) return;
+    if (condition === "PF") return;
     const newStep = this.findCurrentStep();
-    if (newStep !== this.currentStepIdx) {
-      const total = this.steps.length;
-      this.currentStepIdx = newStep;
-      if (newStep >= total) {
-        this.stepEl.setProperties({
-          text: "Circuit complete! Is the LED lit?",
-        });
-        this.progressEl.setProperties({ text: `Step ${total} / ${total}` });
-      } else {
-        this.stepEl.setProperties({ text: this.steps[newStep].text });
-        this.progressEl.setProperties({
-          text: `Step ${newStep + 1} / ${total}`,
-        });
-      }
-      telemetry.log("step_advance", {
-        step: newStep,
-        total,
-        completed: newStep >= total,
-      });
+    if (newStep === this.currentStepIdx) return;
+    const total = this.steps.length;
+    this.currentStepIdx = newStep;
+    if (newStep >= total) {
+      // DI completion via target-circuit topology — usually fires before
+      // task_complete (LED lit) since topology match implies LED lit
+      this.markComplete();
+    } else {
+      this.stepEl.setProperties({ text: this.steps[newStep].text });
     }
+    telemetry.log("step_advance", {
+      step: newStep,
+      total,
+      completed: newStep >= total,
+      condition: "DI",
+    });
+  }
+
+  private applyInitialText(): void {
+    if (!this.stepEl) return;
+    if (condition === "PF") {
+      this.stepEl.setProperties({ text: PF_GOAL_TEXT });
+    } else {
+      const newStep = this.findCurrentStep();
+      this.currentStepIdx = newStep;
+      const total = this.steps.length;
+      if (newStep < total) {
+        this.stepEl.setProperties({ text: this.steps[newStep].text });
+      }
+    }
+    if (!this.goalStartLogged) {
+      this.goalStartLogged = true;
+      telemetry.log("goal_state_change", { state: "start", condition });
+    }
+  }
+
+  private onTaskComplete(): void {
+    this.markComplete();
+  }
+
+  private markComplete(): void {
+    if (this.completed) return;
+    if (!this.stepEl) {
+      this.pendingComplete = true;
+      return;
+    }
+    this.completed = true;
+    this.stepEl.setProperties({ text: COMPLETE_TEXT });
+    telemetry.log("goal_state_change", { state: "complete", condition });
   }
 
   private findCurrentStep(): number {
