@@ -562,6 +562,136 @@ fan("vent-fan", 10)
 solar("solar-panel", 11)
 
 
+# ================================================================ SNAP LAB
+# Snap Circuits-style kit (Seo, Koh et al. in Jung & Chang, ISLS 2024): clear
+# base grid with studs, blue snap strips with silver snap rivets, printed part
+# IDs and grade-1 braille labels for blind / low-vision makers.
+SNAP_PITCH = 0.48
+SNAP_BLUE = mat("snap_strip_blue", (0.02, 0.18, 0.62), 0.35, coat=0.4)
+SNAP_RIVET = mat("snap_rivet_nickel", (0.8, 0.81, 0.83), 0.18, 1.0)
+PRINT_WHITE = mat("snap_print_white", (0.95, 0.95, 0.93), 0.5)
+BRAILLE = {
+    "a": (1,), "b": (1, 2), "c": (1, 4), "d": (1, 4, 5), "l": (1, 2, 3), "m": (1, 3, 4),
+    "s": (2, 3, 4), "#": (3, 4, 5, 6),
+}
+DIGIT = {"1": "a", "2": "b", "3": "c", "4": "d"}
+
+
+def braille(prefix, text, x0, y, z, parent):
+    """Raised grade-1 braille (number sign before digits) on a top surface."""
+    cells = []
+    for ch in text.lower():
+        if ch.isdigit():
+            if not cells or cells[-1] != "#":
+                cells.append("#")
+            cells.append(DIGIT[ch])
+        else:
+            cells.append(ch)
+    for ci, cell in enumerate(cells):
+        for dot in BRAILLE[cell]:
+            col = 0 if dot <= 3 else 1
+            row = (dot - 1) % 3
+            sphere(f"{prefix}_br{ci}_{dot}", (x0 + ci * 0.075 + col * 0.032, y, z - 0.032 + row * 0.032), 0.012,
+                   PRINT_WHITE, parent, parts, scale=(1, 0.6, 1), seg=8)
+
+
+def label(prefix, text, c, size, parent, material=PRINT_WHITE):
+    bpy.ops.object.text_add(location=t2b(*c))
+    t = bpy.context.active_object
+    t.data.body = text
+    t.data.size = size
+    t.data.extrude = 0.004
+    t.data.align_x = "CENTER"
+    t.data.align_y = "CENTER"
+    bpy.ops.object.convert(target="MESH")
+    t = bpy.context.active_object
+    return _finish(t, f"{prefix}_text", material, parent, parts)
+
+
+def snap_strip(pid, n, tag, body_top=0.08):
+    root = empty(f"part_{pid}", (0, 0, 0), parts)
+    L = n * SNAP_PITCH
+    box(f"{pid}_strip", (0, 0.04, 0), (L + 0.3, 0.08, 0.34), SNAP_BLUE, root, parts, bevel=0.03)
+    for i, x in enumerate((-L / 2, L / 2)):
+        cyl(f"{pid}_socket{i}", (x, -0.05, 0), 0.095, 0.1, SNAP_RIVET, root, parts, verts=24)
+        cyl(f"{pid}_socket_hole{i}", (x, -0.095, 0), 0.055, 0.012, BLACK_PLASTIC, root, parts, verts=16)
+        lathe(f"{pid}_rivet{i}", [(0.0, 0.0), (0.12, 0.0), (0.12, 0.012), (0.1, 0.03), (0.06, 0.045), (0.0, 0.05)],
+              (x, body_top, 0), SNAP_RIVET, root, parts, steps=28)
+    label(pid, tag, (0, body_top + 0.003, 0.08 if n > 2 else 0.1), 0.13, root)
+    braille(pid, tag, -0.06, body_top + 0.006, -0.06, root)
+    return root
+
+
+for pid, n in (("snap-w2", 2), ("snap-w3a", 3), ("snap-w3b", 3), ("snap-w4", 4)):
+    snap_strip(pid, n, str(n))
+
+# B1: 2 x AA holder on a 3-strip
+r = snap_strip("snap-b1", 3, "B1")
+box("snap-b1_holder", (0, 0.3, -0.02), (1.2, 0.42, 0.5), BLACK_PLASTIC, r, parts, bevel=0.04)
+for k, z in enumerate((-0.12, 0.1)):
+    s = -1 if k else 1
+    cyl(f"snap-b1_cell{k}", (0, 0.43, z), 0.1, 0.9, mat("aa_wrap_copper", (0.7, 0.36, 0.1), 0.35, 0.6), r, parts, axis="x", verts=24)
+    cyl(f"snap-b1_cellband{k}", (-s * 0.3, 0.43, z), 0.102, 0.3, mat("aa_wrap_black", (0.02, 0.02, 0.02), 0.4), r, parts, axis="x", verts=24)
+    cyl(f"snap-b1_nub{k}", (s * 0.47, 0.43, z), 0.04, 0.04, STEEL, r, parts, axis="x", verts=12)
+    tube(f"snap-b1_spring{k}", [(-s * 0.52, 0.43 + 0.05 * math.sin(i), z + 0.05 * math.cos(i)) for i in range(0, 7)],
+         0.008, STEEL, r, parts)
+label("snap-b1_plus", "+", (0.52, 0.52, 0.2), 0.14, r, mat("marking_red", (0.85, 0.05, 0.05), 0.4))
+
+# S1: slide switch on a 2-strip; the app slides "switch_knob" along x
+r = snap_strip("snap-s1", 2, "S1")
+box("snap-s1_body", (0, 0.2, -0.05), (0.62, 0.22, 0.26), BLACK_PLASTIC, r, parts, bevel=0.02)
+box("snap-s1_slot", (0, 0.312, -0.05), (0.36, 0.01, 0.09), mat("slot_dark", (0.005, 0.005, 0.005), 0.9), r, parts)
+knob = box("switch_knob", (-0.1, 0.36, -0.05), (0.12, 0.12, 0.1), WHITE_PLASTIC, r, parts, bevel=0.015)
+label("snap-s1_off", "OFF", (-0.2, 0.312, 0.06), 0.06, r)
+label("snap-s1_on", "ON", (0.2, 0.312, 0.06), 0.06, r, mat("marking_green", (0.1, 0.7, 0.25), 0.4))
+
+# L1: 2.5 V lamp in a threaded socket
+r = snap_strip("snap-l1", 2, "L1")
+cyl("snap-l1_mount", (0, 0.14, -0.02), 0.2, 0.12, BLACK_PLASTIC, r, parts, verts=32)
+for i in range(4):
+    cyl(f"snap-l1_thread{i}", (0, 0.22 + i * 0.03, -0.02), 0.12, 0.022, STEEL, r, parts, verts=24)
+lathe("snap-l1_bulb", [(0.0, 0.0), (0.1, 0.0), (0.12, 0.05), (0.16, 0.14), (0.165, 0.22), (0.14, 0.3), (0.08, 0.35),
+                       (0.0, 0.37)], (0, 0.33, -0.02),
+      mat("LED_glow_snap-l1", (1.0, 0.92, 0.7), 0.05, emit=(1.0, 0.8, 0.45), transmission=0.9, ior=1.5), r, parts)
+tube("snap-l1_filament", [(-0.05, 0.36, -0.02), (-0.04, 0.48, -0.02), (0.0, 0.5, -0.02), (0.04, 0.48, -0.02),
+                          (0.05, 0.36, -0.02)], 0.006, mat("tungsten", (0.3, 0.3, 0.3), 0.4, 1.0), r, parts)
+
+# M1: motor with 3-blade fan ("rotor" spins about y)
+r = snap_strip("snap-m1", 2, "M1")
+cyl("snap-m1_can", (0, 0.32, -0.03), 0.23, 0.46, mat("motor_can_grey", (0.55, 0.57, 0.6), 0.3, 0.9), r, parts, verts=32)
+cyl("snap-m1_endbell", (0, 0.56, -0.03), 0.2, 0.04, BLACK_PLASTIC, r, parts, verts=32)
+box("snap-m1_label", (0, 0.32, 0.2), (0.24, 0.2, 0.004), mat("motor_label", (0.95, 0.8, 0.1), 0.5), r, parts)
+cyl("snap-m1_shaft", (0, 0.64, -0.03), 0.018, 0.14, STEEL, r, parts, verts=12)
+rot = empty("rotor", (0, 0.7, -0.03), parts, r)
+fan_red = mat("fan_prop_red", (0.8, 0.08, 0.05), 0.4)
+for i in range(3):
+    a = i * 2 * math.pi / 3
+    b = box(f"snap-m1_blade{i}", (0, 0, 0), (0.42, 0.012, 0.12), fan_red, rot, parts, bevel=0.02)
+    b.location = t2b(math.cos(a) * 0.22, 0, math.sin(a) * 0.22)
+    b.rotation_euler = (math.radians(22), 0, -a)
+cyl("snap-m1_hub", (0, 0, 0), 0.05, 0.06, fan_red, rot, parts, verts=16).location = (0, 0, 0)
+
+# Base grid: clear plate, 9 x 7 studs, row letters + column numbers
+base = empty("snap_base", (0, 0, 0), parts)
+COLS_S, ROWS_S = 9, 7
+W_S, D_S = COLS_S * SNAP_PITCH + 0.3, ROWS_S * SNAP_PITCH + 0.5
+box("snap_base_plate", (0, 0.13, 0.08), (W_S, 0.26, D_S), mat("snap_base_clear", (0.78, 0.84, 0.88), 0.15, transmission=0.55, ior=1.49),
+    base, parts, bevel=0.04)
+box("snap_base_frame", (0, 0.04, 0.08), (W_S + 0.08, 0.08, D_S + 0.08), GREY_PLASTIC, base, parts, bevel=0.03)
+for c_ in range(COLS_S):
+    for r_ in range(ROWS_S):
+        x = -(COLS_S - 1) * SNAP_PITCH / 2 + c_ * SNAP_PITCH
+        z = -(ROWS_S - 1) * SNAP_PITCH / 2 + r_ * SNAP_PITCH
+        cyl(f"snap_stud_{c_}_{r_}", (x, 0.31, z), 0.05, 0.1, mat("snap_stud", (0.85, 0.88, 0.9), 0.2), base, parts, verts=16)
+        box(f"snap_grid_{c_}_{r_}", (x, 0.262, z), (0.28, 0.006, 0.006), mat("grid_print", (0.3, 0.4, 0.5), 0.6), base, parts)
+for c_ in range(COLS_S):
+    label(f"snap_col{c_}", str(c_ + 1), (-(COLS_S - 1) * SNAP_PITCH / 2 + c_ * SNAP_PITCH, 0.264, (ROWS_S - 1) * SNAP_PITCH / 2 + 0.3),
+          0.13, base, mat("grid_print", (0.3, 0.4, 0.5), 0.6))
+for r_ in range(ROWS_S):
+    label(f"snap_row{r_}", "ABCDEFG"[r_], (-(COLS_S - 1) * SNAP_PITCH / 2 - 0.3, 0.264, -(ROWS_S - 1) * SNAP_PITCH / 2 + r_ * SNAP_PITCH),
+          0.13, base, mat("grid_print", (0.3, 0.4, 0.5), 0.6))
+
+
 # ================================================================ ROOM
 room = collection("room")
 R = empty("room", (0, 0, 0), room)

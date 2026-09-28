@@ -51,7 +51,80 @@ let selectedComponent: ComponentSpec | null = null;
 let currentRoomCode = initialRoomCode;
 let currentName = initialName;
 let powered = false;
-let activeStudio: StudioKind = params.get("studio") === "greenhouse" ? "greenhouse" : "circuit";
+let activeStudio: StudioKind = toStudio(params.get("studio"));
+let speechEnabled = false;
+
+function toStudio(value: string | null | undefined): StudioKind {
+  return value === "greenhouse" || value === "snap" ? value : "circuit";
+}
+
+interface StudioCopy {
+  subtitle: string;
+  heading: string;
+  caption: string;
+  testTooltip: string;
+  challenge: string;
+  challengeAction: string;
+  challengeLabel: string;
+  hypothesis: string;
+  chat: string;
+  seed: string;
+  goal: string;
+  opened: string;
+  testActivity: string;
+  testTrace: string;
+}
+
+const STUDIO_COPY: Record<StudioKind, StudioCopy> = {
+  circuit: {
+    subtitle: "Motherboard Circuit Lab",
+    heading: "Motherboard",
+    caption: "Diagnose and rebuild the LED power path",
+    testTooltip: "Test motherboard power path",
+    challenge: "Restore power: battery → resistor → LED",
+    challengeAction: "Load a diagnostic reference circuit",
+    challengeLabel: "Load diagnostic circuit",
+    hypothesis: "A resistor in series with the LED will limit current and allow the LED to light safely.",
+    chat: "Discuss your circuit…",
+    seed: "Trace the motherboard power path from battery to resistor to LED. Compare both sides of the center channel before connecting each lead.",
+    goal: "Co-diagnose and rebuild a safe LED power path on the shared motherboard.",
+    opened: "Circuit Bench opened",
+    testActivity: "Power-path test",
+    testTrace: "Ran motherboard power-path test",
+  },
+  greenhouse: {
+    subtitle: "Smart Greenhouse",
+    heading: "Greenhouse",
+    caption: "Route sensors, water, air, and power",
+    testTooltip: "Test greenhouse system",
+    challenge: "Protect seedlings: moisture >65%, temperature <25°C",
+    challengeAction: "Load a connected field-test layout",
+    challengeLabel: "Load field-test layout",
+    hypothesis: "If the soil and climate sensors control the pump and fan, the seedlings should remain in the safe growing range.",
+    chat: "Discuss this system…",
+    seed: "Inspect the growing system from two angles. Agree on which subsystem—sensing, water, air, or power—to connect first.",
+    goal: "Co-design a stable growing system that senses soil and climate, then controls water and airflow.",
+    opened: "Greenhouse Studio opened",
+    testActivity: "Field test",
+    testTrace: "Ran greenhouse field test",
+  },
+  snap: {
+    subtitle: "Accessible Snap Lab",
+    heading: "Snap Lab",
+    caption: "Snap a switched loop that lights L1 and spins M1 — by sight, touch labels, or sound",
+    testTooltip: "Test the snap loop",
+    challenge: "Light L1 and spin M1 from B1, controlled by S1 — without a short",
+    challengeAction: "Load a series lamp + motor loop",
+    challengeLabel: "Load snap loop",
+    hypothesis: "If S1, L1, and M1 sit in one loop from B1 + to B1 −, sliding S1 will start both; a wire straight across B1 will short it.",
+    chat: "Discuss your snap loop…",
+    seed: "Each part carries a printed ID and a braille label. Take turns: one maker describes the loop from B1 + aloud, the other snaps the next part. Turn on spoken status for audio feedback.",
+    goal: "Co-build an accessible switched circuit and explain why a bare wire across the battery is unsafe.",
+    opened: "Snap Lab opened",
+    testActivity: "Loop test",
+    testTrace: "Ran snap loop test",
+  },
+};
 let environmentState: EnvironmentState = {
   moisture: 34,
   temperature: 28.6,
@@ -132,14 +205,13 @@ function renderLobby(): void {
           <span class="brand-mark"><i class="ph ph-circuitry"></i></span>
           <span><strong>Virtual Makerspace</strong><small>Build together. Learn together.</small></span>
         </a>
-        <div class="brand-meta"><span>Circuits</span><span>Collaboration</span><span>Real understanding</span></div>
       </header>
 
       <section class="lobby-grid">
         <article class="lobby-card">
-          <div class="section-label">Desktop 3D collaboration</div>
-          <h1>Welcome to your shared workbench.</h1>
-          <p class="lobby-lede">Build and inspect a real 3D circuit together. Each person controls their own view while every component stays in sync.</p>
+          <div class="section-label lobby-eyebrow"><span class="status-dot"></span> Live 3D makerspace</div>
+          <h1>Build it <em>together.</em></h1>
+          <p class="lobby-lede">One shared workbench. Your own view.</p>
 
           <div class="auth-identity ${signedIn ? "is-authenticated" : "is-preview"} ${accessRequired ? "is-required" : ""}">
             <span class="auth-avatar">${escapeHtml(initials(displayName) || "G")}</span>
@@ -153,38 +225,34 @@ function renderLobby(): void {
 
           <label class="field-label" for="room-code">Room code</label>
           <div class="room-code-row">
-            <div class="input-shell room-code-input"><i class="ph ph-hash"></i><input id="room-code" maxlength="6" value="${escapeHtml(initialRoomCode)}" aria-describedby="room-help"></div>
+            <div class="input-shell room-code-input"><i class="ph ph-hash" aria-hidden="true"></i><input id="room-code" maxlength="6" autocomplete="off" spellcheck="false" value="${escapeHtml(initialRoomCode)}" aria-describedby="room-help"></div>
             <button class="icon-button" id="copy-room" type="button" aria-label="Copy room code"><i class="ph ph-copy"></i></button>
           </div>
-          <p class="field-help" id="room-help">${isAdmin ? "Enter an existing code or generate a new room." : "Enter a room code provided by the administrator."}</p>
-
-          <div class="audio-check" id="audio-check">
-            <span class="audio-check-icon"><i class="ph ph-microphone"></i></span>
-            <span><strong>Microphone is optional</strong><small>You can join muted and use text chat at any time.</small></span>
-            <button class="secondary-button compact" id="test-mic" type="button">Test microphone</button>
-          </div>
+          <p class="field-help" id="room-help">${isAdmin ? "Enter a code or create a new room." : "Use the code from your host."}</p>
 
           <div class="lobby-actions ${isAdmin ? "" : "is-single"}">
             <button class="primary-button" id="enter-room" type="button"><i class="ph ${accessRequired ? "ph-google-logo" : "ph-door-open"}"></i> ${accessRequired ? "Continue with Google" : "Enter Room"}</button>
             ${isAdmin ? '<button class="secondary-button" id="new-room" type="button"><i class="ph ph-plus"></i> New Room</button>' : '<span class="member-access-note"><i class="ph ph-lock-key"></i> Existing rooms only</span>'}
           </div>
-          <p class="lobby-note"><i class="ph ph-shield-check"></i> Voice media is not recorded or transcribed.</p>
+
+          <div class="audio-check" id="audio-check">
+            <span class="audio-check-icon"><i class="ph ph-microphone"></i></span>
+            <span><strong>Mic optional</strong><small>Join muted, chat anytime. Voice is never recorded.</small></span>
+            <button class="secondary-button compact" id="test-mic" type="button">Test microphone</button>
+          </div>
         </article>
 
-        <aside class="lobby-preview" aria-label="Workbench preview">
-          <div class="preview-topline"><span class="status-dot"></span><span>Shared workbench ready</span><span>WebGL 3D</span></div>
-          <div class="preview-stage">
-            <div class="preview-orbit"><i class="ph ph-arrows-clockwise"></i></div>
-            <div class="preview-copy">
-              <span class="section-label">Inspect from every angle</span>
-              <h2>One circuit.<br>Independent views.</h2>
-              <p>Orbit, zoom, move, rotate, discuss, and compare attempts without leaving the workspace.</p>
-            </div>
-            <div class="preview-features">
-              <span><i class="ph ph-cube"></i> True 3D</span>
-              <span><i class="ph ph-cursor-click"></i> Mouse controls</span>
-              <span><i class="ph ph-chats-circle"></i> Chat + voice</span>
-            </div>
+        <aside class="lobby-preview" aria-label="Inside the makerspace">
+          <img class="lobby-preview-img" src="${import.meta.env.BASE_URL}lobby/workbench.webp" alt="3D workbench with a breadboard, LEDs, resistors and a battery" width="1280" height="897" decoding="async">
+          <div class="lobby-preview-shade" aria-hidden="true"></div>
+          <div class="preview-topline"><span class="status-dot"></span><span>Workbench ready</span></div>
+          <div class="lobby-preview-foot">
+            <p class="section-label">Three studios</p>
+            <ul class="lobby-studios">
+              <li><i class="ph ph-circuitry" aria-hidden="true"></i> Circuit Bench</li>
+              <li><i class="ph ph-plant" aria-hidden="true"></i> Greenhouse</li>
+              <li><i class="ph ph-puzzle-piece" aria-hidden="true"></i> Accessible Snap Lab</li>
+            </ul>
           </div>
         </aside>
       </section>
@@ -403,6 +471,7 @@ function enterWorkspace(): void {
     },
     onAttempt: addAttempt,
     onCircuitState: (isPowered) => {
+      if (isPowered && !powered && activeStudio === "snap") playChime();
       powered = isPowered;
       renderCircuitState();
     },
@@ -425,7 +494,7 @@ function enterWorkspace(): void {
   installNativeTooltips();
   loadChatHistory();
   renderTeamPanel();
-  addAttempt(workbench.captureAttempt(activeStudio === "greenhouse" ? "Greenhouse opened" : "Room opened"));
+  addAttempt(workbench.captureAttempt(STUDIO_COPY[activeStudio].opened));
 }
 
 function renderWorkspace(): void {
@@ -447,6 +516,7 @@ function renderWorkspace(): void {
           <div class="studio-switch" role="tablist" aria-label="Choose studio">
             <button class="studio-tab is-active" data-studio="circuit" data-tooltip="Circuit Bench" type="button" role="tab" aria-label="Circuit Bench" aria-selected="true"><i class="ph ph-circuitry"></i><span class="sr-only">Circuit</span></button>
             <button class="studio-tab" data-studio="greenhouse" data-tooltip="Greenhouse Studio" type="button" role="tab" aria-label="Greenhouse Studio" aria-selected="false"><i class="ph ph-plant"></i><span class="sr-only">Greenhouse</span></button>
+            <button class="studio-tab" data-studio="snap" data-tooltip="Accessible Snap Lab" type="button" role="tab" aria-label="Accessible Snap Lab" aria-selected="false"><i class="ph ph-puzzle-piece"></i><span class="sr-only">Snap Lab</span></button>
           </div>
           <div class="rail-heading" data-tooltip="Drag components into 3D"><span><i class="ph ph-circles-three"></i><span class="sr-only">Components</span></span><small class="sr-only">Drag into 3D</small></div>
           <div class="component-list" id="component-list"></div>
@@ -460,6 +530,7 @@ function renderWorkspace(): void {
               <button class="tool-button icon-only is-valid" id="toggle-magnet" type="button" aria-label="Toggle magnetic guidance" data-tooltip="Magnetic guidance on"><i class="ph ph-magnet"></i><span class="sr-only">Magnetism on</span></button>
               <button class="tool-button icon-only" id="reset-view" type="button" aria-label="Reset view" data-tooltip="Reset camera"><i class="ph ph-crosshair"></i><span class="sr-only">Reset view</span></button>
               <button class="tool-button icon-only" id="check-circuit" type="button" aria-label="Test the current system" data-tooltip="Test system"><i class="ph ph-lightning"></i><span class="sr-only">Check circuit</span></button>
+              <button class="tool-button icon-only" id="toggle-speech" type="button" aria-pressed="false" aria-label="Spoken status off" data-tooltip="Spoken status off"><i class="ph ph-speaker-simple-slash"></i></button>
               <button class="tool-button icon-only" id="toggle-help" type="button" aria-label="Show controls" data-tooltip="Show controls"><i class="ph ph-question"></i></button>
             </div>
           </div>
@@ -608,12 +679,16 @@ function componentIcon(component: ComponentSpec): string {
   if (component.kind === "pump") return "ph-drop";
   if (component.kind === "fan") return "ph-fan";
   if (component.kind === "solar") return "ph-solar-panel";
+  if (component.kind === "snapwire") return "ph-line-segment";
+  if (component.kind === "snapbattery") return "ph-battery-plus";
+  if (component.kind === "snapswitch") return "ph-toggle-right";
+  if (component.kind === "snapmotor") return "ph-fan";
   return "ph-lightbulb-filament";
 }
 
 function bindWorkspaceEvents(): void {
   document.querySelectorAll<HTMLButtonElement>(".studio-tab").forEach((button) => {
-    button.addEventListener("click", () => switchStudio(button.dataset.studio === "greenhouse" ? "greenhouse" : "circuit"));
+    button.addEventListener("click", () => switchStudio(toStudio(button.dataset.studio)));
   });
   document.querySelectorAll<HTMLButtonElement>(".discussion-tab").forEach((button) => {
     button.addEventListener("click", () => switchDiscussionTab(button.dataset.tab || "chat"));
@@ -662,7 +737,21 @@ function bindWorkspaceEvents(): void {
   document.querySelector("#check-circuit")?.addEventListener("click", runSharedTest);
   document.querySelector("#load-field-test")?.addEventListener("click", () => {
     if (activeStudio === "greenhouse") workbench?.loadGreenhouseDemo();
+    else if (activeStudio === "snap") workbench?.loadSnapDemo();
     else workbench?.loadCircuitDemo();
+  });
+  document.querySelector<HTMLButtonElement>("#toggle-speech")?.addEventListener("click", (event) => {
+    speechEnabled = !speechEnabled;
+    const button = event.currentTarget as HTMLButtonElement;
+    const label = speechEnabled ? "Spoken status on" : "Spoken status off";
+    button.classList.toggle("is-valid", speechEnabled);
+    button.setAttribute("aria-pressed", String(speechEnabled));
+    button.setAttribute("aria-label", label);
+    button.dataset.tooltip = label;
+    button.title = label;
+    button.innerHTML = `<i class="ph ${speechEnabled ? "ph-speaker-simple-high" : "ph-speaker-simple-slash"}"></i>`;
+    if (speechEnabled) speak(`Spoken status on. ${STUDIO_COPY[activeStudio].caption}`);
+    else window.speechSynthesis?.cancel();
   });
   document.querySelector("#toggle-help")?.addEventListener("click", () =>
     document.querySelector("#control-help")?.classList.toggle("is-hidden"),
@@ -708,7 +797,7 @@ function switchStudio(studio: StudioKind): void {
   renderSelection();
   updateStudioUi();
   loadChatHistory();
-  workbench.saveAttempt(studio === "greenhouse" ? "Greenhouse Studio opened" : "Circuit Bench opened");
+  workbench.saveAttempt(STUDIO_COPY[studio].opened);
 }
 
 function installNativeTooltips(): void {
@@ -733,35 +822,30 @@ function updateStudioUi(): void {
   const challengeAction = challenge?.querySelector<HTMLButtonElement>("#load-field-test");
   const hypothesis = document.querySelector<HTMLTextAreaElement>("#hypothesis");
   const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input");
-  if (subtitle) subtitle.textContent = activeStudio === "greenhouse" ? "Smart Greenhouse" : "Motherboard Circuit Lab";
-  if (heading) heading.textContent = activeStudio === "greenhouse" ? "Greenhouse" : "Motherboard";
-  if (caption) caption.textContent = activeStudio === "greenhouse" ? "Route sensors, water, air, and power" : "Diagnose and rebuild the LED power path";
+  const copy = STUDIO_COPY[activeStudio];
+  if (subtitle) subtitle.textContent = copy.subtitle;
+  if (heading) heading.textContent = copy.heading;
+  if (caption) caption.textContent = copy.caption;
   if (hud) hud.hidden = activeStudio !== "greenhouse";
   if (checkButton) {
-    checkButton.dataset.tooltip = activeStudio === "greenhouse" ? "Test greenhouse system" : "Test motherboard power path";
+    checkButton.dataset.tooltip = copy.testTooltip;
     checkButton.title = checkButton.dataset.tooltip;
     checkButton.setAttribute("aria-label", checkButton.dataset.tooltip);
   }
   if (challenge) challenge.hidden = false;
   if (challengeOrb) {
-    challengeOrb.dataset.tooltip = activeStudio === "greenhouse"
-      ? "Protect seedlings: moisture >65%, temperature <25°C"
-      : "Restore power: battery → resistor → LED";
+    challengeOrb.dataset.tooltip = copy.challenge;
     challengeOrb.title = challengeOrb.dataset.tooltip;
   }
   if (challengeAction) {
-    challengeAction.dataset.tooltip = activeStudio === "greenhouse"
-      ? "Load a connected field-test layout"
-      : "Load a diagnostic reference circuit";
+    challengeAction.dataset.tooltip = copy.challengeAction;
     challengeAction.title = challengeAction.dataset.tooltip;
-    challengeAction.setAttribute("aria-label", activeStudio === "greenhouse" ? "Load field-test layout" : "Load diagnostic circuit");
+    challengeAction.setAttribute("aria-label", copy.challengeLabel);
   }
   if (hypothesis) {
-    hypothesis.value = activeStudio === "greenhouse"
-      ? "If the soil and climate sensors control the pump and fan, the seedlings should remain in the safe growing range."
-      : "A resistor in series with the LED will limit current and allow the LED to light safely.";
+    hypothesis.value = copy.hypothesis;
   }
-  if (chatInput) chatInput.placeholder = activeStudio === "greenhouse" ? "Discuss this system…" : "Discuss your circuit…";
+  if (chatInput) chatInput.placeholder = copy.chat;
   renderCircuitState();
   renderEnvironmentState();
   renderTeamPanel();
@@ -827,9 +911,7 @@ function appendSeedMessages(): void {
     id: "seed-1",
     participantId: "guide",
     author: "Workshop Guide",
-    body: activeStudio === "greenhouse"
-      ? "Inspect the growing system from two angles. Agree on which subsystem—sensing, water, air, or power—to connect first."
-      : "Trace the motherboard power path from battery to resistor to LED. Compare both sides of the center channel before connecting each lead.",
+    body: STUDIO_COPY[activeStudio].seed,
     createdAt: now,
     context: "Room guidance",
   });
@@ -844,9 +926,7 @@ function loadChatHistory(): void {
         message.id === "seed-1"
           ? {
               ...message,
-              body: activeStudio === "greenhouse"
-                ? "Inspect the growing system from two angles. Agree on which subsystem—sensing, water, air, or power—to connect first."
-                : "Trace the motherboard power path from battery to resistor to LED. Compare both sides of the center channel before connecting each lead.",
+              body: STUDIO_COPY[activeStudio].seed,
             }
           : message,
       );
@@ -953,14 +1033,18 @@ function phasePrompt(phase: CollaborationPhase): string {
       test: "The team inspects water, air, sensing, and power, then everyone marks ready for the field test.",
       reflect: "Use the live readings to explain what changed and name one rule for the next design.",
     },
+    snap: {
+      frame: "One maker traces the planned loop aloud from B1 + to B1 −. The partner checks it by touch labels before anything is snapped.",
+      build: "Alternate: one maker snaps a part, the other names its ID and where each snap lands (row letter, column number).",
+      test: "Agree who slides S1. Predict what L1 and M1 will do, then everyone marks ready.",
+      reflect: "Explain why S1 controls both loads, and why a bare wire across B1 is a short circuit.",
+    },
   };
   return prompts[activeStudio][phase];
 }
 
 function sharedGoal(): string {
-  return activeStudio === "greenhouse"
-    ? "Co-design a stable growing system that senses soil and climate, then controls water and airflow."
-    : "Co-diagnose and rebuild a safe LED power path on the shared motherboard.";
+  return STUDIO_COPY[activeStudio].goal;
 }
 
 function traceIcon(action: ActivityTrace["action"]): string {
@@ -1149,9 +1233,9 @@ function runSharedTest(): void {
     showSceneStatus(`${missingReady.map((participant) => participant.name).join(" + ")} must mark ready before testing`, "warning");
     return;
   }
-  room.setActivity("testing", activeStudio === "greenhouse" ? "Field test" : "Power-path test");
+  room.setActivity("testing", STUDIO_COPY[activeStudio].testActivity);
   room.recordTrace("test", collaborationPhase, activeStudio, {
-    detail: activeStudio === "greenhouse" ? "Ran greenhouse field test" : "Ran motherboard power-path test",
+    detail: STUDIO_COPY[activeStudio].testTrace,
   });
   workbench.checkCircuit();
   window.setTimeout(() => {
@@ -1319,6 +1403,7 @@ function showSceneStatus(message: string, tone: "neutral" | "valid" | "warning")
   if (!status || !copy) return;
   copy.textContent = message;
   status.dataset.tone = tone;
+  if (speechEnabled) speak(message);
   status.classList.add("is-visible");
   window.clearTimeout(statusTimer);
   statusTimer = window.setTimeout(() => status.classList.remove("is-visible"), 3200);
@@ -1329,7 +1414,23 @@ function onKeyboardShortcut(event: KeyboardEvent): void {
   if (target?.matches("input, textarea, [contenteditable='true']")) return;
   if (event.key.toLowerCase() === "r") workbench?.resetSelectedRotation();
   if (event.key.toLowerCase() === "f") workbench?.focusSelected();
+  if (event.key === " " && workbench?.toggleSelectedSwitch()) event.preventDefault();
   if (event.key === "Escape") document.querySelector<HTMLDialogElement>("#reflection-dialog")?.close();
+}
+
+function speak(text: string): void {
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text.replace(/·/g, ","));
+  utterance.lang = "en-US";
+  utterance.rate = 1.05;
+  window.speechSynthesis.speak(utterance);
+}
+
+function playChime(): void {
+  const chime = new Audio(`${import.meta.env.BASE_URL}audio/chime.mp3`);
+  chime.volume = 0.5;
+  void chime.play().catch(() => undefined);
 }
 
 function saveReflection(): void {

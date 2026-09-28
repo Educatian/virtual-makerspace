@@ -6,6 +6,8 @@ export interface SharedTransform {
   sockets?: [number | null, number | null] | null;
   endpoints?: [Vec3Tuple, Vec3Tuple];
   activeEndpoint?: 0 | 1;
+  /** Slide-switch state for Snap Lab S1. */
+  on?: boolean;
 }
 
 export interface Participant {
@@ -50,7 +52,7 @@ export interface ActivityTrace {
   createdAt: number;
   action: TraceAction;
   phase: CollaborationPhase;
-  studio: "circuit" | "greenhouse";
+  studio: "circuit" | "greenhouse" | "snap";
   objectId?: string;
   objectName?: string;
   detail?: string;
@@ -318,7 +320,7 @@ export class DesktopRoom {
   recordTrace(
     action: TraceAction,
     phase: CollaborationPhase,
-    studio: "circuit" | "greenhouse",
+    studio: "circuit" | "greenhouse" | "snap",
     details: Pick<ActivityTrace, "objectId" | "objectName" | "detail"> = {},
   ): ActivityTrace {
     const trace: ActivityTrace = {

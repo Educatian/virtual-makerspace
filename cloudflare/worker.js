@@ -79,6 +79,7 @@ function sanitizeTransform(value) {
     if (value.activeEndpoint !== 0 && value.activeEndpoint !== 1) return null;
     transform.activeEndpoint = value.activeEndpoint;
   }
+  if (typeof value.on === "boolean") transform.on = value.on;
   return transform;
 }
 
@@ -554,7 +555,7 @@ export class MakerspaceRoom extends DurableObject {
           createdAt: Date.now(),
           action: trace.action,
           phase: trace.phase,
-          studio: trace.studio === "greenhouse" ? "greenhouse" : "circuit",
+          studio: ["greenhouse", "snap"].includes(trace.studio) ? trace.studio : "circuit",
           objectId: trace.objectId ? String(trace.objectId).slice(0, 160) : undefined,
           objectName: trace.objectName ? String(trace.objectName).slice(0, 160) : undefined,
           detail: trace.detail ? String(trace.detail).slice(0, 240) : undefined,

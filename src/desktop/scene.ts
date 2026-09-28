@@ -45,7 +45,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 
 import type { SharedTransform } from "./collaboration.js";
 
-export type StudioKind = "circuit" | "greenhouse";
+export type StudioKind = "circuit" | "greenhouse" | "snap";
 export type ComponentKind =
   | "led"
   | "resistor"
@@ -56,7 +56,12 @@ export type ComponentKind =
   | "pump"
   | "fan"
   | "hose"
-  | "solar";
+  | "solar"
+  | "snapwire"
+  | "snapbattery"
+  | "snapswitch"
+  | "snaplamp"
+  | "snapmotor";
 
 export interface ComponentSpec {
   id: string;
@@ -114,6 +119,10 @@ const BOARD_X = -0.75;
 const BOARD_TOP = 0.31;
 const DRAG_Y = BOARD_TOP + 0.17;
 const SNAP_THRESHOLD = 0.34;
+const SNAP_PITCH = 0.48;
+const SNAP_COLS = 9;
+const SNAP_ROWS = 7;
+const SNAP_STUD_Y = DRAG_Y - 0.1;
 const MAGNETIC_RADIUS = 0.72;
 
 type EndpointSockets = [number | null, number | null] | null;
@@ -154,7 +163,19 @@ const GREENHOUSE_COMPONENTS: ComponentSpec[] = [
   { id: "solar-panel", name: "Solar Panel", detail: "18 W source", kind: "solar", color: 0x1d4ed8, leadSeparation: PITCH * 4, studio: "greenhouse" },
 ];
 
-const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS];
+// Snap Circuits-style accessible kit (Jung & Chang, ISLS 2024 symposium; Seo et al. BLV maker curriculum).
+const SNAP_COMPONENTS: ComponentSpec[] = [
+  { id: "snap-b1", name: "Battery Holder B1", detail: "2 × AA · 3 V", kind: "snapbattery", color: 0x1f2937, leadSeparation: SNAP_PITCH * 3, studio: "snap" },
+  { id: "snap-s1", name: "Slide Switch S1", detail: "Double-click to slide", kind: "snapswitch", color: 0xe5e7eb, leadSeparation: SNAP_PITCH * 2, studio: "snap" },
+  { id: "snap-l1", name: "Lamp L1", detail: "2.5 V bulb", kind: "snaplamp", color: 0xfde68a, leadSeparation: SNAP_PITCH * 2, studio: "snap" },
+  { id: "snap-m1", name: "Motor M1", detail: "With fan", kind: "snapmotor", color: 0xdc2626, leadSeparation: SNAP_PITCH * 2, studio: "snap" },
+  { id: "snap-w2", name: "Snap Wire 2", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 2, studio: "snap" },
+  { id: "snap-w3a", name: "Snap Wire 3", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 3, studio: "snap" },
+  { id: "snap-w3b", name: "Snap Wire 3", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 3, studio: "snap" },
+  { id: "snap-w4", name: "Snap Wire 4", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 4, studio: "snap" },
+];
+
+const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS];
 
 const socketRows = (): number[] => [
   -1.58,
@@ -189,8 +210,10 @@ export class DesktopWorkbenchScene {
   private readonly components = new Map<string, Group>();
   private readonly circuitGroup = new Group();
   private readonly greenhouseGroup = new Group();
+  private readonly snapGroup = new Group();
   private readonly circuitSockets: Vector3[] = [];
   private readonly greenhouseSockets: Vector3[] = [];
+  private readonly snapSockets: Vector3[] = [];
   private sockets: Vector3[] = this.circuitSockets;
   private readonly remoteOwners = new Map<string, { id: string; name: string }>();
   private readonly previewMarkers: Mesh<RingGeometry, MeshBasicMaterial>[] = [];
@@ -200,6 +223,7 @@ export class DesktopWorkbenchScene {
   private readonly hoverBox = new BoxHelper(new Group(), 0xe2e8f0);
   private readonly proceduralTable: Mesh[] = [];
   private hovered: Group | null = null;
+  private snapShortActive = false;
   private readonly resizeObserver: ResizeObserver;
 
   private selected: Group | null = null;
@@ -269,9 +293,10 @@ export class DesktopWorkbenchScene {
 
     this.setupLighting();
     this.setupTable();
-    this.scene.add(this.circuitGroup, this.greenhouseGroup);
+    this.scene.add(this.circuitGroup, this.greenhouseGroup, this.snapGroup);
     this.setupBreadboard();
     this.setupGreenhouse();
+    this.setupSnapBase();
     this.setupComponents();
     this.setupSnapMarkers();
     this.bindInteractions();
@@ -296,15 +321,19 @@ export class DesktopWorkbenchScene {
     this.activeStudio = studio;
     this.circuitGroup.visible = studio === "circuit";
     this.greenhouseGroup.visible = studio === "greenhouse";
-    this.sockets = studio === "circuit" ? this.circuitSockets : this.greenhouseSockets;
+    this.snapGroup.visible = studio === "snap";
+    this.sockets = studio === "greenhouse" ? this.greenhouseSockets : studio === "snap" ? this.snapSockets : this.circuitSockets;
     this.camera.position.set(studio === "circuit" ? 6.4 : 7.2, studio === "circuit" ? 6.1 : 5.8, studio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(studio === "circuit" ? 0.1 : 0, studio === "circuit" ? 0.2 : 0.55, studio === "circuit" ? 0 : -0.1);
     this.orbit.update();
-    if (studio === "greenhouse") this.evaluateGreenhouse();
-    else this.evaluateCircuit();
+    this.evaluateCurrentSystem();
     if (announce) {
       this.events.onStatus(
-        studio === "greenhouse" ? "Greenhouse Studio ready · connect sensors, water, air, and power" : "Circuit Bench ready",
+        studio === "greenhouse"
+          ? "Greenhouse Studio ready · connect sensors, water, air, and power"
+          : studio === "snap"
+            ? "Snap Lab ready · snap a battery, switch, lamp, and motor onto the base grid"
+            : "Circuit Bench ready",
         "valid",
       );
     }
@@ -388,7 +417,11 @@ export class DesktopWorkbenchScene {
       this.evaluateCurrentSystem();
       return;
     }
-    if (component === this.dragging || component === this.transform.object) return;
+    if (typeof transform.on === "boolean") this.setSwitch(component, transform.on);
+    if (component === this.dragging || component === this.transform.object) {
+      this.evaluateCurrentSystem();
+      return;
+    }
     component.position.fromArray(transform.position);
     component.rotation.fromArray([...transform.rotation, "XYZ"]);
     component.userData.sockets = transform.sockets ?? null;
@@ -487,6 +520,67 @@ export class DesktopWorkbenchScene {
     this.evaluateCircuit(true);
     this.events.onAttempt(this.captureAttempt("Diagnostic LED path connected"));
   }
+
+  loadSnapDemo(): void {
+    if (this.activeStudio !== "snap") return;
+    // studs are row * 9 + col: B1+ (r1c0) → W4 → W3 → M1 → L1 → S1 → W2 → B1− (r1c3)
+    const layout: Record<string, [number, number]> = {
+      "snap-b1": [9, 12],
+      "snap-w4": [9, 45],
+      "snap-w3a": [45, 48],
+      "snap-m1": [48, 50],
+      "snap-l1": [50, 32],
+      "snap-s1": [32, 14],
+      "snap-w2": [14, 12],
+    };
+    for (const [id, pair] of Object.entries(layout)) {
+      const component = this.components.get(id);
+      if (!component) continue;
+      const a = this.snapSockets[pair[0]];
+      const b = this.snapSockets[pair[1]];
+      const midpoint = a.clone().add(b).multiplyScalar(0.5);
+      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
+      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
+      component.userData.sockets = pair;
+      if (id === "snap-s1") this.setSwitch(component, true);
+      component.updateMatrixWorld(true);
+      this.emitTransform(component, true);
+    }
+    this.evaluateSnap(true);
+    this.events.onAttempt(this.captureAttempt("Series lamp + motor loop connected"));
+  }
+
+  /** Keyboard/assistive path to operate the selected slide switch. */
+  toggleSelectedSwitch(): boolean {
+    if (!this.selected || (this.selected.userData.spec as ComponentSpec).kind !== "snapswitch") return false;
+    this.toggleSwitch(this.selected);
+    return true;
+  }
+
+  private toggleSwitch(component: Group): void {
+    const id = component.userData.componentId as string;
+    const owner = this.remoteOwners.get(id);
+    if (owner) {
+      this.events.onStatus(`${owner.name} is holding S1`, "warning");
+      return;
+    }
+    this.setSwitch(component, !component.userData.switchOn);
+    this.emitTransform(component, true);
+    this.events.onStatus(`Slide switch S1 ${component.userData.switchOn ? "ON" : "OFF"}`, "neutral");
+    this.evaluateCurrentSystem(true);
+    this.events.onAttempt(this.captureAttempt(`S1 switched ${component.userData.switchOn ? "on" : "off"}`));
+  }
+
+  private setSwitch(component: Group, on: boolean): void {
+    component.userData.switchOn = on;
+    const knob = component.getObjectByName("switch_knob");
+    if (knob) knob.position.x = on ? 0.1 : -0.1;
+  }
+
+  private readonly onDoubleClick = (event: MouseEvent): void => {
+    const component = this.pickComponent(event.clientX, event.clientY);
+    if (component && (component.userData.spec as ComponentSpec).kind === "snapswitch") this.toggleSwitch(component);
+  };
 
   loadGreenhouseDemo(): void {
     if (this.activeStudio !== "greenhouse") return;
@@ -868,11 +962,17 @@ export class DesktopWorkbenchScene {
       [4.0, DRAG_Y, 1.75],
       [3.15, DRAG_Y, 2.5],
     ];
-    COMPONENTS.forEach((spec, index) => {
+    const snapPositions = [-2.45, -1.75, -1.05, -0.35, 0.35, 1.05, 1.75, 2.45]
+      .map((z): [number, number, number] => [3.55, DRAG_Y, z]);
+    const layouts: Record<StudioKind, { positions: Array<[number, number, number]>; specs: ComponentSpec[]; group: Group }> = {
+      circuit: { positions: circuitPositions, specs: CIRCUIT_COMPONENTS, group: this.circuitGroup },
+      greenhouse: { positions: greenhousePositions, specs: GREENHOUSE_COMPONENTS, group: this.greenhouseGroup },
+      snap: { positions: snapPositions, specs: SNAP_COMPONENTS, group: this.snapGroup },
+    };
+    COMPONENTS.forEach((spec) => {
       const component = this.createComponent(spec);
-      const positions = spec.studio === "circuit" ? circuitPositions : greenhousePositions;
-      const localIndex = spec.studio === "circuit" ? index : index - CIRCUIT_COMPONENTS.length;
-      component.position.set(...positions[localIndex]);
+      const layout = layouts[spec.studio];
+      component.position.set(...layout.positions[layout.specs.indexOf(spec)]);
       component.userData.componentId = spec.id;
       component.userData.spec = spec;
       component.userData.sockets = null;
@@ -884,7 +984,7 @@ export class DesktopWorkbenchScene {
         }
       });
       this.components.set(spec.id, component);
-      (spec.studio === "circuit" ? this.circuitGroup : this.greenhouseGroup).add(component);
+      layout.group.add(component);
     });
   }
 
@@ -1188,7 +1288,101 @@ export class DesktopWorkbenchScene {
         group.add(lead);
       }
     }
+    if (spec.kind.startsWith("snap")) this.buildSnapPart(group, spec, metal);
     return group;
+  }
+
+  /** Procedural fallback for the Snap Lab kit; replaced by makerspace_parts.glb when it loads. */
+  private buildSnapPart(group: Group, spec: ComponentSpec, metal: MeshStandardMaterial): void {
+    const strip = new Mesh(
+      new RoundedBoxGeometry(spec.leadSeparation + 0.3, 0.08, 0.34, 3, 0.03),
+      new MeshStandardMaterial({ color: 0x0b3a9e, roughness: 0.35 }),
+    );
+    strip.position.y = 0.04;
+    group.add(strip);
+    for (const x of [-spec.leadSeparation / 2, spec.leadSeparation / 2]) {
+      const rivet = new Mesh(new CylinderGeometry(0.11, 0.1, 0.2, 20), metal);
+      rivet.position.set(x, 0, 0);
+      group.add(rivet);
+    }
+    const dark = new MeshStandardMaterial({ color: 0x111111, roughness: 0.4 });
+    if (spec.kind === "snapbattery") {
+      const holder = new Mesh(new RoundedBoxGeometry(1.2, 0.42, 0.5, 3, 0.04), dark);
+      holder.position.y = 0.3;
+      group.add(holder);
+    }
+    if (spec.kind === "snapswitch") {
+      const body = new Mesh(new RoundedBoxGeometry(0.62, 0.22, 0.26, 3, 0.02), dark);
+      body.position.set(0, 0.2, -0.05);
+      group.add(body);
+      const knob = new Mesh(new RoundedBoxGeometry(0.12, 0.12, 0.1, 2, 0.015), new MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.4 }));
+      knob.name = "switch_knob";
+      knob.position.set(-0.1, 0.36, -0.05);
+      group.add(knob);
+      group.userData.switchOn = false;
+    }
+    if (spec.kind === "snaplamp") {
+      const bulb = new Mesh(
+        new SphereGeometry(0.17, 24, 16),
+        new MeshStandardMaterial({ color: 0xfff3c4, emissive: spec.color, emissiveIntensity: 0, roughness: 0.1, transparent: true, opacity: 0.85 }),
+      );
+      bulb.position.set(0, 0.5, -0.02);
+      group.add(bulb);
+      group.userData.glowMaterials = [bulb.material];
+      const glow = new PointLight(0xffd27a, 0, 3.6, 1.6);
+      glow.position.y = 0.55;
+      group.add(glow);
+      group.userData.glowLight = glow;
+    }
+    if (spec.kind === "snapmotor") {
+      const can = new Mesh(new CylinderGeometry(0.23, 0.23, 0.46, 28), new MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.3, metalness: 0.9 }));
+      can.position.set(0, 0.32, -0.03);
+      group.add(can);
+      const rotor = new Group();
+      rotor.name = "rotor";
+      rotor.position.set(0, 0.7, -0.03);
+      for (let index = 0; index < 3; index += 1) {
+        const blade = new Mesh(new BoxGeometry(0.42, 0.012, 0.12), new MeshStandardMaterial({ color: 0xcc1a10, roughness: 0.4 }));
+        blade.position.set(Math.cos(index * 2.094) * 0.22, 0, Math.sin(index * 2.094) * 0.22);
+        blade.rotation.y = -index * 2.094;
+        rotor.add(blade);
+      }
+      group.add(rotor);
+      group.userData.rotor = rotor;
+    }
+  }
+
+  private setupSnapBase(): void {
+    const base = new Group();
+    base.position.x = BOARD_X;
+    const plate = new Mesh(
+      new RoundedBoxGeometry(SNAP_COLS * SNAP_PITCH + 0.3, 0.26, SNAP_ROWS * SNAP_PITCH + 0.5, 4, 0.04),
+      new MeshPhysicalMaterial({ color: 0xc7d6e0, roughness: 0.15, transmission: 0.4, thickness: 0.2 }),
+    );
+    plate.position.set(0, 0.13, 0.08);
+    plate.receiveShadow = true;
+    base.add(plate);
+    const studs = new InstancedMesh(
+      new CylinderGeometry(0.05, 0.05, 0.1, 16),
+      new MeshStandardMaterial({ color: 0xdfe6ea, roughness: 0.2 }),
+      SNAP_COLS * SNAP_ROWS,
+    );
+    const dummy = new Object3D();
+    let index = 0;
+    for (let row = 0; row < SNAP_ROWS; row += 1) {
+      for (let col = 0; col < SNAP_COLS; col += 1) {
+        const x = -((SNAP_COLS - 1) * SNAP_PITCH) / 2 + col * SNAP_PITCH;
+        const z = -((SNAP_ROWS - 1) * SNAP_PITCH) / 2 + row * SNAP_PITCH;
+        this.snapSockets.push(new Vector3(BOARD_X + x, SNAP_STUD_Y, z));
+        dummy.position.set(x, 0.31, z);
+        dummy.updateMatrix();
+        studs.setMatrixAt(index++, dummy.matrix);
+      }
+    }
+    studs.instanceMatrix.needsUpdate = true;
+    base.add(studs);
+    this.snapGroup.userData.proceduralBase = base;
+    this.snapGroup.add(base);
   }
 
   private setupSnapMarkers(): void {
@@ -1226,6 +1420,7 @@ export class DesktopWorkbenchScene {
     this.renderer.domElement.addEventListener("pointermove", this.onPointerMove, { capture: true });
     this.renderer.domElement.addEventListener("pointerup", this.onPointerUp, { capture: true });
     this.renderer.domElement.addEventListener("pointercancel", this.onPointerCancel, { capture: true });
+    this.renderer.domElement.addEventListener("dblclick", this.onDoubleClick);
     window.addEventListener("blur", this.onWindowBlur);
 
     this.transform.addEventListener("dragging-changed", (event) => {
@@ -1419,11 +1614,23 @@ export class DesktopWorkbenchScene {
             glowMaterials.push(child.material as MeshStandardMaterial);
           }
         });
-        if (spec.kind === "led") component.userData.glowMaterials = glowMaterials;
+        if (spec.kind === "led" || spec.kind === "snaplamp") component.userData.glowMaterials = glowMaterials;
+        if (spec.kind === "snapswitch") this.setSwitch(component, Boolean(component.userData.switchOn));
         const rotor = detailed.getObjectByProperty("name", "rotor") ?? detailed.children
           .flatMap((child) => [child, ...child.children])
           .find((child) => child.name.startsWith("rotor"));
         if (rotor) component.userData.rotor = rotor;
+      }
+      const snapBase = parts.scene.getObjectByName("snap_base");
+      const proceduralBase = this.snapGroup.userData.proceduralBase as Group | undefined;
+      if (snapBase && proceduralBase) {
+        const detailedBase = snapBase.clone(true);
+        detailedBase.position.set(BOARD_X, 0, 0);
+        detailedBase.traverse((child) => {
+          if (child instanceof Mesh) child.receiveShadow = true;
+        });
+        proceduralBase.visible = false;
+        this.snapGroup.add(detailedBase);
       }
       this.evaluateCurrentSystem();
       if (this.selected) this.selectionBox.setFromObject(this.selected);
@@ -1690,7 +1897,9 @@ export class DesktopWorkbenchScene {
       this.events.onStatus(
         this.activeStudio === "greenhouse"
           ? `${component.userData.spec.name} magnetically connected to the farm terminal`
-          : `${component.userData.spec.name} connected to the breadboard`,
+          : this.activeStudio === "snap"
+            ? `${component.userData.spec.name} snapped onto the base grid`
+            : `${component.userData.spec.name} connected to the breadboard`,
         "valid",
       );
     } else {
@@ -1981,7 +2190,9 @@ export class DesktopWorkbenchScene {
   }
 
   private evaluateCurrentSystem(announce = false): boolean {
-    return this.activeStudio === "greenhouse" ? this.evaluateGreenhouse(announce) : this.evaluateCircuit(announce);
+    if (this.activeStudio === "greenhouse") return this.evaluateGreenhouse(announce);
+    if (this.activeStudio === "snap") return this.evaluateSnap(announce);
+    return this.evaluateCircuit(announce);
   }
 
   private isFullyConnected(sockets: EndpointSockets | undefined): sockets is [number, number] {
@@ -2066,6 +2277,99 @@ export class DesktopWorkbenchScene {
     return powered;
   }
 
+  /**
+   * Snap Lab: every stud is a node. Snap wires and a closed S1 join nodes; a load (L1, M1)
+   * runs when it sits on a path from B1+ to B1− through loads. A bare conductor path
+   * between B1's terminals is a short circuit — the productive-failure moment of the kit.
+   */
+  private evaluateSnap(announce = false): boolean {
+    const parent = Array.from(this.snapSockets, (_, index) => index);
+    const find = (value: number): number => {
+      while (parent[value] !== value) {
+        parent[value] = parent[parent[value]];
+        value = parent[value];
+      }
+      return value;
+    };
+    const part = (id: string): Group => this.components.get(id)!;
+    const socketsOf = (id: string): EndpointSockets => part(id).userData.sockets as EndpointSockets;
+    for (const spec of SNAP_COMPONENTS) {
+      const sockets = socketsOf(spec.id);
+      if (!this.isFullyConnected(sockets)) continue;
+      if (spec.kind === "snapwire" || (spec.kind === "snapswitch" && part(spec.id).userData.switchOn)) {
+        parent[find(sockets[0])] = find(sockets[1]);
+      }
+    }
+
+    const battery = socketsOf("snap-b1");
+    const lit = new Set<string>();
+    let short = false;
+    if (this.isFullyConnected(battery)) {
+      const plus = find(battery[0]);
+      const minus = find(battery[1]);
+      short = plus === minus;
+      const loads = ["snap-l1", "snap-m1"]
+        .filter((id) => this.isFullyConnected(socketsOf(id)))
+        .map((id) => {
+          const sockets = socketsOf(id) as [number, number];
+          return { id, a: find(sockets[0]), b: find(sockets[1]) };
+        });
+      const reaches = (from: number, to: number, skip: string): boolean => {
+        const seen = new Set([from]);
+        const queue = [from];
+        while (queue.length) {
+          const net = queue.shift()!;
+          if (net === to) return true;
+          for (const load of loads) {
+            if (load.id === skip) continue;
+            const next = load.a === net ? load.b : load.b === net ? load.a : null;
+            if (next !== null && !seen.has(next)) {
+              seen.add(next);
+              queue.push(next);
+            }
+          }
+        }
+        return false;
+      };
+      if (!short) {
+        for (const load of loads) {
+          if (load.a === load.b) continue;
+          const forward = reaches(plus, load.a, load.id) && reaches(load.b, minus, load.id);
+          const backward = reaches(plus, load.b, load.id) && reaches(load.a, minus, load.id);
+          if (forward || backward) lit.add(load.id);
+        }
+      }
+    }
+
+    const lamp = part("snap-l1");
+    for (const material of (lamp.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
+      material.emissiveIntensity = lit.has("snap-l1") ? 2.6 : 0;
+    }
+    const lampLight = lamp.userData.glowLight as PointLight | undefined;
+    if (lampLight) lampLight.intensity = lit.has("snap-l1") ? 3 : 0;
+    part("snap-m1").userData.motorOn = lit.has("snap-m1");
+    const powered = lit.size > 0;
+    this.events.onCircuitState(powered);
+
+    if (short && !this.snapShortActive) {
+      this.events.onStatus("Short circuit · B1's terminals are joined with no lamp or motor — remove a snap wire", "warning");
+    }
+    this.snapShortActive = short;
+    if (announce && !short) {
+      const switchPart = part("snap-s1");
+      const switchPlaced = this.isFullyConnected(socketsOf("snap-s1"));
+      const message = powered
+        ? `${[lit.has("snap-l1") && "Lamp L1 is lit", lit.has("snap-m1") && "motor M1 is spinning"].filter(Boolean).join(" · ")}`
+        : !this.isFullyConnected(battery)
+          ? "Snap battery holder B1 onto the base grid first"
+          : switchPlaced && !switchPart.userData.switchOn
+            ? "Slide switch S1 is OFF · double-click it (or press Space) to close the loop"
+            : "The loop is still open · trace from B1 + back to B1 − through every snap";
+      this.events.onStatus(message, powered ? "valid" : "warning");
+    }
+    return powered;
+  }
+
   private evaluateGreenhouse(announce = false): boolean {
     const connected = (id: string): boolean => {
       const component = this.components.get(id);
@@ -2128,6 +2432,7 @@ export class DesktopWorkbenchScene {
       sockets: (component.userData.sockets as EndpointSockets) ?? null,
     };
     const spec = component.userData.spec as ComponentSpec;
+    if (spec.kind === "snapswitch") transform.on = Boolean(component.userData.switchOn);
     if (spec.kind === "wire" || spec.kind === "hose") {
       const endpoints = this.getEndpointPositions(component);
       transform.endpoints = [
@@ -2171,6 +2476,11 @@ export class DesktopWorkbenchScene {
         const field = Number(marker.userData.field ?? 0);
         marker.scale.setScalar(baseScale * (1 + pulse * (0.3 + field)));
       }
+    }
+    if (this.activeStudio === "snap") {
+      const motor = this.components.get("snap-m1");
+      const rotor = motor?.userData.rotor as Object3D | undefined;
+      if (rotor && motor?.userData.motorOn) rotor.rotation.y += 0.42;
     }
     if (this.activeStudio === "greenhouse") {
       const delta = 0.018;
