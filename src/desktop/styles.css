@@ -1312,3 +1312,119 @@ textarea:focus-visible {
   .selection-toolbar { left: 8px; right: 8px; overflow-x: auto; }
   .selection-name { min-width: 130px; }
 }
+
+/* ------------------------------------------------------------------
+   Atmosphere layer — per-studio accent, glass surfaces, depth.
+   Studio accent is set via .workspace-shell[data-studio].
+------------------------------------------------------------------- */
+.workspace-shell { --accent: #3b82f6; --accent-rgb: 59, 130, 246; }
+.workspace-shell[data-studio="greenhouse"] { --accent: #22c55e; --accent-rgb: 34, 197, 94; }
+.workspace-shell[data-studio="snap"] { --accent: #f59e0b; --accent-rgb: 245, 158, 11; }
+
+.workspace-shell {
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(var(--accent-rgb), 0.08), transparent 60%),
+    var(--bg);
+}
+
+.workspace-header {
+  position: relative;
+  background: linear-gradient(180deg, rgba(20, 28, 42, 0.96), rgba(13, 19, 30, 0.96));
+  border-bottom-color: transparent;
+}
+.workspace-header::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.7) 30%, rgba(var(--accent-rgb), 0.7) 70%, transparent);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.45);
+  transition: background 400ms ease;
+}
+
+.component-rail,
+.discussion-dock,
+.attempt-drawer {
+  background: linear-gradient(180deg, #121a28 0%, #0d131e 100%);
+  border-color: rgba(59, 75, 104, 0.55);
+}
+
+.viewport-toolbar {
+  background: linear-gradient(180deg, rgba(18, 26, 38, 0.98), rgba(14, 20, 31, 0.98));
+  border-bottom-color: rgba(59, 75, 104, 0.55);
+}
+.viewport-title strong,
+#viewport-heading { letter-spacing: 0.01em; }
+
+.studio-tab.is-active {
+  color: #fff;
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.7);
+  box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.28), inset 0 0 12px rgba(var(--accent-rgb), 0.12);
+}
+.studio-tab.is-active i { color: var(--accent); }
+
+.component-card {
+  position: relative;
+  background: linear-gradient(160deg, #1b2638, #131c2b);
+  border-color: rgba(76, 96, 128, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.component-card:hover,
+.component-card:focus-visible {
+  border-color: var(--component-color, var(--accent));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35), 0 0 16px color-mix(in srgb, var(--component-color, var(--accent)) 35%, transparent);
+  transform: translateY(-2px);
+}
+.component-card:active { cursor: grabbing; transform: translateY(0) scale(0.97); }
+.component-card .component-symbol i { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--component-color, #fff) 55%, transparent)); }
+
+.tool-button {
+  background: linear-gradient(180deg, #1b2638, #151e2d);
+  border-color: rgba(76, 96, 128, 0.6);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.tool-button:hover { border-color: rgba(var(--accent-rgb), 0.65); box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.2); }
+.tool-button:active { transform: scale(0.96); }
+
+/* the 3D stage: soft vignette + accent rim, never blocks input */
+.scene-frame::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(ellipse 75% 70% at 50% 48%, transparent 50%, rgba(5, 8, 14, 0.62) 100%);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.12);
+}
+.scene-frame > :not(#scene-host) { z-index: 2; }
+
+.scene-status,
+.challenge-card,
+.selection-toolbar,
+.environment-hud,
+.control-help {
+  background: rgba(13, 19, 30, 0.72);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+.scene-status { border-radius: 999px; padding: 0 16px; }
+.scene-status[data-tone="valid"] { border-color: rgba(0, 255, 102, 0.55); box-shadow: 0 0 22px rgba(0, 255, 102, 0.18), 0 12px 32px rgba(0, 0, 0, 0.32); }
+.scene-status[data-tone="warning"] { border-color: rgba(251, 191, 36, 0.6); box-shadow: 0 0 22px rgba(251, 191, 36, 0.18), 0 12px 32px rgba(0, 0, 0, 0.32); }
+
+.chat-message .avatar {
+  background: linear-gradient(145deg, rgba(var(--accent-rgb), 0.35), #1d2a3d);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
+.chat-composer textarea:focus { border-color: rgba(var(--accent-rgb), 0.7); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15); }
+
+@media (prefers-reduced-motion: reduce) {
+  .component-card,
+  .tool-button,
+  .workspace-header::after { transition: none; }
+  .component-card:hover { transform: none; }
+}

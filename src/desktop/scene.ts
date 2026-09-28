@@ -10,6 +10,7 @@ import {
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
+  Fog,
   Euler,
   Group,
   InstancedMesh,
@@ -30,6 +31,7 @@ import {
   RingGeometry,
   Scene,
   SphereGeometry,
+  SpotLight,
   SRGBColorSpace,
   TorusGeometry,
   TubeGeometry,
@@ -637,16 +639,27 @@ export class DesktopWorkbenchScene {
   private setupLighting(): void {
     const pmrem = new PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = 0.42;
     pmrem.dispose();
-    const ambient = new AmbientLight(0xc7d2e0, 0.9);
+    const ambient = new AmbientLight(0xc7d2e0, 0.55);
     this.scene.add(ambient);
-    const key = new DirectionalLight(0xfff0d8, 3.1);
+    const key = new DirectionalLight(0xfff0d8, 2.4);
     key.position.set(4, 8, 5);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -7.5;
+    key.shadow.camera.right = 7.5;
+    key.shadow.camera.top = 6;
+    key.shadow.camera.bottom = -6;
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
     this.scene.add(key);
-    const fill = new DirectionalLight(0x7aa2e8, 1.0);
+    // warm pendant pool over the bench: the work surface reads as the stage
+    const pendant = new SpotLight(0xffe2b8, 90, 22, MathUtils.degToRad(38), 0.65, 1.6);
+    pendant.position.set(0, 9.2, 0.4);
+    pendant.target.position.set(0, 0, 0);
+    this.scene.add(pendant, pendant.target);
+    const fill = new DirectionalLight(0x7aa2e8, 0.8);
     fill.position.set(-5, 4, -3);
     this.scene.add(fill);
   }
@@ -1586,7 +1599,9 @@ export class DesktopWorkbenchScene {
         if (child instanceof Mesh) child.receiveShadow = true;
       });
       this.scene.add(room.scene);
-      this.scene.background = new Color(0x1b2027);
+      this.scene.background = new Color(0x161a21);
+      // atmospheric depth: the far walls soften while the bench stays crisp
+      this.scene.fog = new Fog(0x161a21, 16, 52);
       for (const mesh of this.proceduralTable) mesh.visible = false;
 
       for (const [id, component] of this.components) {

@@ -914,6 +914,7 @@ function installNativeTooltips(): void {
 }
 
 function updateStudioUi(): void {
+  document.querySelector<HTMLElement>(".workspace-shell")?.setAttribute("data-studio", activeStudio);
   const studioSwitch = document.querySelector<HTMLElement>(".studio-switch");
   if (studioSwitch) studioSwitch.hidden = !canHostRoom;
   document.querySelectorAll<HTMLButtonElement>(".studio-tab").forEach((button) => {
