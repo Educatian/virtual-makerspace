@@ -1428,3 +1428,87 @@ textarea:focus-visible {
   .workspace-header::after { transition: none; }
   .component-card:hover { transform: none; }
 }
+
+/* ------------------------------------------------------------------
+   Snapino code panel
+------------------------------------------------------------------- */
+.discussion-tabs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.discussion-tab[hidden] { display: none; }
+.workspace-shell[data-studio="snapino"] { --accent: #06b6d4; --accent-rgb: 6, 182, 212; }
+.discussion-panel[data-panel="code"] { overflow-y: auto; }
+.code-panel { display: grid; align-content: start; gap: 12px; padding: 14px 12px 18px; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.code-head h2 { margin: 0; }
+.code-head select,
+.code-controls select,
+.code-controls input {
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--text);
+  background: #0f1622;
+  border: 1px solid var(--border-bright);
+  border-radius: 7px;
+  font-size: 0.76rem;
+}
+.code-controls input { width: 74px; }
+.code-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  list-style: none;
+  background: #0b111b;
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  border-radius: 10px;
+  counter-reset: none;
+}
+.code-list li {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 4px;
+  border-left: 3px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.code-list li[data-op="wait"] { border-left-color: rgba(251, 191, 36, 0.6); }
+.code-list li[data-op="follow"] { border-left-color: rgba(167, 139, 250, 0.7); }
+.code-list .code-empty { display: block; padding: 10px; color: var(--muted); border-left: 0; font-size: 0.8rem; }
+.code-line-no { color: #5f7394; font: 600 0.72rem/1 ui-monospace, "Cascadia Code", monospace; text-align: right; }
+.code-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: #c7d4e6; font-size: 0.78rem; }
+.code-line-actions { display: flex; gap: 2px; }
+.code-line-actions .bare-button { width: 26px; height: 26px; color: #8ea3c2; border-radius: 6px; }
+.code-line-actions .bare-button:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.code-line-actions .bare-button:disabled { opacity: 0.3; }
+.code-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.code-run { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.code-status { margin: 0; color: var(--muted); font-size: 0.78rem; }
+.code-status[data-state="running"] { color: #7dfbc0; }
+.code-status[data-state="dirty"] { color: var(--warning); }
+.pin-leds { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.pin-led {
+  display: grid;
+  grid-template-columns: 12px auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 7px 9px;
+  background: #0f1622;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pin-led i { grid-row: span 2; width: 10px; height: 10px; background: #2a3448; border-radius: 50%; transition: background 120ms, box-shadow 120ms; }
+.pin-led.is-high i { background: #ff4d3d; box-shadow: 0 0 10px #ff4d3d; }
+.pin-led strong { font: 700 0.78rem/1.1 ui-monospace, "Cascadia Code", monospace; }
+.pin-led small { color: var(--muted); font-size: 0.68rem; }
+.code-source summary { color: #9fb3cc; cursor: pointer; font-size: 0.76rem; font-weight: 600; }
+.code-source pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: #cde3ff;
+  background: #070b12;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 0.74rem/1.5 ui-monospace, "Cascadia Code", monospace;
+}

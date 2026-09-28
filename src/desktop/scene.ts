@@ -46,8 +46,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 import type { SharedTransform } from "./collaboration.js";
+import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
 
-export type StudioKind = "circuit" | "greenhouse" | "snap";
+export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino";
 export type ComponentKind =
   | "led"
   | "resistor"
@@ -63,7 +64,8 @@ export type ComponentKind =
   | "snapbattery"
   | "snapswitch"
   | "snaplamp"
-  | "snapmotor";
+  | "snapmotor"
+  | "snapled";
 
 export interface ComponentSpec {
   id: string;
@@ -73,6 +75,8 @@ export interface ComponentSpec {
   color: number;
   leadSeparation: number;
   studio: StudioKind;
+  /** GLB part to render when it differs from the id (Snapino reuses the Snap kit). */
+  model?: string;
 }
 
 export interface EnvironmentState {
@@ -177,7 +181,23 @@ const SNAP_COMPONENTS: ComponentSpec[] = [
   { id: "snap-w4", name: "Snap Wire 4", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 4, studio: "snap" },
 ];
 
-const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS];
+// Snapino Bridge: the same kit wired to an Arduino Nano's pads instead of B1.
+const SNAPINO_COMPONENTS: ComponentSpec[] = [
+  { id: "sno-l1", model: "snap-l1", name: "Lamp L1", detail: "Output load", kind: "snaplamp", color: 0xfde68a, leadSeparation: SNAP_PITCH * 2, studio: "snapino" },
+  { id: "sno-d1", model: "snap-d1", name: "LED D1", detail: "Red · output", kind: "snapled", color: 0xff3b30, leadSeparation: SNAP_PITCH * 2, studio: "snapino" },
+  { id: "sno-m1", model: "snap-m1", name: "Motor M1", detail: "Output load", kind: "snapmotor", color: 0xdc2626, leadSeparation: SNAP_PITCH * 2, studio: "snapino" },
+  { id: "sno-s1", model: "snap-s1", name: "Slide Switch S1", detail: "Input to D2", kind: "snapswitch", color: 0xe5e7eb, leadSeparation: SNAP_PITCH * 2, studio: "snapino" },
+  { id: "sno-w2a", model: "snap-w2", name: "Snap Wire 2", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 2, studio: "snapino" },
+  { id: "sno-w2b", model: "snap-w2", name: "Snap Wire 2", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 2, studio: "snapino" },
+  { id: "sno-w3", model: "snap-w3a", name: "Snap Wire 3", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 3, studio: "snapino" },
+  { id: "sno-w4a", model: "snap-w4", name: "Snap Wire 4", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 4, studio: "snapino" },
+  { id: "sno-w4b", model: "snap-w4", name: "Snap Wire 4", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 4, studio: "snapino" },
+];
+/** Base-grid stud index (row * 9 + col) under each Snapino pad — row B, columns 2–7. */
+const SNAPINO_PADS = { D2: 10, D3: 11, D5: 12, D6: 13, "5V": 14, GND: 15 } as const;
+const SNAPINO_LOADS = ["sno-l1", "sno-d1", "sno-m1"];
+
+const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS, ...SNAPINO_COMPONENTS];
 
 const socketRows = (): number[] => [
   -1.58,
@@ -213,6 +233,10 @@ export class DesktopWorkbenchScene {
   private readonly circuitGroup = new Group();
   private readonly greenhouseGroup = new Group();
   private readonly snapGroup = new Group();
+  private readonly snapinoGroup = new Group();
+  private readonly snapBaseGroup = new Group();
+  private snapinoPins: PinStates = { ...LOW_PINS };
+  private snapinoInputHigh = false;
   private readonly circuitSockets: Vector3[] = [];
   private readonly greenhouseSockets: Vector3[] = [];
   private readonly snapSockets: Vector3[] = [];
@@ -226,6 +250,7 @@ export class DesktopWorkbenchScene {
   private readonly proceduralTable: Mesh[] = [];
   private hovered: Group | null = null;
   private snapShortActive = false;
+  private snapinoWarning = "";
   private readonly resizeObserver: ResizeObserver;
 
   private selected: Group | null = null;
@@ -295,7 +320,7 @@ export class DesktopWorkbenchScene {
 
     this.setupLighting();
     this.setupTable();
-    this.scene.add(this.circuitGroup, this.greenhouseGroup, this.snapGroup);
+    this.scene.add(this.circuitGroup, this.greenhouseGroup, this.snapGroup, this.snapinoGroup, this.snapBaseGroup);
     this.setupBreadboard();
     this.setupGreenhouse();
     this.setupSnapBase();
@@ -324,7 +349,13 @@ export class DesktopWorkbenchScene {
     this.circuitGroup.visible = studio === "circuit";
     this.greenhouseGroup.visible = studio === "greenhouse";
     this.snapGroup.visible = studio === "snap";
-    this.sockets = studio === "greenhouse" ? this.greenhouseSockets : studio === "snap" ? this.snapSockets : this.circuitSockets;
+    this.snapinoGroup.visible = studio === "snapino";
+    this.snapBaseGroup.visible = studio === "snap" || studio === "snapino";
+    this.sockets = studio === "greenhouse"
+      ? this.greenhouseSockets
+      : studio === "snap" || studio === "snapino"
+        ? this.snapSockets
+        : this.circuitSockets;
     this.camera.position.set(studio === "circuit" ? 6.4 : 7.2, studio === "circuit" ? 6.1 : 5.8, studio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(studio === "circuit" ? 0.1 : 0, studio === "circuit" ? 0.2 : 0.55, studio === "circuit" ? 0 : -0.1);
     this.orbit.update();
@@ -335,7 +366,9 @@ export class DesktopWorkbenchScene {
           ? "Greenhouse Studio ready · connect sensors, water, air, and power"
           : studio === "snap"
             ? "Snap Lab ready · snap a battery, switch, lamp, and motor onto the base grid"
-            : "Circuit Bench ready",
+            : studio === "snapino"
+              ? "Snapino Bridge ready · wire a load from a D pin to GND, then upload code"
+              : "Circuit Bench ready",
         "valid",
       );
     }
@@ -981,6 +1014,11 @@ export class DesktopWorkbenchScene {
       circuit: { positions: circuitPositions, specs: CIRCUIT_COMPONENTS, group: this.circuitGroup },
       greenhouse: { positions: greenhousePositions, specs: GREENHOUSE_COMPONENTS, group: this.greenhouseGroup },
       snap: { positions: snapPositions, specs: SNAP_COMPONENTS, group: this.snapGroup },
+      snapino: {
+        positions: [-2.6, -1.95, -1.3, -0.65, 0, 0.65, 1.3, 1.95, 2.6].map((z): [number, number, number] => [3.55, DRAG_Y, z]),
+        specs: SNAPINO_COMPONENTS,
+        group: this.snapinoGroup,
+      },
     };
     COMPONENTS.forEach((spec) => {
       const component = this.createComponent(spec);
@@ -1334,6 +1372,20 @@ export class DesktopWorkbenchScene {
       group.add(knob);
       group.userData.switchOn = false;
     }
+    if (spec.kind === "snapled") {
+      const dome = new Mesh(
+        new SphereGeometry(0.11, 20, 14),
+        new MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.9 }),
+      );
+      dome.scale.y = 1.6;
+      dome.position.set(0, 0.32, -0.02);
+      group.add(dome);
+      group.userData.glowMaterials = [dome.material];
+      const glow = new PointLight(spec.color, 0, 2.4, 1.6);
+      glow.position.y = 0.45;
+      group.add(glow);
+      group.userData.glowLight = glow;
+    }
     if (spec.kind === "snaplamp") {
       const bulb = new Mesh(
         new SphereGeometry(0.17, 24, 16),
@@ -1394,8 +1446,22 @@ export class DesktopWorkbenchScene {
     }
     studs.instanceMatrix.needsUpdate = true;
     base.add(studs);
-    this.snapGroup.userData.proceduralBase = base;
-    this.snapGroup.add(base);
+    this.snapBaseGroup.userData.proceduralBase = base;
+    this.snapBaseGroup.add(base);
+    // Snapino board (procedural stand-in until the Blender model loads): carrier + pads on row B
+    const board = new Group();
+    board.position.x = BOARD_X;
+    const carrier = new Mesh(
+      new RoundedBoxGeometry(3.9, 0.06, 1.0, 3, 0.03),
+      new MeshStandardMaterial({ color: 0x0b2f8f, roughness: 0.35 }),
+    );
+    carrier.position.set(-0.24, 0.29, -1.22);
+    board.add(carrier);
+    const nano = new Mesh(new BoxGeometry(1.9, 0.04, 0.72), new MeshStandardMaterial({ color: 0x0a2a6e, roughness: 0.4 }));
+    nano.position.set(-0.48, 0.36, -1.44);
+    board.add(nano);
+    this.snapinoGroup.userData.proceduralBoard = board;
+    this.snapinoGroup.add(board);
   }
 
   private setupSnapMarkers(): void {
@@ -1607,7 +1673,7 @@ export class DesktopWorkbenchScene {
       for (const [id, component] of this.components) {
         const spec = component.userData.spec as ComponentSpec;
         if (spec.kind === "wire" || spec.kind === "hose") continue;
-        const source = parts.scene.getObjectByName(`part_${id}`);
+        const source = parts.scene.getObjectByName(`part_${spec.model ?? id}`);
         if (!source) continue;
         const detailed = source.clone(true);
         detailed.position.set(0, 0, 0);
@@ -1629,23 +1695,27 @@ export class DesktopWorkbenchScene {
             glowMaterials.push(child.material as MeshStandardMaterial);
           }
         });
-        if (spec.kind === "led" || spec.kind === "snaplamp") component.userData.glowMaterials = glowMaterials;
+        if (spec.kind === "led" || spec.kind === "snaplamp" || spec.kind === "snapled") component.userData.glowMaterials = glowMaterials;
         if (spec.kind === "snapswitch") this.setSwitch(component, Boolean(component.userData.switchOn));
         const rotor = detailed.getObjectByProperty("name", "rotor") ?? detailed.children
           .flatMap((child) => [child, ...child.children])
           .find((child) => child.name.startsWith("rotor"));
         if (rotor) component.userData.rotor = rotor;
       }
-      const snapBase = parts.scene.getObjectByName("snap_base");
-      const proceduralBase = this.snapGroup.userData.proceduralBase as Group | undefined;
-      if (snapBase && proceduralBase) {
-        const detailedBase = snapBase.clone(true);
-        detailedBase.position.set(BOARD_X, 0, 0);
-        detailedBase.traverse((child) => {
+      for (const [name, group, key] of [
+        ["snap_base", this.snapBaseGroup, "proceduralBase"],
+        ["snapino_board", this.snapinoGroup, "proceduralBoard"],
+      ] as const) {
+        const source = parts.scene.getObjectByName(name);
+        const procedural = group.userData[key] as Group | undefined;
+        if (!source || !procedural) continue;
+        const detailed = source.clone(true);
+        detailed.position.set(BOARD_X, 0, 0);
+        detailed.traverse((child) => {
           if (child instanceof Mesh) child.receiveShadow = true;
         });
-        proceduralBase.visible = false;
-        this.snapGroup.add(detailedBase);
+        procedural.visible = false;
+        group.add(detailed);
       }
       this.evaluateCurrentSystem();
       if (this.selected) this.selectionBox.setFromObject(this.selected);
@@ -1912,7 +1982,7 @@ export class DesktopWorkbenchScene {
       this.events.onStatus(
         this.activeStudio === "greenhouse"
           ? `${component.userData.spec.name} magnetically connected to the farm terminal`
-          : this.activeStudio === "snap"
+          : this.activeStudio === "snap" || this.activeStudio === "snapino"
             ? `${component.userData.spec.name} snapped onto the base grid`
             : `${component.userData.spec.name} connected to the breadboard`,
         "valid",
@@ -2207,6 +2277,7 @@ export class DesktopWorkbenchScene {
   private evaluateCurrentSystem(announce = false): boolean {
     if (this.activeStudio === "greenhouse") return this.evaluateGreenhouse(announce);
     if (this.activeStudio === "snap") return this.evaluateSnap(announce);
+    if (this.activeStudio === "snapino") return this.evaluateSnapino(announce);
     return this.evaluateCircuit(announce);
   }
 
@@ -2385,6 +2456,116 @@ export class DesktopWorkbenchScene {
     return powered;
   }
 
+  /** Pin levels come from the running program (main.ts drives a SnapinoRunner). */
+  setSnapinoPins(pins: PinStates): void {
+    this.snapinoPins = { ...pins };
+    if (this.activeStudio === "snapino") this.evaluateSnapino();
+  }
+
+  /** D2 reads HIGH when S1 (or a wire) bridges it to the 5V pad. */
+  readSnapinoInput(): boolean {
+    return this.snapinoInputHigh;
+  }
+
+  /**
+   * Snapino: a load runs when one end sits on a net driven HIGH (5V, or a D pin the
+   * program set HIGH) and the other end reaches GND. 5V straight to GND is a short.
+   */
+  private evaluateSnapino(announce = false): boolean {
+    const parent = Array.from(this.snapSockets, (_, index) => index);
+    const find = (value: number): number => {
+      while (parent[value] !== value) {
+        parent[value] = parent[parent[value]];
+        value = parent[value];
+      }
+      return value;
+    };
+    const part = (id: string): Group => this.components.get(id)!;
+    const socketsOf = (id: string): EndpointSockets => part(id).userData.sockets as EndpointSockets;
+    for (const spec of SNAPINO_COMPONENTS) {
+      const sockets = socketsOf(spec.id);
+      if (!this.isFullyConnected(sockets)) continue;
+      if (spec.kind === "snapwire" || (spec.kind === "snapswitch" && part(spec.id).userData.switchOn)) {
+        parent[find(sockets[0])] = find(sockets[1]);
+      }
+    }
+    const vcc = find(SNAPINO_PADS["5V"]);
+    const gnd = find(SNAPINO_PADS.GND);
+    const short = vcc === gnd;
+    this.snapinoInputHigh = !short && find(SNAPINO_PADS.D2) === vcc;
+    const pinShort = OUTPUT_PINS.find((pin) => this.snapinoPins[pin] && find(SNAPINO_PADS[pin]) === gnd);
+    const high = (net: number): boolean =>
+      net === vcc || OUTPUT_PINS.some((pin) => this.snapinoPins[pin] && find(SNAPINO_PADS[pin]) === net);
+
+    const running = new Set<string>();
+    if (!short) {
+      for (const id of SNAPINO_LOADS) {
+        const sockets = socketsOf(id);
+        if (!this.isFullyConnected(sockets)) continue;
+        const a = find(sockets[0]);
+        const b = find(sockets[1]);
+        if ((high(a) && b === gnd) || (high(b) && a === gnd)) running.add(id);
+      }
+    }
+    for (const id of ["sno-l1", "sno-d1"]) {
+      const load = part(id);
+      for (const material of (load.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
+        material.emissiveIntensity = running.has(id) ? 2.6 : 0;
+      }
+      const light = load.userData.glowLight as PointLight | undefined;
+      if (light) light.intensity = running.has(id) ? 2.6 : 0;
+    }
+    part("sno-m1").userData.motorOn = running.has("sno-m1");
+    const powered = running.size > 0;
+    this.events.onCircuitState(powered);
+
+    const warning = short
+      ? "Short circuit · 5V is joined straight to GND — remove a snap wire"
+      : pinShort
+        ? `${pinShort} is HIGH but wired straight to GND — put a load between them`
+        : "";
+    if (warning && warning !== this.snapinoWarning) this.events.onStatus(warning, "warning");
+    this.snapinoWarning = warning;
+    if (announce && !warning) {
+      const wired = SNAPINO_LOADS.filter((id) => this.isFullyConnected(socketsOf(id)));
+      const names = [...running].map((id) => part(id).userData.spec.name as string);
+      const message = powered
+        ? `${names.join(" · ")} running`
+        : wired.length === 0
+          ? "Snap a lamp, LED, or motor from a D pin to GND"
+          : OUTPUT_PINS.every((pin) => !this.snapinoPins[pin])
+            ? "Loads are wired · open the Code tab and upload a program"
+            : "Program is running · check that each load's other end reaches GND";
+      this.events.onStatus(message, powered ? "valid" : "warning");
+    }
+    return powered;
+  }
+
+  loadSnapinoDemo(): void {
+    if (this.activeStudio !== "snapino") return;
+    // L1 from D5 down to row D and back to GND. Wiring S1 (D2 → 5V) is left to
+    // the team: that path must cross this loop, the design problem of the task.
+    const layout: Record<string, [number, number]> = {
+      "sno-l1": [SNAPINO_PADS.D5, 30],
+      "sno-w3": [30, 33],
+      "sno-w2a": [33, SNAPINO_PADS.GND],
+    };
+    for (const [id, pair] of Object.entries(layout)) {
+      const component = this.components.get(id);
+      if (!component) continue;
+      const a = this.snapSockets[pair[0]];
+      const b = this.snapSockets[pair[1]];
+      const midpoint = a.clone().add(b).multiplyScalar(0.5);
+      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
+      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
+      component.userData.sockets = pair;
+      component.updateMatrixWorld(true);
+      this.emitTransform(component, true);
+    }
+    this.evaluateSnapino(true);
+    this.events.onAttempt(this.captureAttempt("Snapino lamp wired to D5"));
+  }
+
   private evaluateGreenhouse(announce = false): boolean {
     const connected = (id: string): boolean => {
       const component = this.components.get(id);
@@ -2492,8 +2673,8 @@ export class DesktopWorkbenchScene {
         marker.scale.setScalar(baseScale * (1 + pulse * (0.3 + field)));
       }
     }
-    if (this.activeStudio === "snap") {
-      const motor = this.components.get("snap-m1");
+    if (this.activeStudio === "snap" || this.activeStudio === "snapino") {
+      const motor = this.components.get(this.activeStudio === "snap" ? "snap-m1" : "sno-m1");
       const rotor = motor?.userData.rotor as Object3D | undefined;
       if (rotor && motor?.userData.motorOn) rotor.rotation.y += 0.42;
     }

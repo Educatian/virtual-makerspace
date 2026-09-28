@@ -1,3 +1,5 @@
+import type { SnapinoStatement } from "./snapino.js";
+
 export type Vec3Tuple = [number, number, number];
 
 export interface SharedTransform {
@@ -25,7 +27,7 @@ export interface Participant {
 
 export type CollaborationRole = "builder" | "verifier";
 export type CollaborationPhase = "frame" | "build" | "test" | "reflect";
-export type StudioChoice = "circuit" | "greenhouse" | "snap";
+export type StudioChoice = "circuit" | "greenhouse" | "snap" | "snapino";
 export type ParticipantActivity =
   | "available"
   | "inspecting"
@@ -53,7 +55,7 @@ export interface ActivityTrace {
   createdAt: number;
   action: TraceAction;
   phase: CollaborationPhase;
-  studio: "circuit" | "greenhouse" | "snap";
+  studio: "circuit" | "greenhouse" | "snap" | "snapino";
   objectId?: string;
   objectName?: string;
   detail?: string;
@@ -103,6 +105,7 @@ type RoomMessage =
     }
   | { kind: "trace"; participantId: string; trace: ActivityTrace }
   | { kind: "studio"; participantId: string; studio: StudioChoice }
+  | { kind: "program"; participantId: string; program: SnapinoStatement[]; running: boolean }
   | {
       kind: "attention";
       participantId: string;
@@ -142,6 +145,7 @@ export interface RoomEvents {
   onState: (transforms: Record<string, SharedTransform>) => void;
   onPhase: (phase: CollaborationPhase, participantId: string) => void;
   onStudio: (studio: StudioChoice, participantId: string) => void;
+  onProgram: (program: SnapinoStatement[], running: boolean, participantId: string) => void;
   onTrace: (trace: ActivityTrace) => void;
   onAttention: (
     componentId: string,
@@ -161,6 +165,7 @@ const noOpEvents: RoomEvents = {
   onState: () => undefined,
   onPhase: () => undefined,
   onStudio: () => undefined,
+  onProgram: () => undefined,
   onTrace: () => undefined,
   onAttention: () => undefined,
 };
@@ -316,6 +321,11 @@ export class DesktopRoom {
     this.post({ kind: "studio", participantId: this.participant.id, studio });
   }
 
+  /** Shares an uploaded Snapino program; the room persists the latest one. */
+  setProgram(program: SnapinoStatement[], running: boolean): void {
+    this.post({ kind: "program", participantId: this.participant.id, program, running });
+  }
+
   sendAttention(componentId: string, componentName: string): void {
     this.post({
       kind: "attention",
@@ -329,7 +339,7 @@ export class DesktopRoom {
   recordTrace(
     action: TraceAction,
     phase: CollaborationPhase,
-    studio: "circuit" | "greenhouse" | "snap",
+    studio: StudioChoice,
     details: Pick<ActivityTrace, "objectId" | "objectName" | "detail"> = {},
   ): ActivityTrace {
     const trace: ActivityTrace = {
@@ -566,6 +576,9 @@ export class DesktopRoom {
         break;
       case "studio":
         this.events.onStudio(message.studio, message.participantId);
+        break;
+      case "program":
+        this.events.onProgram(message.program, message.running, message.participantId);
         break;
       case "attention":
         this.events.onAttention(

@@ -26,8 +26,35 @@ const COMPONENT_IDS = new Set([
   "snap-w3a",
   "snap-w3b",
   "snap-w4",
+  "sno-l1",
+  "sno-d1",
+  "sno-m1",
+  "sno-s1",
+  "sno-w2a",
+  "sno-w2b",
+  "sno-w3",
+  "sno-w4a",
+  "sno-w4b",
 ]);
-const STUDIOS = new Set(["circuit", "greenhouse", "snap"]);
+const STUDIOS = new Set(["circuit", "greenhouse", "snap", "snapino"]);
+const SNAPINO_PINS = new Set(["D3", "D5", "D6"]);
+
+function sanitizeProgram(value) {
+  if (!Array.isArray(value) || value.length > 24) return null;
+  const program = [];
+  for (const item of value) {
+    if (item?.op === "write" && SNAPINO_PINS.has(item.pin) && typeof item.value === "boolean") {
+      program.push({ op: "write", pin: item.pin, value: item.value });
+    } else if (item?.op === "wait" && Number.isFinite(item.ms)) {
+      program.push({ op: "wait", ms: Math.min(5000, Math.max(50, Math.round(item.ms / 50) * 50)) });
+    } else if (item?.op === "follow" && SNAPINO_PINS.has(item.pin) && typeof item.invert === "boolean") {
+      program.push({ op: "follow", pin: item.pin, invert: item.invert });
+    } else {
+      return null;
+    }
+  }
+  return program;
+}
 const studioOr = (value, fallback = "circuit") => (STUDIOS.has(value) ? value : fallback);
 const MAX_ROOM_MESSAGES_PER_SECOND = 120;
 const MAX_CLAIMS_PER_PARTICIPANT = 16;
@@ -47,6 +74,7 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "state-response",
   "signal",
   "studio",
+  "program",
 ]);
 
 function componentResource(value, allowEndpoint = true) {
@@ -344,6 +372,8 @@ export default {
             persisted,
             role: membershipRole,
             studio: studioOr(metadata.studio),
+            program: metadata.program ?? null,
+            programRunning: Boolean(metadata.programRunning),
           });
         } catch (error) {
           console.error("Room membership write failed", error);
@@ -490,9 +520,12 @@ export class MakerspaceRoom extends DurableObject {
       const current = this.claims.get(resourceId);
       if (current && current.participantId !== attachment.id) return;
     }
-    if (message.kind === "studio") {
+    if (message.kind === "studio" || message.kind === "program") {
+      const update = message.kind === "studio"
+        ? { studio: message.studio }
+        : { program: message.program, programRunning: message.running };
       this.state.storage.get("metadata").then((metadata) => {
-        if (metadata) return this.state.storage.put("metadata", { ...metadata, studio: message.studio });
+        if (metadata) return this.state.storage.put("metadata", { ...metadata, ...update });
       });
     }
     const encoded = JSON.stringify(message);
@@ -576,6 +609,11 @@ export class MakerspaceRoom extends DurableObject {
       if (!participant.canHost || !STUDIOS.has(incoming.studio)) return null;
       return { kind: "studio", participantId: participant.id, studio: incoming.studio };
     }
+    if (incoming.kind === "program") {
+      const program = sanitizeProgram(incoming.program);
+      if (!program || typeof incoming.running !== "boolean") return null;
+      return { kind: "program", participantId: participant.id, program, running: incoming.running };
+    }
     if (incoming.kind === "phase") {
       if (!["frame", "build", "test", "reflect"].includes(incoming.phase)) return null;
       return { kind: "phase", participantId: participant.id, phase: incoming.phase };
@@ -594,7 +632,7 @@ export class MakerspaceRoom extends DurableObject {
           createdAt: Date.now(),
           action: trace.action,
           phase: trace.phase,
-          studio: ["greenhouse", "snap"].includes(trace.studio) ? trace.studio : "circuit",
+          studio: studioOr(trace.studio),
           objectId: trace.objectId ? String(trace.objectId).slice(0, 160) : undefined,
           objectName: trace.objectName ? String(trace.objectName).slice(0, 160) : undefined,
           detail: trace.detail ? String(trace.detail).slice(0, 240) : undefined,

@@ -692,6 +692,62 @@ for r_ in range(ROWS_S):
           0.13, base, mat("grid_print", (0.3, 0.4, 0.5), 0.6))
 
 
+
+# ================================================================ SNAPINO BRIDGE
+# Snapino (Arduino extension for Snap Circuits; Seo, Koh et al. 2023 BLV camp):
+# a Nano on a blue carrier that rides row A of the base, with snap pads on
+# row B studs for D2 D3 D5 D6 5V GND, each with a printed and braille label.
+BRAILLE.update({"e": (1, 5), "f": (1, 2, 4), "g": (1, 2, 4, 5), "n": (1, 3, 4, 5), "v": (1, 2, 3, 6)})
+DIGIT.update({"5": "e", "6": "f"})
+
+# LED D1 on a 2-strip
+r = snap_strip("snap-d1", 2, "D1")
+cyl("snap-d1_mount", (0, 0.12, -0.02), 0.13, 0.08, BLACK_PLASTIC, r, parts, verts=24)
+lathe("snap-d1_epoxy", [(0.0, 0.0), (0.12, 0.0), (0.12, 0.03), (0.105, 0.035), (0.105, 0.2), (0.095, 0.25),
+                        (0.07, 0.29), (0.035, 0.31), (0.0, 0.315)], (0, 0.16, -0.02),
+      mat("LED_glow_snap-d1", (1.0, 0.08, 0.05), 0.08, emit=(1.0, 0.08, 0.05), transmission=0.8, ior=1.52), r, parts)
+box("snap-d1_anvil", (-0.03, 0.28, -0.02), (0.04, 0.16, 0.02), STEEL, r, parts)
+
+board = empty("snapino_board", (0, 0, 0), parts)
+PX0 = -(COLS_S - 1) * SNAP_PITCH / 2
+ROW = lambda i: -(ROWS_S - 1) * SNAP_PITCH / 2 + i * SNAP_PITCH
+COL = lambda i: PX0 + i * SNAP_PITCH
+carrier = mat("snapino_carrier_blue", (0.02, 0.16, 0.55), 0.35, coat=0.4)
+box("snapino_carrier", ((COL(0) + COL(7)) / 2, 0.29, (ROW(0) + ROW(1)) / 2 - 0.02), (COL(7) - COL(0) + 0.5, 0.06, 1.0),
+    carrier, board, parts, bevel=0.03)
+# Arduino Nano
+nx, nz = COL(3), ROW(0)
+box("snapino_nano_pcb", (nx, 0.36, nz), (1.9, 0.035, 0.72), PCB_BLUE, board, parts, bevel=0.01)
+box("snapino_mcu", (nx + 0.15, 0.4, nz), (0.28, 0.035, 0.28), IC, board, parts, bevel=0.004)
+for side in range(4):
+    for k in range(8):
+        off = -0.105 + k * 0.03
+        dx, dz = [(off, -0.155), (off, 0.155), (-0.155, off), (0.155, off)][side]
+        box(f"snapino_qfp_{side}_{k}", (nx + 0.15 + dx, 0.385, nz + dz), (0.012 if side < 2 else 0.03, 0.01, 0.03 if side < 2 else 0.012),
+            TIN, board, parts)
+box("snapino_usb", (nx - 0.88, 0.42, nz), (0.24, 0.12, 0.3), STEEL, board, parts, bevel=0.01)
+box("snapino_reset", (nx - 0.3, 0.4, nz + 0.2), (0.1, 0.05, 0.1), WHITE_PLASTIC, board, parts, bevel=0.01)
+box("snapino_ftdi", (nx - 0.45, 0.39, nz - 0.1), (0.18, 0.03, 0.12), IC, board, parts)
+box("snapino_led_pwr", (nx + 0.55, 0.385, nz + 0.22), (0.04, 0.02, 0.025),
+    mat("board_led_on", (0.1, 1, 0.3), 0.2, emit=(0.1, 1, 0.3), emit_strength=4), board, parts)
+for k in range(15):
+    for s in (-1, 1):
+        box(f"snapino_hdr_{k}_{s}", (nx - 0.84 + k * 0.12, 0.35, nz + s * 0.3), (0.03, 0.06, 0.03), GOLD, board, parts)
+label("snapino_title", "SNAPINO U1", (COL(6) + 0.1, 0.323, ROW(0) + 0.05), 0.12, board)
+tube("snapino_usb_cable", [(nx - 1.0, 0.42, nz), (nx - 1.6, 0.36, nz - 0.1), (COL(0) - 0.8, 0.12, nz - 0.4),
+                           (COL(0) - 1.6, 0.02, nz - 0.9)], 0.045, mat("usb_cable_grey", (0.12, 0.12, 0.13), 0.6), board, parts)
+# pads on row B: rivet + trace to the Nano + printed/braille label
+pad_trace = mat("snapino_trace", (0.8, 0.62, 0.3), 0.3, 1.0)
+for c_, name in ((1, "D2"), (2, "D3"), (3, "D5"), (4, "D6"), (5, "5V"), (6, "GND")):
+    x, z = COL(c_), ROW(1)
+    lathe(f"snapino_pad_{name}", [(0.0, 0.0), (0.12, 0.0), (0.12, 0.02), (0.1, 0.04), (0.06, 0.055), (0.0, 0.06)],
+          (x, 0.322, z), SNAP_RIVET, board, parts, steps=24)
+    box(f"snapino_trace_{name}", (x, 0.323, (z + nz + 0.36) / 2), (0.03, 0.004, abs(z - nz) - 0.36), pad_trace, board, parts)
+    colour = mat("pad_red", (0.85, 0.1, 0.08), 0.4) if name == "5V" else mat("pad_black", (0.02, 0.02, 0.02), 0.4) \
+        if name == "GND" else PRINT_WHITE
+    label(f"snapino_label_{name}", name, (x, 0.323, z + 0.2), 0.1, board, colour)
+    braille(f"snapino_br_{name}", name, x - 0.07, 0.326, z + 0.34, board)
+
 # ================================================================ ROOM
 room = collection("room")
 R = empty("room", (0, 0, 0), room)

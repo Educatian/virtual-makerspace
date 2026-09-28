@@ -1,3 +1,16 @@
+import {
+  EXAMPLES,
+  MAX_STATEMENTS,
+  OUTPUT_PINS,
+  SnapinoRunner,
+  clampMs,
+  describeStatement,
+  sanitizeProgram,
+  toArduino,
+  type PinStates,
+  type SnapinoPin,
+  type SnapinoStatement,
+} from "./snapino.js";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
@@ -54,6 +67,12 @@ let powered = false;
 let activeStudio: StudioKind = toStudio(params.get("studio"));
 let speechEnabled = false;
 let lobbyStudio: StudioKind = activeStudio;
+let program: SnapinoStatement[] = EXAMPLES.blink.program.map((statement) => ({ ...statement }));
+let programRunning = false;
+let programDirty = false;
+let pinLevels: PinStates = { D3: false, D5: false, D6: false };
+let snapinoRunner: SnapinoRunner | null = null;
+let joinedProgram: { program: SnapinoStatement[]; running: boolean } | null = null;
 let roomStudioLocked = false;
 /** Hosts (admins, room owners, or anyone in local preview) may move the whole room to another studio. */
 let canHostRoom = true;
@@ -61,12 +80,13 @@ let canHostRoom = true;
 /** Learning path order: Spark → Skill Build → Community Challenge. */
 const STUDIO_PATH: Array<{ studio: StudioKind; name: string; icon: string; stage: string; time: string; alt: string }> = [
   { studio: "snap", name: "Accessible Snap Lab", icon: "ph-puzzle-piece", stage: "Spark", time: "15 min", alt: "Snap Circuits-style base grid with a battery, switch, lamp and motor loop" },
+  { studio: "snapino", name: "Snapino Bridge", icon: "ph-code-block", stage: "Skill build", time: "30 min", alt: "Snapino board with an Arduino Nano on a snap base, a lamp wired from pin D5 to GND" },
   { studio: "circuit", name: "Circuit Bench", icon: "ph-circuitry", stage: "Skill build", time: "45 min", alt: "3D workbench with a breadboard, LEDs, resistors and a battery" },
   { studio: "greenhouse", name: "Greenhouse", icon: "ph-plant", stage: "Challenge", time: "Multi-session", alt: "Smart greenhouse bench with sensors, pump, fan and solar panel" },
 ];
 
 function toStudio(value: string | null | undefined): StudioKind {
-  return value === "greenhouse" || value === "snap" ? value : "circuit";
+  return value === "greenhouse" || value === "snap" || value === "snapino" ? value : "circuit";
 }
 
 interface StudioCopy {
@@ -118,6 +138,22 @@ const STUDIO_COPY: Record<StudioKind, StudioCopy> = {
     opened: "Greenhouse Studio opened",
     testActivity: "Field test",
     testTrace: "Ran greenhouse field test",
+  },
+  snapino: {
+    subtitle: "Snapino Bridge",
+    heading: "Snapino",
+    caption: "Wire loads to Arduino pins, then code them — hardware meets software",
+    testTooltip: "Test Snapino wiring",
+    challenge: "Make L1 blink from D5, then let S1 on D2 decide when it runs",
+    challengeAction: "Wire a lamp from D5 to GND",
+    challengeLabel: "Load Snapino lamp",
+    hypothesis: "If L1 runs from D5 to GND and the program sets D5 HIGH, L1 lights; S1 bridging D2 to 5V lets code read the switch.",
+    chat: "Discuss your wiring and code…",
+    seed: "Two roles: the wirer snaps loads from a D pin to GND; the coder builds loop() in the Code tab and reads each line aloud before uploading. Swap roles after the first upload.",
+    goal: "Co-build a circuit and a program that controls it, and explain which pin drives which load.",
+    opened: "Snapino Bridge opened",
+    testActivity: "Wiring test",
+    testTrace: "Ran Snapino wiring test",
   },
   snap: {
     subtitle: "Accessible Snap Lab",
@@ -442,7 +478,9 @@ async function registerRoomMembership(roomCode: string): Promise<{ ok: boolean; 
       const payload = await response.json().catch(() => ({ error: "Room access denied" })) as { error?: string };
       return { ok: false, error: payload.error || `Room access denied (${response.status})` };
     }
-    const joined = await response.json().catch(() => ({})) as { studio?: string; role?: string };
+    const joined = await response.json().catch(() => ({})) as { studio?: string; role?: string; program?: unknown; programRunning?: boolean };
+    const roomProgram = sanitizeProgram(joined.program);
+    joinedProgram = roomProgram ? { program: roomProgram, running: Boolean(joined.programRunning) } : null;
     return { ok: true, studio: joined.studio ? toStudio(joined.studio) : undefined, role: joined.role };
   } catch (error) {
     console.warn("Room membership could not be verified.", error);
@@ -516,6 +554,13 @@ function enterWorkspace(): void {
       if (workbench) workbench.applySharedState(transforms);
       else queuedSharedState = transforms;
     },
+    onProgram: (next, running, participantId) => {
+      const sanitized = sanitizeProgram(next);
+      if (!sanitized) return;
+      const author = participants.find((participant) => participant.id === participantId)?.name ?? "A teammate";
+      applyProgram(sanitized, running);
+      showSceneStatus(`${author} ${running ? "uploaded" : "stopped"} the Snapino program`, "neutral");
+    },
     onStudio: (studio, participantId) => {
       const mover = participants.find((participant) => participant.id === participantId)?.name ?? "The host";
       switchStudio(studio, true);
@@ -570,6 +615,7 @@ function enterWorkspace(): void {
     },
     onAttempt: addAttempt,
     onCircuitState: (isPowered) => {
+      if (activeStudio === "snapino") renderPinLeds();
       if (isPowered && !powered && activeStudio === "snap") playChime();
       powered = isPowered;
       renderCircuitState();
@@ -585,6 +631,18 @@ function enterWorkspace(): void {
   }
 
   workbench.switchStudio(activeStudio, false);
+  snapinoRunner = new SnapinoRunner(
+    (pins) => {
+      pinLevels = pins;
+      workbench?.setSnapinoPins(pins);
+      renderPinLeds();
+    },
+    () => workbench?.readSnapinoInput() ?? false,
+  );
+  if (joinedProgram) {
+    applyProgram(joinedProgram.program, joinedProgram.running);
+    joinedProgram = null;
+  }
 
   loadActivityTraces();
   renderComponentPalette();
@@ -677,6 +735,7 @@ function renderWorkspace(): void {
             <button class="discussion-tab" data-tab="voice" data-tooltip="Voice chat" aria-label="Voice chat" type="button"><i class="ph ph-waveform"></i><span class="sr-only">Voice</span></button>
             <button class="discussion-tab" data-tab="team" data-tooltip="Shared activity" aria-label="Shared activity" type="button"><i class="ph ph-users-three"></i><span class="sr-only">Shared activity</span></button>
             <button class="discussion-tab" data-tab="notes" data-tooltip="Notes and reflection" aria-label="Notes and reflection" type="button"><i class="ph ph-note-pencil"></i><span class="sr-only">Notes</span></button>
+            <button class="discussion-tab" data-tab="code" data-tooltip="Snapino code" aria-label="Snapino code" type="button" hidden><i class="ph ph-code-block"></i><span class="sr-only">Code</span></button>
           </div>
 
           <div class="discussion-panel is-active" data-panel="chat">
@@ -705,6 +764,35 @@ function renderWorkspace(): void {
 
           <div class="discussion-panel" data-panel="team">
             <div class="team-panel" id="team-panel-content"></div>
+          </div>
+
+          <div class="discussion-panel" data-panel="code">
+            <section class="code-panel" aria-labelledby="code-title">
+              <header class="code-head">
+                <h2 class="section-label" id="code-title">Snapino U1 · loop()</h2>
+                <label class="sr-only" for="code-example">Load an example program</label>
+                <select id="code-example">
+                  <option value="">Examples…</option>
+                  ${Object.entries(EXAMPLES).map(([key, example]) => `<option value="${key}">${escapeHtml(example.label)}</option>`).join("")}
+                </select>
+              </header>
+              <ol class="code-list" id="code-list" aria-label="Program statements, run top to bottom, repeating forever"></ol>
+              <div class="code-add" role="group" aria-label="Add a statement">
+                <button class="secondary-button compact" type="button" data-add="write"><i class="ph ph-toggle-right"></i> Pin on/off</button>
+                <button class="secondary-button compact" type="button" data-add="wait"><i class="ph ph-timer"></i> Wait</button>
+                <button class="secondary-button compact" type="button" data-add="follow"><i class="ph ph-arrows-left-right"></i> Follow S1</button>
+              </div>
+              <div class="code-run">
+                <button class="primary-button" id="code-upload" type="button"><i class="ph ph-upload-simple"></i> Upload &amp; Run</button>
+                <button class="secondary-button" id="code-stop" type="button"><i class="ph ph-stop"></i> Stop</button>
+              </div>
+              <p class="code-status" id="code-status" role="status" aria-live="polite">Not uploaded</p>
+              <div class="pin-leds" id="pin-leds" aria-label="Pin levels"></div>
+              <details class="code-source" open>
+                <summary>Arduino C</summary>
+                <pre id="code-source" tabindex="0" aria-label="Generated Arduino code"></pre>
+              </details>
+            </section>
           </div>
 
           <div class="discussion-panel" data-panel="notes">
@@ -782,6 +870,7 @@ function componentIcon(component: ComponentSpec): string {
   if (component.kind === "snapbattery") return "ph-battery-plus";
   if (component.kind === "snapswitch") return "ph-toggle-right";
   if (component.kind === "snapmotor") return "ph-fan";
+  if (component.kind === "snapled") return "ph-lightbulb";
   return "ph-lightbulb-filament";
 }
 
@@ -843,6 +932,7 @@ function bindWorkspaceEvents(): void {
   document.querySelector("#load-field-test")?.addEventListener("click", () => {
     if (activeStudio === "greenhouse") workbench?.loadGreenhouseDemo();
     else if (activeStudio === "snap") workbench?.loadSnapDemo();
+    else if (activeStudio === "snapino") workbench?.loadSnapinoDemo();
     else workbench?.loadCircuitDemo();
   });
   document.querySelector<HTMLButtonElement>("#toggle-speech")?.addEventListener("click", (event) => {
@@ -884,12 +974,14 @@ function bindWorkspaceEvents(): void {
     renderSelection();
   });
 
+  bindCodePanel();
   document.addEventListener("keydown", onKeyboardShortcut);
   window.addEventListener("beforeunload", disposeWorkspace, { once: true });
 }
 
 function switchStudio(studio: StudioKind, remote = false): void {
   if (!workbench || studio === activeStudio) return;
+  if (activeStudio === "snapino" && programRunning) snapinoRunner?.stop();
   activeStudio = studio;
   selectedComponent = null;
   powered = false;
@@ -905,6 +997,7 @@ function switchStudio(studio: StudioKind, remote = false): void {
   updateStudioUi();
   loadChatHistory();
   workbench.saveAttempt(STUDIO_COPY[studio].opened);
+  if (studio === "snapino" && programRunning) snapinoRunner?.start(program);
 }
 
 function installNativeTooltips(): void {
@@ -915,6 +1008,10 @@ function installNativeTooltips(): void {
 
 function updateStudioUi(): void {
   document.querySelector<HTMLElement>(".workspace-shell")?.setAttribute("data-studio", activeStudio);
+  const codeTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="code"]');
+  if (codeTab) codeTab.hidden = activeStudio !== "snapino";
+  if (activeStudio !== "snapino" && codeTab?.classList.contains("is-active")) switchDiscussionTab("chat");
+  renderCodePanel();
   const studioSwitch = document.querySelector<HTMLElement>(".studio-switch");
   if (studioSwitch) studioSwitch.hidden = !canHostRoom;
   document.querySelectorAll<HTMLButtonElement>(".studio-tab").forEach((button) => {
@@ -1142,6 +1239,12 @@ function phasePrompt(phase: CollaborationPhase): string {
       build: "One maker connects a subsystem while the team checks power, signal, and physical routing.",
       test: "The team inspects water, air, sensing, and power, then everyone marks ready for the field test.",
       reflect: "Use the live readings to explain what changed and name one rule for the next design.",
+    },
+    snapino: {
+      frame: "Agree which pin drives which load. The coder states the plan for loop() before anyone snaps a part.",
+      build: "The wirer snaps each load from its pin to GND while the coder writes the matching lines and reads them aloud.",
+      test: "Predict what each pin will do, upload together, and compare the 3D board with the pin indicators.",
+      reflect: "Explain the difference between wiring (where current can flow) and code (when a pin is HIGH).",
     },
     snap: {
       frame: "One maker traces the planned loop aloud from B1 + to B1 −. The partner checks it by touch labels before anything is snapped.",
@@ -1528,6 +1631,136 @@ function onKeyboardShortcut(event: KeyboardEvent): void {
   if (event.key === "Escape") document.querySelector<HTMLDialogElement>("#reflection-dialog")?.close();
 }
 
+// ---------------------------------------------------------------- Snapino code panel
+
+function applyProgram(next: SnapinoStatement[], running: boolean): void {
+  program = next.map((statement) => ({ ...statement }));
+  programRunning = running;
+  programDirty = false;
+  if (running && activeStudio === "snapino") snapinoRunner?.start(program);
+  else snapinoRunner?.stop();
+  renderCodePanel();
+}
+
+function uploadProgram(): void {
+  applyProgram(program, true);
+  room?.setProgram(program, true);
+  room?.recordTrace("test", collaborationPhase, activeStudio, { detail: `Uploaded a ${program.length}-line program` });
+  showSceneStatus(`Uploaded · ${program.length} line${program.length === 1 ? "" : "s"} running on U1`, "valid");
+}
+
+function stopProgram(): void {
+  applyProgram(program, false);
+  room?.setProgram(program, false);
+}
+
+function editProgram(mutate: (draft: SnapinoStatement[]) => void, focusIndex?: number): void {
+  mutate(program);
+  programDirty = true;
+  renderCodePanel();
+  if (focusIndex !== undefined) {
+    document.querySelector<HTMLElement>(`#code-list li[data-index="${focusIndex}"] select, #code-list li[data-index="${focusIndex}"] input`)?.focus();
+  }
+}
+
+function pinSelect(index: number, pin: string): string {
+  return `<select data-field="pin" data-index="${index}" aria-label="Pin for line ${index + 1}">${OUTPUT_PINS.map((option) => `<option${option === pin ? " selected" : ""}>${option}</option>`).join("")}</select>`;
+}
+
+function renderCodePanel(): void {
+  const list = document.querySelector<HTMLOListElement>("#code-list");
+  if (!list) return;
+  list.innerHTML = program.map((statement, index) => {
+    const controls = statement.op === "write"
+      ? `<span>Turn</span>${pinSelect(index, statement.pin)}<select data-field="value" data-index="${index}" aria-label="Level for line ${index + 1}"><option value="on"${statement.value ? " selected" : ""}>ON · HIGH</option><option value="off"${statement.value ? "" : " selected"}>OFF · LOW</option></select>`
+      : statement.op === "wait"
+        ? `<span>Wait</span><input type="number" min="50" max="5000" step="50" value="${statement.ms}" data-field="ms" data-index="${index}" aria-label="Milliseconds for line ${index + 1}"><span>ms</span>`
+        : `${pinSelect(index, statement.pin)}<select data-field="invert" data-index="${index}" aria-label="Relation for line ${index + 1}"><option value="follow"${statement.invert ? "" : " selected"}>follows S1</option><option value="invert"${statement.invert ? " selected" : ""}>opposite of S1</option></select>`;
+    return `<li data-index="${index}" data-op="${statement.op}" aria-label="Line ${index + 1}: ${escapeHtml(describeStatement(statement))}">
+      <span class="code-line-no" aria-hidden="true">${index + 1}</span>
+      <span class="code-controls">${controls}</span>
+      <span class="code-line-actions">
+        <button class="bare-button" type="button" data-move="-1" data-index="${index}" aria-label="Move line ${index + 1} up"${index === 0 ? " disabled" : ""}><i class="ph ph-caret-up"></i></button>
+        <button class="bare-button" type="button" data-move="1" data-index="${index}" aria-label="Move line ${index + 1} down"${index === program.length - 1 ? " disabled" : ""}><i class="ph ph-caret-down"></i></button>
+        <button class="bare-button" type="button" data-remove="${index}" aria-label="Delete line ${index + 1}"><i class="ph ph-trash"></i></button>
+      </span>
+    </li>`;
+  }).join("") || '<li class="code-empty">loop() is empty · add a statement below</li>';
+  const source = document.querySelector<HTMLElement>("#code-source");
+  if (source) source.textContent = toArduino(program);
+  const status = document.querySelector<HTMLElement>("#code-status");
+  if (status) {
+    status.textContent = programRunning
+      ? programDirty ? "Running the uploaded version · edits not uploaded yet" : "Running on U1"
+      : programDirty ? "Edited · upload to run" : "Stopped";
+    status.dataset.state = programRunning ? (programDirty ? "dirty" : "running") : "stopped";
+  }
+  document.querySelectorAll<HTMLButtonElement>("[data-add]").forEach((button) => {
+    button.disabled = program.length >= MAX_STATEMENTS;
+  });
+  renderPinLeds();
+}
+
+function renderPinLeds(): void {
+  const leds = document.querySelector<HTMLElement>("#pin-leds");
+  if (!leds) return;
+  const input = workbench?.readSnapinoInput() ?? false;
+  const rows: Array<[string, boolean, string]> = [
+    ...OUTPUT_PINS.map((pin): [string, boolean, string] => [pin, pinLevels[pin], "output"]),
+    ["D2", input, "input · S1"],
+  ];
+  leds.innerHTML = rows.map(([pin, high, role]) =>
+    `<span class="pin-led${high ? " is-high" : ""}"><i aria-hidden="true"></i><strong>${pin}</strong><small>${high ? "HIGH" : "LOW"} · ${role}</small></span>`,
+  ).join("");
+}
+
+function bindCodePanel(): void {
+  const list = document.querySelector<HTMLOListElement>("#code-list");
+  list?.addEventListener("change", (event) => {
+    const target = event.target as HTMLInputElement | HTMLSelectElement;
+    const index = Number(target.dataset.index);
+    const statement = program[index];
+    if (!statement) return;
+    editProgram(() => {
+      if (target.dataset.field === "pin" && statement.op !== "wait") statement.pin = target.value as SnapinoPin;
+      if (target.dataset.field === "value" && statement.op === "write") statement.value = target.value === "on";
+      if (target.dataset.field === "invert" && statement.op === "follow") statement.invert = target.value === "invert";
+      if (target.dataset.field === "ms" && statement.op === "wait") statement.ms = clampMs(Number(target.value));
+    });
+  });
+  list?.addEventListener("click", (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+    if (!button) return;
+    const index = Number(button.dataset.index ?? button.dataset.remove);
+    if (button.dataset.remove !== undefined) {
+      editProgram((draft) => draft.splice(index, 1), Math.max(0, index - 1));
+    } else if (button.dataset.move) {
+      const to = index + Number(button.dataset.move);
+      editProgram((draft) => draft.splice(to, 0, ...draft.splice(index, 1)), to);
+    }
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-add]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const op = button.dataset.add;
+      const statement: SnapinoStatement = op === "wait"
+        ? { op: "wait", ms: 500 }
+        : op === "follow"
+          ? { op: "follow", pin: "D5", invert: false }
+          : { op: "write", pin: "D5", value: true };
+      editProgram((draft) => draft.push(statement), program.length);
+    });
+  });
+  document.querySelector<HTMLSelectElement>("#code-example")?.addEventListener("change", (event) => {
+    const select = event.currentTarget as HTMLSelectElement;
+    const example = EXAMPLES[select.value];
+    if (!example) return;
+    editProgram((draft) => draft.splice(0, draft.length, ...example.program.map((statement) => ({ ...statement }))));
+    select.value = "";
+  });
+  document.querySelector("#code-upload")?.addEventListener("click", uploadProgram);
+  document.querySelector("#code-stop")?.addEventListener("click", stopProgram);
+}
+
 function speak(text: string): void {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
@@ -1569,6 +1802,8 @@ function disposeWorkspace(): void {
   cancelAnimationFrame(voiceFrame);
   window.clearTimeout(activityTimer);
   document.removeEventListener("keydown", onKeyboardShortcut);
+  snapinoRunner?.stop();
+  snapinoRunner = null;
   workbench?.dispose();
   room?.close();
   workbench = null;
