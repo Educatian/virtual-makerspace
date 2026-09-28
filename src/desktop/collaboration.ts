@@ -25,6 +25,7 @@ export interface Participant {
 
 export type CollaborationRole = "builder" | "verifier";
 export type CollaborationPhase = "frame" | "build" | "test" | "reflect";
+export type StudioChoice = "circuit" | "greenhouse" | "snap";
 export type ParticipantActivity =
   | "available"
   | "inspecting"
@@ -101,6 +102,7 @@ type RoomMessage =
       phase: CollaborationPhase;
     }
   | { kind: "trace"; participantId: string; trace: ActivityTrace }
+  | { kind: "studio"; participantId: string; studio: StudioChoice }
   | {
       kind: "attention";
       participantId: string;
@@ -139,6 +141,7 @@ export interface RoomEvents {
   onStateRequest: (targetId: string) => void;
   onState: (transforms: Record<string, SharedTransform>) => void;
   onPhase: (phase: CollaborationPhase, participantId: string) => void;
+  onStudio: (studio: StudioChoice, participantId: string) => void;
   onTrace: (trace: ActivityTrace) => void;
   onAttention: (
     componentId: string,
@@ -157,6 +160,7 @@ const noOpEvents: RoomEvents = {
   onStateRequest: () => undefined,
   onState: () => undefined,
   onPhase: () => undefined,
+  onStudio: () => undefined,
   onTrace: () => undefined,
   onAttention: () => undefined,
 };
@@ -305,6 +309,11 @@ export class DesktopRoom {
     this.post({ kind: "phase", participantId: this.participant.id, phase });
     this.events.onPhase(phase, this.participant.id);
     this.emitParticipants();
+  }
+
+  /** Host-only on the server: moves every participant in the room to one studio. */
+  setStudio(studio: StudioChoice): void {
+    this.post({ kind: "studio", participantId: this.participant.id, studio });
   }
 
   sendAttention(componentId: string, componentName: string): void {
@@ -554,6 +563,9 @@ export class DesktopRoom {
         break;
       case "trace":
         this.events.onTrace(message.trace);
+        break;
+      case "studio":
+        this.events.onStudio(message.studio, message.participantId);
         break;
       case "attention":
         this.events.onAttention(

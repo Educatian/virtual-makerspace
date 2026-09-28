@@ -53,6 +53,17 @@ let currentName = initialName;
 let powered = false;
 let activeStudio: StudioKind = toStudio(params.get("studio"));
 let speechEnabled = false;
+let lobbyStudio: StudioKind = activeStudio;
+let roomStudioLocked = false;
+/** Hosts (admins, room owners, or anyone in local preview) may move the whole room to another studio. */
+let canHostRoom = true;
+
+/** Learning path order: Spark → Skill Build → Community Challenge. */
+const STUDIO_PATH: Array<{ studio: StudioKind; name: string; icon: string; stage: string; time: string; alt: string }> = [
+  { studio: "snap", name: "Accessible Snap Lab", icon: "ph-puzzle-piece", stage: "Spark", time: "15 min", alt: "Snap Circuits-style base grid with a battery, switch, lamp and motor loop" },
+  { studio: "circuit", name: "Circuit Bench", icon: "ph-circuitry", stage: "Skill build", time: "45 min", alt: "3D workbench with a breadboard, LEDs, resistors and a battery" },
+  { studio: "greenhouse", name: "Greenhouse", icon: "ph-plant", stage: "Challenge", time: "Multi-session", alt: "Smart greenhouse bench with sensors, pump, fan and solar panel" },
+];
 
 function toStudio(value: string | null | undefined): StudioKind {
   return value === "greenhouse" || value === "snap" ? value : "circuit";
@@ -229,6 +240,7 @@ function renderLobby(): void {
             <button class="icon-button" id="copy-room" type="button" aria-label="Copy room code"><i class="ph ph-copy"></i></button>
           </div>
           <p class="field-help" id="room-help">${isAdmin ? "Enter a code or create a new room." : "Use the code from your host."}</p>
+          <p class="room-studio" id="room-studio" aria-live="polite" hidden></p>
 
           <div class="lobby-actions ${isAdmin ? "" : "is-single"}">
             <button class="primary-button" id="enter-room" type="button"><i class="ph ${accessRequired ? "ph-google-logo" : "ph-door-open"}"></i> ${accessRequired ? "Continue with Google" : "Enter Room"}</button>
@@ -242,17 +254,20 @@ function renderLobby(): void {
           </div>
         </article>
 
-        <aside class="lobby-preview" aria-label="Inside the makerspace">
-          <img class="lobby-preview-img" src="${import.meta.env.BASE_URL}lobby/workbench.webp" alt="3D workbench with a breadboard, LEDs, resistors and a battery" width="1280" height="897" decoding="async">
+        <aside class="lobby-preview" aria-label="Choose a studio">
+          <img class="lobby-preview-img" id="lobby-preview-img" src="${import.meta.env.BASE_URL}lobby/${lobbyStudio}.webp" alt="${escapeHtml(studioPathItem(lobbyStudio).alt)}" width="1280" height="897" decoding="async">
           <div class="lobby-preview-shade" aria-hidden="true"></div>
-          <div class="preview-topline"><span class="status-dot"></span><span>Workbench ready</span></div>
+          <div class="preview-topline"><span class="status-dot"></span><span id="lobby-preview-caption">${escapeHtml(STUDIO_COPY[lobbyStudio].caption)}</span></div>
           <div class="lobby-preview-foot">
-            <p class="section-label">Three studios</p>
-            <ul class="lobby-studios">
-              <li><i class="ph ph-circuitry" aria-hidden="true"></i> Circuit Bench</li>
-              <li><i class="ph ph-plant" aria-hidden="true"></i> Greenhouse</li>
-              <li><i class="ph ph-puzzle-piece" aria-hidden="true"></i> Accessible Snap Lab</li>
-            </ul>
+            <p class="section-label" id="studio-picker-label">Learning path</p>
+            <div class="lobby-studios" role="radiogroup" aria-labelledby="studio-picker-label">
+              ${STUDIO_PATH.map((item, index) => `
+                <button class="lobby-studio" type="button" role="radio" data-studio="${item.studio}" aria-checked="${item.studio === lobbyStudio}">
+                  <span class="lobby-studio-step" aria-hidden="true">${index + 1}</span>
+                  <i class="ph ${item.icon}" aria-hidden="true"></i>
+                  <span class="lobby-studio-copy"><strong>${item.name}</strong><small>${item.stage} · ${item.time}</small></span>
+                </button>`).join("")}
+            </div>
           </div>
         </aside>
       </section>
@@ -268,7 +283,20 @@ function renderLobby(): void {
   document.querySelector<HTMLButtonElement>("#new-room")?.addEventListener("click", () => {
     const input = document.querySelector<HTMLInputElement>("#room-code")!;
     input.value = createRoomCode();
+    setRoomStudioNote(null, "new");
   });
+  document.querySelectorAll<HTMLButtonElement>(".lobby-studio").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!roomStudioLocked) selectLobbyStudio(toStudio(button.dataset.studio));
+    });
+  });
+  let lookupTimer = 0;
+  document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input", (event) => {
+    window.clearTimeout(lookupTimer);
+    const code = (event.currentTarget as HTMLInputElement).value.trim().toUpperCase();
+    lookupTimer = window.setTimeout(() => void lookupRoomStudio(code), 350);
+  });
+  void lookupRoomStudio(initialRoomCode);
 
   document.querySelector<HTMLButtonElement>("#test-mic")?.addEventListener("click", testMicrophone);
   document.querySelector<HTMLButtonElement>("#enter-room")?.addEventListener("click", async () => {
@@ -306,6 +334,8 @@ function renderLobby(): void {
       }
       return;
     }
+    activeStudio = joined.studio ?? lobbyStudio;
+    canHostRoom = authProfile.provider !== "cloudflare-access" || authProfile.role === "admin" || joined.role === "owner";
     enterWorkspace();
   });
 }
@@ -338,19 +368,82 @@ async function loadAuthProfile(): Promise<void> {
   }
 }
 
-async function registerRoomMembership(roomCode: string): Promise<{ ok: boolean; error?: string }> {
+function studioPathItem(studio: StudioKind) {
+  return STUDIO_PATH.find((item) => item.studio === studio)!;
+}
+
+function selectLobbyStudio(studio: StudioKind): void {
+  lobbyStudio = studio;
+  document.querySelectorAll<HTMLButtonElement>(".lobby-studio").forEach((button) => {
+    button.setAttribute("aria-checked", String(button.dataset.studio === studio));
+    button.disabled = roomStudioLocked && button.dataset.studio !== studio;
+  });
+  const image = document.querySelector<HTMLImageElement>("#lobby-preview-img");
+  if (image) {
+    image.src = `${import.meta.env.BASE_URL}lobby/${studio}.webp`;
+    image.alt = studioPathItem(studio).alt;
+  }
+  const caption = document.querySelector<HTMLElement>("#lobby-preview-caption");
+  if (caption) caption.textContent = STUDIO_COPY[studio].caption;
+  params.set("studio", studio);
+  history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+}
+
+function setRoomStudioNote(studio: StudioKind | null, state: "existing" | "new" | "missing" | "clear"): void {
+  const note = document.querySelector<HTMLElement>("#room-studio");
+  roomStudioLocked = state === "existing" && studio !== null;
+  if (studio) selectLobbyStudio(studio);
+  else selectLobbyStudio(lobbyStudio);
+  if (!note) return;
+  note.hidden = state === "clear";
+  note.dataset.state = state;
+  note.innerHTML = state === "existing" && studio
+    ? `<i class="ph ph-lock-simple" aria-hidden="true"></i> This room runs <strong>${escapeHtml(studioPathItem(studio).name)}</strong>`
+    : state === "new"
+      ? '<i class="ph ph-sparkle" aria-hidden="true"></i> New room · pick its studio on the right'
+      : '<i class="ph ph-warning-circle" aria-hidden="true"></i> No room with this code yet';
+}
+
+/** Members see which studio a room runs before entering; the studio belongs to the room, not the visitor. */
+async function lookupRoomStudio(code: string): Promise<void> {
+  if (authProfile.provider !== "cloudflare-access" || !ROOM_CODE_PATTERN.test(code)) {
+    setRoomStudioNote(null, "clear");
+    return;
+  }
+  try {
+    const response = await fetch(`/api/rooms/${encodeURIComponent(code)}`, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    const current = document.querySelector<HTMLInputElement>("#room-code")?.value.trim().toUpperCase();
+    if (current !== code) return;
+    if (response.status === 404) {
+      setRoomStudioNote(null, authProfile.role === "admin" ? "new" : "missing");
+      return;
+    }
+    if (!response.ok) return setRoomStudioNote(null, "clear");
+    const room = await response.json() as { studio?: string };
+    setRoomStudioNote(toStudio(room.studio), "existing");
+  } catch {
+    setRoomStudioNote(null, "clear");
+  }
+}
+
+async function registerRoomMembership(roomCode: string): Promise<{ ok: boolean; error?: string; studio?: StudioKind; role?: string }> {
   if (authProfile.provider !== "cloudflare-access") return { ok: true };
   try {
     const response = await fetch(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
       method: "POST",
       credentials: "same-origin",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ studio: lobbyStudio }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({ error: "Room access denied" })) as { error?: string };
       return { ok: false, error: payload.error || `Room access denied (${response.status})` };
     }
-    return { ok: true };
+    const joined = await response.json().catch(() => ({})) as { studio?: string; role?: string };
+    return { ok: true, studio: joined.studio ? toStudio(joined.studio) : undefined, role: joined.role };
   } catch (error) {
     console.warn("Room membership could not be verified.", error);
     return { ok: false, error: "The room service is temporarily unavailable." };
@@ -387,6 +480,7 @@ async function testMicrophone(): Promise<void> {
 
 function enterWorkspace(): void {
   params.set("room", currentRoomCode);
+  params.set("studio", activeStudio);
   params.delete("name");
   history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
   renderWorkspace();
@@ -421,6 +515,11 @@ function enterWorkspace(): void {
     onState: (transforms) => {
       if (workbench) workbench.applySharedState(transforms);
       else queuedSharedState = transforms;
+    },
+    onStudio: (studio, participantId) => {
+      const mover = participants.find((participant) => participant.id === participantId)?.name ?? "The host";
+      switchStudio(studio, true);
+      showSceneStatus(`${mover} moved the room to ${STUDIO_COPY[studio].heading}`, "neutral");
     },
     onPhase: (phase, participantId) => {
       collaborationPhase = phase;
@@ -688,7 +787,13 @@ function componentIcon(component: ComponentSpec): string {
 
 function bindWorkspaceEvents(): void {
   document.querySelectorAll<HTMLButtonElement>(".studio-tab").forEach((button) => {
-    button.addEventListener("click", () => switchStudio(toStudio(button.dataset.studio)));
+    button.addEventListener("click", () => {
+      if (!canHostRoom) return;
+      const studio = toStudio(button.dataset.studio);
+      if (studio === activeStudio) return;
+      switchStudio(studio);
+      room?.setStudio(studio);
+    });
   });
   document.querySelectorAll<HTMLButtonElement>(".discussion-tab").forEach((button) => {
     button.addEventListener("click", () => switchDiscussionTab(button.dataset.tab || "chat"));
@@ -783,7 +888,7 @@ function bindWorkspaceEvents(): void {
   window.addEventListener("beforeunload", disposeWorkspace, { once: true });
 }
 
-function switchStudio(studio: StudioKind): void {
+function switchStudio(studio: StudioKind, remote = false): void {
   if (!workbench || studio === activeStudio) return;
   activeStudio = studio;
   selectedComponent = null;
@@ -791,8 +896,10 @@ function switchStudio(studio: StudioKind): void {
   params.set("studio", studio);
   history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
   workbench.switchStudio(studio);
-  room?.setPhase("frame");
-  room?.recordTrace("phase", "frame", activeStudio, { detail: `Opened ${studio} studio` });
+  if (!remote) {
+    room?.setPhase("frame");
+    room?.recordTrace("phase", "frame", activeStudio, { detail: `Opened ${studio} studio` });
+  }
   renderComponentPalette();
   renderSelection();
   updateStudioUi();
@@ -807,6 +914,8 @@ function installNativeTooltips(): void {
 }
 
 function updateStudioUi(): void {
+  const studioSwitch = document.querySelector<HTMLElement>(".studio-switch");
+  if (studioSwitch) studioSwitch.hidden = !canHostRoom;
   document.querySelectorAll<HTMLButtonElement>(".studio-tab").forEach((button) => {
     const active = button.dataset.studio === activeStudio;
     button.classList.toggle("is-active", active);

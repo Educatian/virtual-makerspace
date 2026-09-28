@@ -18,7 +18,17 @@ const COMPONENT_IDS = new Set([
   "irrigation-hose",
   "vent-fan",
   "solar-panel",
+  "snap-b1",
+  "snap-s1",
+  "snap-l1",
+  "snap-m1",
+  "snap-w2",
+  "snap-w3a",
+  "snap-w3b",
+  "snap-w4",
 ]);
+const STUDIOS = new Set(["circuit", "greenhouse", "snap"]);
+const studioOr = (value, fallback = "circuit") => (STUDIOS.has(value) ? value : fallback);
 const MAX_ROOM_MESSAGES_PER_SECOND = 120;
 const MAX_CLAIMS_PER_PARTICIPANT = 16;
 const ALLOWED_MESSAGE_KINDS = new Set([
@@ -36,6 +46,7 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "state-request",
   "state-response",
   "signal",
+  "studio",
 ]);
 
 function componentResource(value, allowEndpoint = true) {
@@ -227,7 +238,7 @@ async function roomMetadata(env, roomCode) {
   return response.status === 200 ? response.json() : null;
 }
 
-async function createRoomRecord(env, roomCode, creator) {
+async function createRoomRecord(env, roomCode, creator, studio = "circuit") {
   const response = await roomStub(env, roomCode).fetch("https://room.internal/meta", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -237,6 +248,7 @@ async function createRoomRecord(env, roomCode, creator) {
       createdByEmail: creator.email,
       createdByName: creator.name,
       createdAt: Date.now(),
+      studio: studioOr(studio),
     }),
   });
   if (!response.ok) throw new Error(`Room registry write failed (${response.status})`);
@@ -255,8 +267,8 @@ async function ensureKnownRoom(env, roomCode) {
   });
 }
 
-function roomCodeFromPath(pathname) {
-  const match = pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
+function roomCodeFromPath(pathname, suffix = "/join") {
+  const match = pathname.match(new RegExp(`^/api/rooms/([^/]+)${suffix}$`));
   const code = match ? decodeURIComponent(match[1]).trim().toUpperCase() : "";
   return ROOM_CODE.test(code) ? code : null;
 }
@@ -303,21 +315,36 @@ export default {
         });
       }
 
+      const infoCode = roomCodeFromPath(url.pathname, "");
+      if (infoCode && request.method === "GET") {
+        const metadata = await ensureKnownRoom(env, infoCode);
+        if (!metadata) return json({ room: infoCode, exists: false }, { status: 404 });
+        return json({ room: infoCode, exists: true, studio: studioOr(metadata.studio) });
+      }
+
       const joinCode = roomCodeFromPath(url.pathname);
       if (joinCode && request.method === "POST") {
         try {
+          const body = await request.json().catch(() => ({}));
           let metadata = await ensureKnownRoom(env, joinCode);
           let created = false;
           if (!metadata) {
             if (identity.role !== "admin") {
               return json({ error: "Only an administrator can create a new room" }, { status: 404 });
             }
-            metadata = await createRoomRecord(env, joinCode, identity);
+            metadata = await createRoomRecord(env, joinCode, identity, body?.studio);
             created = true;
           }
           const membershipRole = metadata.createdByEmail === identity.email ? "owner" : "member";
           const persisted = await recordRoomMembership(env, joinCode, identity, membershipRole);
-          return json({ room: joinCode, joined: true, created, persisted, role: membershipRole });
+          return json({
+            room: joinCode,
+            joined: true,
+            created,
+            persisted,
+            role: membershipRole,
+            studio: studioOr(metadata.studio),
+          });
         } catch (error) {
           console.error("Room membership write failed", error);
           return json({ error: "Room membership could not be stored" }, { status: 503 });
@@ -353,6 +380,7 @@ export default {
         headers.set("x-maker-id", identity.id);
         headers.set("x-maker-session-id", sessionId);
         headers.set("x-maker-name", encodeURIComponent(identity.name));
+        headers.set("x-maker-host", identity.role === "admin" || metadata.createdByEmail === identity.email ? "1" : "0");
         const room = roomStub(env, roomCode);
         return room.fetch(new Request(request, { headers }));
       }
@@ -392,6 +420,7 @@ export class MakerspaceRoom extends DurableObject {
           createdByEmail: String(incoming.createdByEmail || "system").toLowerCase().slice(0, 320),
           createdByName: String(incoming.createdByName || "Makerspace administrator").slice(0, 80),
           createdAt: Number.isFinite(incoming.createdAt) ? incoming.createdAt : Date.now(),
+          studio: studioOr(incoming.studio),
         };
         await this.state.storage.put("metadata", metadata);
         return json(metadata, { status: 201 });
@@ -408,6 +437,7 @@ export class MakerspaceRoom extends DurableObject {
       id: request.headers.get("x-maker-session-id") || crypto.randomUUID(),
       userId: request.headers.get("x-maker-id") || "unknown",
       name: decodeURIComponent(request.headers.get("x-maker-name") || "Maker").slice(0, 80),
+      canHost: request.headers.get("x-maker-host") === "1",
       joinedAt: Date.now(),
     };
     this.state.acceptWebSocket(server);
@@ -459,6 +489,11 @@ export class MakerspaceRoom extends DurableObject {
         : message.componentId;
       const current = this.claims.get(resourceId);
       if (current && current.participantId !== attachment.id) return;
+    }
+    if (message.kind === "studio") {
+      this.state.storage.get("metadata").then((metadata) => {
+        if (metadata) return this.state.storage.put("metadata", { ...metadata, studio: message.studio });
+      });
     }
     const encoded = JSON.stringify(message);
     for (const peer of this.state.getWebSockets()) {
@@ -536,6 +571,10 @@ export class MakerspaceRoom extends DurableObject {
         participantName: participant.name,
         componentId,
       };
+    }
+    if (incoming.kind === "studio") {
+      if (!participant.canHost || !STUDIOS.has(incoming.studio)) return null;
+      return { kind: "studio", participantId: participant.id, studio: incoming.studio };
     }
     if (incoming.kind === "phase") {
       if (!["frame", "build", "test", "reflect"].includes(incoming.phase)) return null;
