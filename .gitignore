@@ -72,3 +72,7 @@ public/ui/
 # Unity local credentials and generated backups
 unity/ProjectSettings/Packages/com.unity.services.vivox/Settings.json
 unity/**/*.blend1*
+
+# Blender working files (rebuild with blender/build_makerspace.py)
+*.blend
+*.blend1

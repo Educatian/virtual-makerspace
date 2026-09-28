@@ -23,6 +23,8 @@ import {
   PCFSoftShadowMap,
   Plane,
   PlaneGeometry,
+  PMREMGenerator,
+  PointLight,
   Quaternion,
   Raycaster,
   RingGeometry,
@@ -37,6 +39,8 @@ import {
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 import type { SharedTransform } from "./collaboration.js";
@@ -193,6 +197,9 @@ export class DesktopWorkbenchScene {
   private readonly previewBeams: Mesh<CylinderGeometry, MeshBasicMaterial>[] = [];
   private readonly flexMotion = new Map<string, { previous: Vector3; sway: number; velocity: number }>();
   private readonly selectionBox = new BoxHelper(new Group(), COLORS.blue);
+  private readonly hoverBox = new BoxHelper(new Group(), 0xe2e8f0);
+  private readonly proceduralTable: Mesh[] = [];
+  private hovered: Group | null = null;
   private readonly resizeObserver: ResizeObserver;
 
   private selected: Group | null = null;
@@ -254,6 +261,11 @@ export class DesktopWorkbenchScene {
 
     this.scene.add(this.selectionBox);
     this.selectionBox.visible = false;
+    const hoverMaterial = this.hoverBox.material as { transparent: boolean; opacity: number };
+    hoverMaterial.transparent = true;
+    hoverMaterial.opacity = 0.45;
+    this.hoverBox.visible = false;
+    this.scene.add(this.hoverBox);
 
     this.setupLighting();
     this.setupTable();
@@ -263,6 +275,7 @@ export class DesktopWorkbenchScene {
     this.setupComponents();
     this.setupSnapMarkers();
     this.bindInteractions();
+    void this.loadDetailedModels();
 
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(this.host);
@@ -528,7 +541,11 @@ export class DesktopWorkbenchScene {
   }
 
   private setupLighting(): void {
-    const ambient = new AmbientLight(0xc7d2e0, 1.8);
+    const pmrem = new PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.55;
+    pmrem.dispose();
+    const ambient = new AmbientLight(0xc7d2e0, 0.9);
     this.scene.add(ambient);
     const key = new DirectionalLight(0xfff0d8, 3.1);
     key.position.set(4, 8, 5);
@@ -548,6 +565,7 @@ export class DesktopWorkbenchScene {
     tabletop.position.y = -0.13;
     tabletop.receiveShadow = true;
     this.scene.add(tabletop);
+    this.proceduralTable.push(tabletop);
 
     const tray = new Mesh(
       new BoxGeometry(2.45, 0.12, 5.7),
@@ -896,6 +914,10 @@ export class DesktopWorkbenchScene {
         group.add(lead);
       }
       group.userData.glowMaterials = [bodyMaterial];
+      const glow = new PointLight(spec.color, 0, 3.2, 1.6);
+      glow.position.y = 0.3;
+      group.add(glow);
+      group.userData.glowLight = glow;
     }
 
     if (spec.kind === "resistor") {
@@ -1312,7 +1334,13 @@ export class DesktopWorkbenchScene {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    if (!this.dragging || this.dragPointerId !== event.pointerId) return;
+    if (!this.dragging) {
+      if (event.buttons) this.setHover(null);
+      else this.updateHover(event.clientX, event.clientY);
+      return;
+    }
+    if (this.dragPointerId !== event.pointerId) return;
+    this.setHover(null);
     if (this.draggingEndpoint) {
       this.moveEndpoint(event);
       return;
@@ -1335,6 +1363,74 @@ export class DesktopWorkbenchScene {
       this.transformBroadcastAt = now;
     }
   };
+
+  private updateHover(clientX: number, clientY: number): void {
+    const endpoint = this.pickEndpoint(clientX, clientY);
+    this.setHover(endpoint?.component ?? this.pickComponent(clientX, clientY));
+  }
+
+  private setHover(component: Group | null): void {
+    if (this.hovered === component) return;
+    this.hovered = component;
+    const visible = Boolean(component && component !== this.selected);
+    this.hoverBox.visible = visible;
+    if (component && visible) this.hoverBox.setFromObject(component);
+    this.renderer.domElement.style.cursor = component ? (this.remoteOwners.has(component.userData.componentId as string) ? "not-allowed" : "grab") : "";
+  }
+
+  /** Swap procedural meshes for the Blender-built room + detailed parts (blender/build_makerspace.py). */
+  private async loadDetailedModels(): Promise<void> {
+    const loader = new GLTFLoader();
+    const base = import.meta.env.BASE_URL;
+    try {
+      const [room, parts] = await Promise.all([
+        loader.loadAsync(`${base}models/makerspace_room.glb`),
+        loader.loadAsync(`${base}models/makerspace_parts.glb`),
+      ]);
+      room.scene.traverse((child) => {
+        if (child instanceof Mesh) child.receiveShadow = true;
+      });
+      this.scene.add(room.scene);
+      this.scene.background = new Color(0x1b2027);
+      for (const mesh of this.proceduralTable) mesh.visible = false;
+
+      for (const [id, component] of this.components) {
+        const spec = component.userData.spec as ComponentSpec;
+        if (spec.kind === "wire" || spec.kind === "hose") continue;
+        const source = parts.scene.getObjectByName(`part_${id}`);
+        if (!source) continue;
+        const detailed = source.clone(true);
+        detailed.position.set(0, 0, 0);
+        for (const child of [...component.children]) {
+          if (!(child instanceof PointLight)) component.remove(child);
+        }
+        component.add(detailed);
+        const glowMaterials: MeshStandardMaterial[] = [];
+        detailed.traverse((child) => {
+          child.userData.componentRoot = component;
+          if (!(child instanceof Mesh)) return;
+          child.castShadow = true;
+          child.receiveShadow = true;
+          const material = child.material as MeshStandardMaterial;
+          if (material.name.startsWith("LED_glow")) {
+            child.material = material.clone();
+            (child.material as MeshStandardMaterial).emissive.setHex(spec.color);
+            (child.material as MeshStandardMaterial).emissiveIntensity = 0;
+            glowMaterials.push(child.material as MeshStandardMaterial);
+          }
+        });
+        if (spec.kind === "led") component.userData.glowMaterials = glowMaterials;
+        const rotor = detailed.getObjectByProperty("name", "rotor") ?? detailed.children
+          .flatMap((child) => [child, ...child.children])
+          .find((child) => child.name.startsWith("rotor"));
+        if (rotor) component.userData.rotor = rotor;
+      }
+      this.evaluateCurrentSystem();
+      if (this.selected) this.selectionBox.setFromObject(this.selected);
+    } catch (error) {
+      console.warn("Detailed makerspace models unavailable; using procedural meshes.", error);
+    }
+  }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     if (!this.dragging || this.dragPointerId !== event.pointerId) return;
@@ -1946,6 +2042,8 @@ export class DesktopWorkbenchScene {
         for (const material of (led.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
           material.emissiveIntensity = lit ? 3.2 : 0;
         }
+        const glowLight = led.userData.glowLight as PointLight | undefined;
+        if (glowLight) glowLight.intensity = lit ? 2.4 : 0;
         powered ||= lit;
       }
     } else {
@@ -1954,6 +2052,8 @@ export class DesktopWorkbenchScene {
         for (const material of (led.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
           material.emissiveIntensity = 0;
         }
+        const glowLight = led.userData.glowLight as PointLight | undefined;
+        if (glowLight) glowLight.intensity = 0;
       }
     }
     this.events.onCircuitState(powered);
