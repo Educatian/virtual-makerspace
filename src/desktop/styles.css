@@ -1512,3 +1512,21 @@ textarea:focus-visible {
   border-radius: 8px;
   font: 0.74rem/1.5 ui-monospace, "Cascadia Code", monospace;
 }
+
+/* ── AI teammate (Bolt) ───────────────────────────────────────────── */
+.avatar.is-agent,
+.presence-avatar.is-agent { color: #f3e8ff; background: #3b2a57; border-color: #a77bf0; }
+.avatar.is-agent i,
+.presence-avatar.is-agent > i.ph-robot { position: static; font-size: 1rem; color: inherit; background: none; border: 0; }
+.teammate-card { display: grid; gap: 7px; padding: 10px; background: #130f1f; border: 1px solid #3b2a57; border-radius: 8px; }
+.teammate-card.is-empty { background: #0f1723; border-color: var(--border); border-style: dashed; }
+.teammate-card p { margin: 0; color: var(--muted); font-size: 0.65rem; line-height: 1.48; }
+.teammate-card .secondary-button { justify-self: start; font-size: 0.63rem; }
+.teammate-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #e3d4fb; font-size: 0.66rem; font-weight: 650; }
+.teammate-heading > span { display: flex; align-items: center; gap: 6px; }
+.teammate-actions { gap: 2px; }
+.teammate-notebook { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.teammate-notebook li { display: grid; gap: 3px; padding-left: 9px; border-left: 2px solid #a77bf0; }
+.teammate-notebook strong { color: #e3d4fb; font-size: 0.64rem; text-transform: capitalize; }
+.teammate-notebook q { color: var(--text); font-size: 0.66rem; line-height: 1.45; }
+.teammate-notebook small { color: var(--muted); font-size: 0.57rem; }

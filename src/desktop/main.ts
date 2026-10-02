@@ -26,6 +26,7 @@ import {
   type Participant,
   type RoomChatMessage,
 } from "./collaboration.js";
+import { AI_TEAMMATE_NAME, AiTeammate, forgetAiTeammate } from "./ai-teammate.js";
 import {
   DesktopWorkbenchScene,
   type ComponentSpec,
@@ -58,6 +59,8 @@ let authProfile: AuthProfile = {
 };
 
 let room: DesktopRoom | null = null;
+/** Bolt, when this tab hosts the AI teammate. */
+let aiTeammate: AiTeammate | null = null;
 let workbench: DesktopWorkbenchScene | null = null;
 let participants: Participant[] = [];
 let selectedComponent: ComponentSpec | null = null;
@@ -529,6 +532,12 @@ function enterWorkspace(): void {
   room = new DesktopRoom(currentRoomCode, currentName, {
     onParticipants: (next) => {
       participants = next;
+      // One Bolt per room: if another tab's Bolt joined first, ours steps aside.
+      const ours = aiTeammate ? next.find((participant) => participant.id === aiTeammate?.id) : undefined;
+      if (ours && next.some((participant) => participant.kind === "agent" && participant.id !== ours.id &&
+        (participant.joinedAt < ours.joinedAt || (participant.joinedAt === ours.joinedAt && participant.id < ours.id)))) {
+        removeAiTeammate();
+      }
       renderParticipants();
       renderTeamPanel();
     },
@@ -541,7 +550,9 @@ function enterWorkspace(): void {
       else owners.delete(componentId);
       workbench?.setOwner(
         componentId,
-        owner && owner.id !== room?.participant.id ? owner : null,
+        owner && owner.id !== room?.participant.id
+          ? { ...owner, kind: isAgentId(owner.id) ? "agent" : "human" }
+          : null,
       );
       renderSelection();
     },
@@ -652,6 +663,59 @@ function enterWorkspace(): void {
   loadChatHistory();
   renderTeamPanel();
   addAttempt(workbench.captureAttempt(STUDIO_COPY[activeStudio].opened));
+  // Wait for presence from anyone already here, so a shared study link doesn't spawn two Bolts.
+  if (params.get("teammate") === "ai") window.setTimeout(inviteAiTeammate, 1500);
+}
+
+/**
+ * Brings Bolt, the teachable AI teammate, into the room as a participant hosted by this tab.
+ * URL options (study conditions): `?teammate=ai` invites on entry, `?agentRole=builder|verifier`,
+ * `?agentProfile=novice|intermediate`, and `?condition=PF` keeps Bolt from voicing its own
+ * reasoning unless asked.
+ */
+function inviteAiTeammate(): void {
+  if (!room || !workbench || aiTeammate || participants.some((participant) => participant.kind === "agent")) return;
+  const requestedRole = params.get("agentRole");
+  const role: CollaborationRole = requestedRole === "builder" || requestedRole === "verifier"
+    ? requestedRole
+    : room.participant.role === "builder" ? "verifier" : "builder";
+  const profile = params.get("agentProfile") === "intermediate" ? "intermediate" : "novice";
+  const explain = (params.get("condition") ?? "DI").toUpperCase() !== "PF";
+  aiTeammate = new AiTeammate({
+    roomCode: currentRoomCode,
+    authId: authProfile.id,
+    studio: () => activeStudio,
+    phase: () => collaborationPhase,
+    transforms: () => workbench?.getSharedTransforms() ?? {},
+    placementTransform: (componentId, sockets) => workbench?.placementTransform(componentId, sockets) ?? null,
+    homeTransform: (componentId) => workbench?.homeTransform(componentId) ?? null,
+    yieldComponent: (componentId) => workbench?.yieldComponent(componentId),
+    isHeldByOther: (componentId) =>
+      [componentId, `${componentId}::endpoint-0`, `${componentId}::endpoint-1`].some((resourceId) => {
+        const owner = owners.get(resourceId);
+        return Boolean(owner && owner.id !== aiTeammate?.id);
+      }),
+    saveAttempt: (summary) => workbench?.saveAttempt(summary),
+    onChange: renderTeamPanel,
+  }, { profile, explain, role });
+  room.recordTrace("role", collaborationPhase, activeStudio, { detail: `Invited ${AI_TEAMMATE_NAME} (AI teammate, ${role})` });
+  renderTeamPanel();
+}
+
+function removeAiTeammate(): void {
+  if (!aiTeammate) return;
+  aiTeammate.dispose();
+  aiTeammate = null;
+  room?.recordTrace("role", collaborationPhase, activeStudio, { detail: `${AI_TEAMMATE_NAME} left the room` });
+  renderTeamPanel();
+}
+
+const isAgentId = (participantId: string): boolean =>
+  participantId === aiTeammate?.id ||
+  participants.some((participant) => participant.id === participantId && participant.kind === "agent");
+
+function avatarFor(participantId: string, name: string): string {
+  return isAgentId(participantId) ? '<i class="ph ph-robot" aria-hidden="true"></i>' : escapeHtml(initials(name));
 }
 
 function renderWorkspace(): void {
@@ -1154,7 +1218,7 @@ function appendChatMessage(message: RoomChatMessage): void {
   row.className = "chat-message";
   row.dataset.messageId = message.id;
   row.innerHTML = `
-    <span class="avatar ${message.participantId === room?.participant.id ? "is-local" : ""}">${escapeHtml(initials(message.author))}</span>
+    <span class="avatar ${message.participantId === room?.participant.id ? "is-local" : ""} ${isAgentId(message.participantId) ? "is-agent" : ""}">${avatarFor(message.participantId, message.author)}</span>
     <span class="chat-message-copy">
       <span class="chat-meta"><strong>${escapeHtml(message.author)}</strong><time>${timeLabel(message.createdAt)}</time></span>
       ${message.context ? `<span class="message-context"><i class="ph ph-link-simple"></i>${escapeHtml(message.context)}</span>` : ""}
@@ -1183,8 +1247,8 @@ function renderParticipants(): void {
       .slice(0, 4)
       .map(
         (participant) => `
-          <span class="presence-avatar ${participant.id === room?.participant.id ? "is-local" : ""}" data-tooltip="${escapeHtml(`${participant.name} · ${participant.activityDetail || activityLabel(participant.activity)} · ${roleLabel(participant.role)}`)}" aria-label="${escapeHtml(participant.name)}">
-            ${escapeHtml(initials(participant.name))}
+          <span class="presence-avatar ${participant.id === room?.participant.id ? "is-local" : ""} ${participant.kind === "agent" ? "is-agent" : ""}" data-tooltip="${escapeHtml(`${participant.name}${participant.kind === "agent" ? " (AI)" : ""} · ${participant.activityDetail || activityLabel(participant.activity)} · ${roleLabel(participant.role)}`)}" aria-label="${escapeHtml(participant.name)}">
+            ${avatarFor(participant.id, participant.name)}
             ${participant.voiceReady && !participant.muted ? '<i class="ph ph-waveform"></i>' : ""}
           </span>`,
       )
@@ -1195,8 +1259,8 @@ function renderParticipants(): void {
       .map(
         (participant) => `
           <article class="participant-row">
-            <span class="avatar ${participant.id === room?.participant.id ? "is-local" : ""}">${escapeHtml(initials(participant.name))}</span>
-            <span><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}</strong><small>${escapeHtml(participant.activityDetail || activityLabel(participant.activity))} · ${escapeHtml(roleLabel(participant.role))}</small></span>
+            <span class="avatar ${participant.id === room?.participant.id ? "is-local" : ""} ${participant.kind === "agent" ? "is-agent" : ""}">${avatarFor(participant.id, participant.name)}</span>
+            <span><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}${participant.kind === "agent" ? " · AI teammate" : ""}</strong><small>${escapeHtml(participant.activityDetail || activityLabel(participant.activity))} · ${escapeHtml(roleLabel(participant.role))}</small></span>
             <i class="ph ${participant.voiceReady ? (participant.muted ? "ph-microphone-slash" : "ph-waveform") : "ph-chat-circle-text"}"></i>
           </article>`,
       )
@@ -1272,6 +1336,7 @@ function traceIcon(action: ActivityTrace["action"]): string {
     phase: "ph-signpost",
     ready: "ph-check-circle",
     reflect: "ph-notebook",
+    teach: "ph-chalkboard-teacher",
   };
   return icons[action];
 }
@@ -1280,6 +1345,29 @@ function traceLabel(trace: ActivityTrace): string {
   if (trace.detail) return trace.detail;
   if (trace.objectName) return `${trace.action} · ${trace.objectName}`;
   return trace.action;
+}
+
+function renderTeammateCard(): string {
+  const agentInRoom = participants.find((participant) => participant.kind === "agent");
+  if (!aiTeammate) {
+    if (agentInRoom) {
+      return `<section class="teammate-card"><div class="teammate-heading"><span><i class="ph ph-robot"></i> ${escapeHtml(agentInRoom.name)} · AI teammate</span></div><p>Hosted by another maker. Teach ${escapeHtml(agentInRoom.name)} in chat — explain what to do <em>and why</em>.</p></section>`;
+    }
+    return `
+      <section class="teammate-card is-empty">
+        <div class="teammate-heading"><span><i class="ph ph-robot"></i> AI teammate</span></div>
+        <p>No partner yet? ${AI_TEAMMATE_NAME} is a teammate who is still learning circuits. It builds and checks using only what your team teaches it.</p>
+        <button class="secondary-button compact" id="invite-ai" type="button"><i class="ph ph-user-plus"></i> Add ${AI_TEAMMATE_NAME}</button>
+      </section>`;
+  }
+  const notebook = aiTeammate.mind.notebook();
+  return `
+    <section class="teammate-card">
+      <div class="teammate-heading"><span><i class="ph ph-robot"></i> ${AI_TEAMMATE_NAME}'s notebook</span><span class="teammate-actions"><button class="bare-button" id="reset-ai" type="button" data-tooltip="Remove ${AI_TEAMMATE_NAME} and forget what it learned here" aria-label="Reset ${AI_TEAMMATE_NAME}"><i class="ph ph-arrow-counter-clockwise"></i></button><button class="bare-button" id="remove-ai" type="button" data-tooltip="Remove ${AI_TEAMMATE_NAME} from the room" aria-label="Remove ${AI_TEAMMATE_NAME}"><i class="ph ph-x"></i></button></span></div>
+      ${notebook.length === 0
+        ? `<p class="teammate-empty">Nothing yet. ${AI_TEAMMATE_NAME} only learns an idea when someone explains it <em>and why</em> in chat.</p>`
+        : `<ul class="teammate-notebook">${notebook.map((entry) => `<li><strong>${escapeHtml(entry.label)}</strong><q>${escapeHtml(entry.quote)}</q><small>Taught by ${escapeHtml(entry.taughtBy)}</small></li>`).join("")}</ul>`}
+    </section>`;
 }
 
 function renderTeamPanel(): void {
@@ -1325,8 +1413,8 @@ function renderTeamPanel(): void {
     <section class="team-members" aria-label="Collaborator roles and activity">
       ${participants.map((participant) => `
         <article class="team-member ${participant.ready ? "is-ready" : ""}">
-          <span class="avatar ${participant.id === room?.participant.id ? "is-local" : ""}">${escapeHtml(initials(participant.name))}</span>
-          <span class="team-member-copy"><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}</strong><small>${escapeHtml(roleLabel(participant.role))} · ${escapeHtml(participant.activityDetail || activityLabel(participant.activity))}</small></span>
+          <span class="avatar ${participant.id === room?.participant.id ? "is-local" : ""} ${participant.kind === "agent" ? "is-agent" : ""}">${avatarFor(participant.id, participant.name)}</span>
+          <span class="team-member-copy"><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}${participant.kind === "agent" ? " · AI" : ""}</strong><small>${escapeHtml(roleLabel(participant.role))} · ${escapeHtml(participant.activityDetail || activityLabel(participant.activity))}</small></span>
           <i class="ph ${participant.ready ? "ph-check-circle" : "ph-circle-dashed"}" data-tooltip="${participant.ready ? "Ready to test" : "Not ready"}"></i>
         </article>`).join("")}
     </section>
@@ -1335,6 +1423,8 @@ function renderTeamPanel(): void {
       <button class="secondary-button compact" id="switch-role" type="button"><i class="ph ph-arrows-left-right"></i> ${local?.role === "verifier" ? "Become builder" : "Become verifier"}</button>
       <button class="primary-button compact ${local?.ready ? "is-ready" : ""}" id="toggle-ready" type="button"><i class="ph ${local?.ready ? "ph-check-circle" : "ph-circle"}"></i> ${local?.ready ? "Ready" : "Mark ready"}</button>
     </section>
+
+    ${renderTeammateCard()}
 
     <section class="participation-card">
       <div class="participation-heading"><span><i class="ph ph-scales"></i> Participation</span><small>${scoredParticipants.length > 1 ? `${scoredParticipants.length} collaborators` : "Collaborator needed"}</small></div>
@@ -1381,6 +1471,13 @@ function renderTeamPanel(): void {
     }
   });
   panel.querySelector<HTMLButtonElement>("#export-trace")?.addEventListener("click", exportActivityTrace);
+  panel.querySelector<HTMLButtonElement>("#invite-ai")?.addEventListener("click", inviteAiTeammate);
+  panel.querySelector<HTMLButtonElement>("#remove-ai")?.addEventListener("click", removeAiTeammate);
+  panel.querySelector<HTMLButtonElement>("#reset-ai")?.addEventListener("click", () => {
+    removeAiTeammate();
+    forgetAiTeammate(currentRoomCode);
+    showSceneStatus(`${AI_TEAMMATE_NAME} forgot what it was taught in this room`, "neutral");
+  });
   panel.classList.toggle("is-ready", allReady);
   installNativeTooltips();
 }
@@ -1419,8 +1516,10 @@ function exportActivityTrace(): void {
     studio: activeStudio,
     phase: collaborationPhase,
     privacy: "Interaction metadata only. Audio, transcripts, message bodies, and email addresses are excluded.",
-    participants: participants.map(({ id, name, role }) => ({ id, name, role })),
+    participants: participants.map(({ id, name, role, kind }) => ({ id, name, role, kind: kind ?? "human" })),
     events: activityTraces,
+    /** Bolt's belief states and transitions, without any teammate's words. */
+    aiTeammate: aiTeammate?.mind.exportState() ?? null,
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
   const anchor = document.createElement("a");
@@ -1805,6 +1904,8 @@ function disposeWorkspace(): void {
   snapinoRunner?.stop();
   snapinoRunner = null;
   workbench?.dispose();
+  aiTeammate?.dispose();
+  aiTeammate = null;
   room?.close();
   workbench = null;
   room = null;
