@@ -81,7 +81,14 @@ When any other participant claims a part or cable end, the scene shows a translu
 node --experimental-strip-types scripts/teachable-agent-check.mjs   # pure logic
 npm run build && python3 -m http.server 4173 --bind 127.0.0.1 -d dist
 node scripts/e2e-ai-teammate.mjs http://localhost:4173 ./shots      # learner teaches Bolt end to end
+
+# Production transport (Worker + Durable Object WebSocket rooms)
+npx wrangler dev --port 8799 --ip 127.0.0.1 --var ADMIN_EMAILS:host@example.test
+node scripts/access-proxy.mjs 8800 8799
+node scripts/e2e-ai-teammate-worker.mjs                             # → http://vm.test:8800
 ```
+
+Play link: <https://vm.teachplay.dev/?room=7K3M&studio=circuit&teammate=ai>
 
 ## Next steps
 

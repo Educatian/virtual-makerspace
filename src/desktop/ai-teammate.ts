@@ -85,6 +85,7 @@ export class AiTeammate {
   private workDone = false;
   private reviewTimer = 0;
   private studioNoticeFor: StudioChoice | null = null;
+  private enteredPhase: CollaborationPhase | null = null;
   private disposed = false;
 
   constructor(host: TeammateHost, options: TeammateOptions) {
@@ -104,7 +105,10 @@ export class AiTeammate {
         onPhase: (phase) => this.enterPhase(phase, true),
         onTrace: (trace) => this.onTrace(trace),
         onTransform: (componentId, _transform, participantId) => this.onBoardChange(componentId, participantId),
-        onStudio: () => this.later(400, () => this.enterPhase(this.host.phase(), true)),
+        onStudio: () => this.later(400, () => {
+          this.enteredPhase = null;
+          this.enterPhase(this.host.phase(), true);
+        }),
       },
       host.authId,
       { agent: true },
@@ -174,7 +178,7 @@ export class AiTeammate {
     const learnedSomething = heard.learned.some((event) => event.to === "taught");
     const wantsBuild = heard.commands.includes("rebuild") || heard.commands.includes("become-builder");
     // A builder fixes its own build as soon as it is taught; otherwise it waits for Build.
-    const fixOwnBuild = learnedSomething && (this.builtByBolt || ["build", "test"].includes(this.host.phase()));
+    const fixOwnBuild = learnedSomething && (this.builtByBolt || this.building || ["build", "test"].includes(this.host.phase()));
     if (this.room.participant.role === "builder" && (wantsBuild || fixOwnBuild)) {
       this.scheduleBuild(1600);
     }
@@ -206,6 +210,9 @@ export class AiTeammate {
 
   private enterPhase(phase: CollaborationPhase, changed: boolean): void {
     if (this.disposed) return;
+    // The room re-announces the current phase to newcomers; only a real change counts.
+    if (changed && phase === this.enteredPhase) return;
+    this.enteredPhase = phase;
     this.mind.resetRemarks();
     if (this.host.studio() !== "circuit") {
       this.workDone = true;

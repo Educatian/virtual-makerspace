@@ -54,6 +54,8 @@ Working alone? Add **Bolt** from the Team tab, or open a room with `?teammate=ai
 
 **Live collaboration room:** [vm.teachplay.dev/?room=7K3M&studio=circuit](https://vm.teachplay.dev/?room=7K3M&studio=circuit)
 
+**Play with Bolt (AI teammate):** [vm.teachplay.dev/?room=7K3M&studio=circuit&teammate=ai](https://vm.teachplay.dev/?room=7K3M&studio=circuit&teammate=ai) — Bolt joins as your partner; teach it in chat, explaining what to do *and why*.
+
 Same-device tabs synchronize automatically through `BroadcastChannel`. For simultaneous users on different computers, start the WebSocket room relay and point the frontend at it:
 
 ```powershell
