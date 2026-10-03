@@ -46,6 +46,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 import type { SharedTransform } from "./collaboration.js";
+import { RemoteHands, type HandOwner } from "./remote-hands.js";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
 
 export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino";
@@ -242,6 +243,11 @@ export class DesktopWorkbenchScene {
   private readonly snapSockets: Vector3[] = [];
   private sockets: Vector3[] = this.circuitSockets;
   private readonly remoteOwners = new Map<string, { id: string; name: string }>();
+  /** Ghost hands showing which teammate (human or AI) is holding what. */
+  private readonly remoteHands = new RemoteHands(this.scene);
+  /** Remote moves glide (with a small carry lift) instead of teleporting. */
+  private readonly remoteTweens = new Map<string, { base: Vector3; target: Vector3; rotation: Euler }>();
+  private lastFrameAt = performance.now();
   private readonly previewMarkers: Mesh<RingGeometry, MeshBasicMaterial>[] = [];
   private readonly previewBeams: Mesh<CylinderGeometry, MeshBasicMaterial>[] = [];
   private readonly flexMotion = new Map<string, { previous: Vector3; sway: number; velocity: number }>();
@@ -435,7 +441,7 @@ export class DesktopWorkbenchScene {
     }
   }
 
-  applyRemoteTransform(componentId: string, transform: SharedTransform): void {
+  applyRemoteTransform(componentId: string, transform: SharedTransform, animate = true): void {
     const component = this.components.get(componentId);
     if (!component) return;
     if (transform.activeEndpoint !== undefined && transform.endpoints) {
@@ -453,12 +459,23 @@ export class DesktopWorkbenchScene {
       return;
     }
     if (typeof transform.on === "boolean") this.setSwitch(component, transform.on);
-    if (component === this.dragging || component === this.transform.object) {
+    // Only an active local drag outranks a teammate's move; a merely selected part follows it.
+    if (component === this.dragging || (component === this.transform.object && this.transform.dragging)) {
       this.evaluateCurrentSystem();
       return;
     }
-    component.position.fromArray(transform.position);
-    component.rotation.fromArray([...transform.rotation, "XYZ"]);
+    const target = new Vector3().fromArray(transform.position);
+    const rotation = new Euler(...transform.rotation, "XYZ");
+    const tween = this.remoteTweens.get(componentId);
+    const from = tween?.base ?? component.position;
+    if (animate && component.parent?.visible && from.distanceToSquared(target) > 1e-6) {
+      this.remoteTweens.set(componentId, { base: from.clone(), target, rotation });
+      if (tween) component.position.copy(tween.base);
+    } else {
+      this.remoteTweens.delete(componentId);
+      component.position.copy(target);
+      component.rotation.copy(rotation);
+    }
     component.userData.sockets = transform.sockets ?? null;
     if (transform.endpoints) {
       component.userData.endpointPositions = [
@@ -472,12 +489,23 @@ export class DesktopWorkbenchScene {
     this.evaluateCurrentSystem();
   }
 
-  setOwner(componentId: string, owner: { id: string; name: string } | null): void {
+  setOwner(componentId: string, owner: HandOwner | null): void {
     if (owner) this.remoteOwners.set(componentId, owner);
     else this.remoteOwners.delete(componentId);
     const endpointMatch = componentId.match(/^(.*)::endpoint-([01])$/);
     const object = this.components.get(endpointMatch?.[1] ?? componentId);
     if (!object) return;
+    if (owner) {
+      const endpointIndex = endpointMatch ? (Number(endpointMatch[2]) as 0 | 1) : null;
+      this.remoteHands.grab(componentId, owner, () => {
+        if (!object.visible || !object.parent?.visible) return null;
+        return endpointIndex === null
+          ? object.getWorldPosition(new Vector3())
+          : this.getEndpointWorldPositions(object)[endpointIndex];
+      });
+    } else {
+      this.remoteHands.release(componentId);
+    }
     if (endpointMatch) {
       const index = Number(endpointMatch[2]) as 0 | 1;
       const indicator = ((object.userData.endpointIndicators ?? []) as Mesh<TorusGeometry, MeshBasicMaterial>[])[index];
@@ -507,7 +535,7 @@ export class DesktopWorkbenchScene {
 
   applySharedState(transforms: Record<string, SharedTransform>): void {
     for (const [id, transform] of Object.entries(transforms)) {
-      this.applyRemoteTransform(id, transform);
+      this.applyRemoteTransform(id, transform, false);
     }
     this.events.onStatus("Shared circuit synchronized", "valid");
   }
@@ -554,6 +582,61 @@ export class DesktopWorkbenchScene {
     }
     this.evaluateCircuit(true);
     this.events.onAttempt(this.captureAttempt("Diagnostic LED path connected"));
+  }
+
+  /**
+   * The shared transform that seats a Circuit Bench part's leads in two breadboard sockets,
+   * exactly as a teammate's snapped move would. Pure: nothing in this scene changes until the
+   * transform comes back through the room. Used by the AI teammate to act like a participant.
+   */
+  placementTransform(componentId: string, sockets: [number, number]): SharedTransform | null {
+    const component = this.components.get(componentId);
+    const spec = component?.userData.spec as ComponentSpec | undefined;
+    const a = this.circuitSockets[sockets[0]];
+    const b = this.circuitSockets[sockets[1]];
+    if (!component || !spec || spec.studio !== "circuit" || !a || !b || sockets[0] === sockets[1]) return null;
+    const midpoint = a.clone().add(b).multiplyScalar(0.5);
+    const direction = b.clone().sub(a);
+    const rotationY = Math.atan2(-direction.z, direction.x);
+    const transform: SharedTransform = {
+      position: [midpoint.x, DRAG_Y, midpoint.z],
+      rotation: [0, rotationY, 0],
+      sockets: [sockets[0], sockets[1]],
+    };
+    if (spec.kind === "wire") {
+      const frame = new Object3D();
+      frame.position.set(midpoint.x, DRAG_Y, midpoint.z);
+      frame.rotation.set(0, rotationY, 0);
+      frame.updateMatrixWorld(true);
+      transform.endpoints = [
+        frame.worldToLocal(a.clone()).toArray() as [number, number, number],
+        frame.worldToLocal(b.clone()).toArray() as [number, number, number],
+      ];
+    }
+    return transform;
+  }
+
+  /** The shared transform that returns a part to its tray slot, off the board. */
+  homeTransform(componentId: string): SharedTransform | null {
+    const component = this.components.get(componentId);
+    const home = component?.userData.home as Vector3 | undefined;
+    if (!component || !home) return null;
+    const spec = component.userData.spec as ComponentSpec;
+    const transform: SharedTransform = {
+      position: home.toArray() as [number, number, number],
+      rotation: [0, 0, 0],
+      sockets: null,
+    };
+    if (spec.kind === "wire" || spec.kind === "hose") {
+      const half = spec.leadSeparation / 2;
+      transform.endpoints = [[-half, 0, 0], [half, 0, 0]];
+    }
+    return transform;
+  }
+
+  /** Lets go of a locally selected part so a teammate's move is not masked by the gizmo. */
+  yieldComponent(componentId: string): void {
+    if (this.selected?.userData.componentId === componentId) this.clearSelection();
   }
 
   loadSnapDemo(): void {
@@ -656,6 +739,8 @@ export class DesktopWorkbenchScene {
   }
 
   dispose(): void {
+    this.remoteHands.dispose();
+    this.remoteTweens.clear();
     this.resizeObserver.disconnect();
     this.renderer.setAnimationLoop(null);
     this.renderer.domElement.removeEventListener("pointerdown", this.onPointerDown, true);
@@ -1027,6 +1112,7 @@ export class DesktopWorkbenchScene {
       component.userData.componentId = spec.id;
       component.userData.spec = spec;
       component.userData.sockets = null;
+      component.userData.home = component.position.clone();
       component.traverse((child) => {
         child.userData.componentRoot = component;
         if (child instanceof Mesh) {
@@ -1929,6 +2015,7 @@ export class DesktopWorkbenchScene {
   }
 
   private select(component: Group): void {
+    this.cancelRemoteTween(component, true);
     if (this.selected && this.selected !== component) this.setEndpointIndicators(this.selected, false);
     this.selected = component;
     this.selectionBox.setFromObject(component);
@@ -2613,7 +2700,25 @@ export class DesktopWorkbenchScene {
     return systemReady;
   }
 
+  /**
+   * A local edit takes over from a remote glide. With `settle`, the part first jumps to where
+   * the glide was headed (used before a local grab, so it never starts from the lifted pose).
+   */
+  private cancelRemoteTween(component: Group, settle: boolean): void {
+    const id = component.userData.componentId as string;
+    const tween = this.remoteTweens.get(id);
+    if (!tween) return;
+    this.remoteTweens.delete(id);
+    if (!settle) return;
+    component.position.copy(tween.target);
+    component.rotation.copy(tween.rotation);
+    this.flexMotion.delete(id);
+    this.updateFlexibleWireFromSockets(component);
+    component.updateMatrixWorld(true);
+  }
+
   private emitTransform(component: Group, force: boolean, activeEndpoint?: 0 | 1): void {
+    this.cancelRemoteTween(component, false);
     if (!force && performance.now() - this.transformBroadcastAt < 40) return;
     this.events.onTransform(
       component.userData.componentId as string,
@@ -2622,9 +2727,13 @@ export class DesktopWorkbenchScene {
   }
 
   private snapshotTransform(component: Group, activeEndpoint?: 0 | 1): SharedTransform {
+    // Mid-glide, report where a remote move is headed, not the in-between pose.
+    const tween = this.remoteTweens.get(component.userData.componentId as string);
+    const position = tween?.target ?? component.position;
+    const rotation = tween?.rotation ?? component.rotation;
     const transform: SharedTransform = {
-      position: component.position.toArray() as [number, number, number],
-      rotation: [component.rotation.x, component.rotation.y, component.rotation.z],
+      position: position.toArray() as [number, number, number],
+      rotation: [rotation.x, rotation.y, rotation.z],
       sockets: (component.userData.sockets as EndpointSockets) ?? null,
     };
     const spec = component.userData.spec as ComponentSpec;
@@ -2654,8 +2763,45 @@ export class DesktopWorkbenchScene {
     this.renderer.setSize(width, height, false);
   };
 
+  /** Glides remotely moved parts toward their target, lifted slightly while carried. */
+  private stepRemoteTweens(seconds: number): void {
+    const blend = 1 - Math.exp(-seconds * 9);
+    for (const [id, tween] of this.remoteTweens) {
+      const component = this.components.get(id);
+      if (!component || component === this.dragging) {
+        this.remoteTweens.delete(id);
+        continue;
+      }
+      tween.base.lerp(tween.target, blend);
+      component.rotation.set(
+        this.lerpAngle(component.rotation.x, tween.rotation.x, blend),
+        this.lerpAngle(component.rotation.y, tween.rotation.y, blend),
+        this.lerpAngle(component.rotation.z, tween.rotation.z, blend),
+      );
+      const remaining = tween.base.distanceTo(tween.target);
+      if (remaining < 0.003) {
+        component.position.copy(tween.target);
+        component.rotation.copy(tween.rotation);
+        this.remoteTweens.delete(id);
+        this.flexMotion.delete(id);
+        this.updateFlexibleWireFromSockets(component);
+      } else {
+        component.position.copy(tween.base);
+        component.position.y += Math.min(0.42, remaining * 0.3);
+        this.updateFlexibleMotion(component);
+      }
+      component.updateMatrixWorld(true);
+      if (component === this.selected) this.selectionBox.update();
+    }
+  }
+
   private readonly render = (): void => {
     this.orbit.update();
+    const now = performance.now();
+    const frameSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);
+    this.lastFrameAt = now;
+    if (this.remoteTweens.size) this.stepRemoteTweens(frameSeconds);
+    this.remoteHands.update(this.camera);
     if (this.selected) {
       const indicators = (this.selected.userData.endpointIndicators ?? []) as Mesh[];
       const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.09;

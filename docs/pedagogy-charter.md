@@ -56,6 +56,14 @@ Future conditions (Phase 2):
 
 **Adding a condition** requires an updated mediation hypothesis in this doc, not just a new param value.
 
+### 3.1 AI teammate (desktop collaborative mode)
+
+| Condition | Code | Differences from baseline |
+|---|---|---|
+| **Solo + teachable AI teammate** | `?teammate=ai` (× `PF` / `DI`) | Bolt, a teachable agent, fills the partner seat. It starts with naive ideas and changes them only when a teammate explains *what and why* in chat. See [`ai-teammate.md`](ai-teammate.md). |
+
+**Mediation hypothesis.** Teaching Bolt makes the learner generate causal explanations (learning by teaching; protégé effect — Biswas et al., 2005; Chase et al., 2009). Bolt's visible mistakes are failures the learner must *diagnose in someone else's model*, which adds an explanation step to the PF cycle (§2.1) and externalizes RO/AC (§2.5) without supplying model content. Predicted mediator: count and quality of `teach` events (named vs. explained) → conceptual gain and transfer. Comparison: human–human dyads in the same room protocol, which log the same trace schema.
+
 ## 4. Outcome measures (currently)
 
 | Measure | Source | What it tests |
@@ -112,6 +120,12 @@ This is the line agents must not cross.
 - Comparing to other participants
 - "Wrong!" / "Correct!" verbal feedback
 - Penalty animations (red shake, etc.)
+
+**AI teammate (Bolt) policy — both conditions**:
+- Bolt may only use ideas a teammate taught it. It never volunteers a correct idea it was not taught, so it cannot hint.
+- Bolt asks questions ("Why add the resistor?") and voices its *own naive* reasoning; it never evaluates the learner ("Correct!", "Great job"), never praises, never counts or scores.
+- In PF, Bolt voices its reasoning only when asked; in DI it thinks aloud about its plan and failures.
+- Bolt applying what it was taught (e.g., flagging a missing resistor after being taught why) is a peer contribution, not instruction: the content came from the team.
 
 **Allowed exceptions (with constraints)**:
 - Neutral spatial locator markers (e.g., grey ≤ #9aa6bd brightness, ≤ 200ms duration, no fade) shown at the user's intended near-miss socket pair on snap failure. Justification: spatial reference for self-diagnosis (§2.2 embodied encoding) — not a hint, not score-like, not punitive. Implemented in `SnapFailFeedbackSystem`.

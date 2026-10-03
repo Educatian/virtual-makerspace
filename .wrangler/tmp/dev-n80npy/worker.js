@@ -1,7 +1,10 @@
-import { DurableObject } from "cloudflare:workers";
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-const ROOM_CODE = /^[A-Z2-9]{4,12}$/;
-const COMPONENT_IDS = new Set([
+// cloudflare/worker.js
+import { DurableObject } from "cloudflare:workers";
+var ROOM_CODE = /^[A-Z2-9]{4,12}$/;
+var COMPONENT_IDS = /* @__PURE__ */ new Set([
   "led-red",
   "led-green",
   "resistor-220",
@@ -34,11 +37,10 @@ const COMPONENT_IDS = new Set([
   "sno-w2b",
   "sno-w3",
   "sno-w4a",
-  "sno-w4b",
+  "sno-w4b"
 ]);
-const STUDIOS = new Set(["circuit", "greenhouse", "snap", "snapino"]);
-const SNAPINO_PINS = new Set(["D3", "D5", "D6"]);
-
+var STUDIOS = /* @__PURE__ */ new Set(["circuit", "greenhouse", "snap", "snapino"]);
+var SNAPINO_PINS = /* @__PURE__ */ new Set(["D3", "D5", "D6"]);
 function sanitizeProgram(value) {
   if (!Array.isArray(value) || value.length > 24) return null;
   const program = [];
@@ -46,7 +48,7 @@ function sanitizeProgram(value) {
     if (item?.op === "write" && SNAPINO_PINS.has(item.pin) && typeof item.value === "boolean") {
       program.push({ op: "write", pin: item.pin, value: item.value });
     } else if (item?.op === "wait" && Number.isFinite(item.ms)) {
-      program.push({ op: "wait", ms: Math.min(5000, Math.max(50, Math.round(item.ms / 50) * 50)) });
+      program.push({ op: "wait", ms: Math.min(5e3, Math.max(50, Math.round(item.ms / 50) * 50)) });
     } else if (item?.op === "follow" && SNAPINO_PINS.has(item.pin) && typeof item.invert === "boolean") {
       program.push({ op: "follow", pin: item.pin, invert: item.invert });
     } else {
@@ -55,11 +57,12 @@ function sanitizeProgram(value) {
   }
   return program;
 }
-const studioOr = (value, fallback = "circuit") => (STUDIOS.has(value) ? value : fallback);
-const MAX_ROOM_MESSAGES_PER_SECOND = 120;
-const AI_TEAMMATE_NAME = "Bolt";
-const MAX_CLAIMS_PER_PARTICIPANT = 16;
-const ALLOWED_MESSAGE_KINDS = new Set([
+__name(sanitizeProgram, "sanitizeProgram");
+var studioOr = /* @__PURE__ */ __name((value, fallback = "circuit") => STUDIOS.has(value) ? value : fallback, "studioOr");
+var MAX_ROOM_MESSAGES_PER_SECOND = 120;
+var AI_TEAMMATE_NAME = "Bolt";
+var MAX_CLAIMS_PER_PARTICIPANT = 16;
+var ALLOWED_MESSAGE_KINDS = /* @__PURE__ */ new Set([
   "hello",
   "presence",
   "goodbye",
@@ -75,23 +78,22 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "state-response",
   "signal",
   "studio",
-  "program",
+  "program"
 ]);
-
 function componentResource(value, allowEndpoint = true) {
   const resource = String(value || "").slice(0, 160);
   const match = resource.match(/^([a-z0-9-]+)(?:::endpoint-([01]))?$/);
-  if (!match || !COMPONENT_IDS.has(match[1]) || (!allowEndpoint && match[2] !== undefined)) return null;
+  if (!match || !COMPONENT_IDS.has(match[1]) || !allowEndpoint && match[2] !== void 0) return null;
   return resource;
 }
-
+__name(componentResource, "componentResource");
 function finiteTuple(value, limit = 20) {
   if (!Array.isArray(value) || value.length !== 3) return null;
   const tuple = value.map(Number);
   if (tuple.some((item) => !Number.isFinite(item) || Math.abs(item) > limit)) return null;
   return tuple;
 }
-
+__name(finiteTuple, "finiteTuple");
 function sanitizeTransform(value) {
   if (!value || typeof value !== "object") return null;
   const position = finiteTuple(value.position);
@@ -99,45 +101,45 @@ function sanitizeTransform(value) {
   if (!position || !rotation) return null;
   const transform = { position, rotation };
   if (value.sockets === null) transform.sockets = null;
-  else if (value.sockets !== undefined) {
+  else if (value.sockets !== void 0) {
     if (!Array.isArray(value.sockets) || value.sockets.length !== 2) return null;
     const sockets = value.sockets.map((socket) => {
       if (socket === null) return null;
       const index = Number(socket);
-      return Number.isInteger(index) && index >= 0 && index <= 2_000 ? index : undefined;
+      return Number.isInteger(index) && index >= 0 && index <= 2e3 ? index : void 0;
     });
-    if (sockets.includes(undefined)) return null;
+    if (sockets.includes(void 0)) return null;
     transform.sockets = sockets;
   }
-  if (value.endpoints !== undefined) {
+  if (value.endpoints !== void 0) {
     if (!Array.isArray(value.endpoints) || value.endpoints.length !== 2) return null;
     const endpoints = value.endpoints.map((endpoint) => finiteTuple(endpoint, 20));
     if (endpoints.some((endpoint) => !endpoint)) return null;
     transform.endpoints = endpoints;
   }
-  if (value.activeEndpoint !== undefined) {
+  if (value.activeEndpoint !== void 0) {
     if (value.activeEndpoint !== 0 && value.activeEndpoint !== 1) return null;
     transform.activeEndpoint = value.activeEndpoint;
   }
   if (typeof value.on === "boolean") transform.on = value.on;
   return transform;
 }
-
+__name(sanitizeTransform, "sanitizeTransform");
 function sanitizeSignal(value) {
   if (!value || typeof value !== "object") return null;
   if (value.type === "offer" || value.type === "answer") {
     const sdp = String(value.sdp?.sdp || "");
-    if (!sdp || sdp.length > 48_000) return null;
+    if (!sdp || sdp.length > 48e3) return null;
     return { type: value.type, sdp: { type: value.type, sdp } };
   }
   if (value.type !== "candidate") return null;
   const candidateText = String(value.candidate?.candidate || "");
-  if (!candidateText || candidateText.length > 4_096) return null;
+  if (!candidateText || candidateText.length > 4096) return null;
   const candidate = { candidate: candidateText };
-  if (value.candidate.sdpMid !== undefined && value.candidate.sdpMid !== null) {
+  if (value.candidate.sdpMid !== void 0 && value.candidate.sdpMid !== null) {
     candidate.sdpMid = String(value.candidate.sdpMid).slice(0, 128);
   }
-  if (value.candidate.sdpMLineIndex !== undefined && value.candidate.sdpMLineIndex !== null) {
+  if (value.candidate.sdpMLineIndex !== void 0 && value.candidate.sdpMLineIndex !== null) {
     const index = Number(value.candidate.sdpMLineIndex);
     if (!Number.isInteger(index) || index < 0 || index > 64) return null;
     candidate.sdpMLineIndex = index;
@@ -147,25 +149,22 @@ function sanitizeSignal(value) {
   }
   return { type: "candidate", candidate };
 }
-
+__name(sanitizeSignal, "sanitizeSignal");
 function json(data, init = {}) {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
   headers.set("cache-control", "no-store");
   return new Response(JSON.stringify(data), { ...init, headers });
 }
-
+__name(json, "json");
 function configuredValues(value) {
-  return new Set(String(value || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean));
+  return new Set(String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
 }
-
+__name(configuredValues, "configuredValues");
 function isAdminEmail(env, email) {
   return configuredValues(env.ADMIN_EMAILS).has(String(email || "").toLowerCase());
 }
-
+__name(isAdminEmail, "isAdminEmail");
 function accessClaims(assertion) {
   if (!assertion) return null;
   const parts = assertion.split(".");
@@ -178,52 +177,47 @@ function accessClaims(assertion) {
     return null;
   }
 }
-
+__name(accessClaims, "accessClaims");
 async function accessIdentity(request, context, env) {
   let identity = null;
   if (context.access) {
     try {
       identity = await context.access.getIdentity();
     } catch {
-      // Standard Access applications provide the already-validated assertion below.
     }
   }
-
   const assertion = request.headers.get("cf-access-jwt-assertion");
   const claims = accessClaims(assertion);
-  const assertedEmail = assertion
-    ? request.headers.get("cf-access-authenticated-user-email")
-    : null;
+  const assertedEmail = assertion ? request.headers.get("cf-access-authenticated-user-email") : null;
   const emailValue = identity?.email || claims?.email || assertedEmail;
   if (!emailValue) return null;
-
   const email = String(emailValue).toLowerCase().slice(0, 320);
   const id = String(identity?.user_uuid || identity?.id || claims?.sub || email).slice(0, 200);
   const name = String(identity?.name || claims?.name || claims?.given_name || email.split("@")[0] || "Maker").slice(0, 80);
   return { id, name, email, role: isAdminEmail(env, email) ? "admin" : "member" };
 }
-
+__name(accessIdentity, "accessIdentity");
 function neonEndpoint(connectionString) {
   const connection = new URL(connectionString);
   return `https://${connection.hostname}/sql`;
 }
-
+__name(neonEndpoint, "neonEndpoint");
 async function neonQuery(env, query, params = []) {
   if (!env.DATABASE_URL) return null;
   const response = await fetch(neonEndpoint(env.DATABASE_URL), {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "Neon-Connection-String": env.DATABASE_URL,
+      "Neon-Connection-String": env.DATABASE_URL
     },
-    body: JSON.stringify({ query, params }),
+    body: JSON.stringify({ query, params })
   });
   if (!response.ok) {
     throw new Error(`Neon query failed (${response.status}): ${await response.text()}`);
   }
   return response.json();
 }
-
+__name(neonQuery, "neonQuery");
 async function recordRoomMembership(env, roomCode, identity, membershipRole = "member") {
   if (!env.DATABASE_URL) return false;
   await neonQuery(
@@ -234,14 +228,14 @@ async function recordRoomMembership(env, roomCode, identity, membershipRole = "m
        email = EXCLUDED.email,
        display_name = EXCLUDED.display_name,
        last_seen_at = now()`,
-    [identity.id, identity.email, identity.name],
+    [identity.id, identity.email, identity.name]
   );
   await neonQuery(
     env,
     `INSERT INTO makerspace_rooms (code, created_by)
      VALUES ($1, $2)
      ON CONFLICT (code) DO NOTHING`,
-    [roomCode, identity.id],
+    [roomCode, identity.id]
   );
   await neonQuery(
     env,
@@ -253,20 +247,20 @@ async function recordRoomMembership(env, roomCode, identity, membershipRole = "m
          ELSE 'member'
        END,
        last_joined_at = now()`,
-    [roomCode, identity.id, membershipRole],
+    [roomCode, identity.id, membershipRole]
   );
   return true;
 }
-
+__name(recordRoomMembership, "recordRoomMembership");
 function roomStub(env, roomCode) {
   return env.MAKERSPACE_ROOMS.getByName(roomCode);
 }
-
+__name(roomStub, "roomStub");
 async function roomMetadata(env, roomCode) {
   const response = await roomStub(env, roomCode).fetch("https://room.internal/meta");
   return response.status === 200 ? response.json() : null;
 }
-
+__name(roomMetadata, "roomMetadata");
 async function createRoomRecord(env, roomCode, creator, studio = "circuit") {
   const response = await roomStub(env, roomCode).fetch("https://room.internal/meta", {
     method: "POST",
@@ -277,13 +271,13 @@ async function createRoomRecord(env, roomCode, creator, studio = "circuit") {
       createdByEmail: creator.email,
       createdByName: creator.name,
       createdAt: Date.now(),
-      studio: studioOr(studio),
-    }),
+      studio: studioOr(studio)
+    })
   });
   if (!response.ok) throw new Error(`Room registry write failed (${response.status})`);
   return response.json();
 }
-
+__name(createRoomRecord, "createRoomRecord");
 async function ensureKnownRoom(env, roomCode) {
   const existing = await roomMetadata(env, roomCode);
   if (existing) return existing;
@@ -292,21 +286,20 @@ async function ensureKnownRoom(env, roomCode) {
   return createRoomRecord(env, roomCode, {
     id: `precreated:${roomCode}`,
     email: adminEmail,
-    name: "Makerspace administrator",
+    name: "Makerspace administrator"
   });
 }
-
+__name(ensureKnownRoom, "ensureKnownRoom");
 function roomCodeFromPath(pathname, suffix = "/join") {
   const match = pathname.match(new RegExp(`^/api/rooms/([^/]+)${suffix}$`));
   const code = match ? decodeURIComponent(match[1]).trim().toUpperCase() : "";
   return ROOM_CODE.test(code) ? code : null;
 }
-
+__name(roomCodeFromPath, "roomCodeFromPath");
 async function fetchStaticSite(request, env, url) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", { status: 405 });
   }
-
   const origin = env.STATIC_ORIGIN || "https://virtual-makerspace.pages.dev";
   const target = new URL(`${url.pathname}${url.search}`, origin);
   const headers = new Headers();
@@ -314,43 +307,37 @@ async function fetchStaticSite(request, env, url) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
-
   return fetch(target, {
     method: request.method,
     headers,
-    redirect: "follow",
+    redirect: "follow"
   });
 }
-
-export default {
+__name(fetchStaticSite, "fetchStaticSite");
+var worker_default = {
   async fetch(request, env, context) {
     const url = new URL(request.url);
-
     if (url.pathname.startsWith("/api/")) {
       const identity = await accessIdentity(request, context, env);
       if (!identity) return json({ error: "Cloudflare Access authentication required" }, { status: 401 });
-
       if (url.pathname === "/api/me" && request.method === "GET") {
         return json({ ...identity, provider: "cloudflare-access" });
       }
-
       if (url.pathname === "/api/health" && request.method === "GET") {
         return json({
           ok: true,
           authenticated: true,
           role: identity.role,
           neonConfigured: Boolean(env.DATABASE_URL),
-          roomTransport: "durable-object-websocket",
+          roomTransport: "durable-object-websocket"
         });
       }
-
       const infoCode = roomCodeFromPath(url.pathname, "");
       if (infoCode && request.method === "GET") {
         const metadata = await ensureKnownRoom(env, infoCode);
         if (!metadata) return json({ room: infoCode, exists: false }, { status: 404 });
         return json({ room: infoCode, exists: true, studio: studioOr(metadata.studio) });
       }
-
       const joinCode = roomCodeFromPath(url.pathname);
       if (joinCode && request.method === "POST") {
         try {
@@ -374,14 +361,13 @@ export default {
             role: membershipRole,
             studio: studioOr(metadata.studio),
             program: metadata.program ?? null,
-            programRunning: Boolean(metadata.programRunning),
+            programRunning: Boolean(metadata.programRunning)
           });
         } catch (error) {
           console.error("Room membership write failed", error);
           return json({ error: "Room membership could not be stored" }, { status: 503 });
         }
       }
-
       if (url.pathname === "/api/room" && request.headers.get("upgrade")?.toLowerCase() === "websocket") {
         const requestOrigin = request.headers.get("origin");
         if (!requestOrigin || requestOrigin !== url.origin) {
@@ -391,15 +377,9 @@ export default {
         if (!ROOM_CODE.test(roomCode)) return new Response("Valid room code required", { status: 400 });
         const metadata = await ensureKnownRoom(env, roomCode);
         if (!metadata) return new Response("Room does not exist", { status: 404 });
-
-        // An AI teammate (Bolt) is hosted by a signed-in maker's browser. It gets its own
-        // session under that maker's identity, a fixed display name, and no host rights.
         const isAgent = url.searchParams.get("agent") === "1";
         const requestedSession = (url.searchParams.get("participant") || "").slice(0, 260);
-        const sessionId = requestedSession.startsWith(`${identity.id}:`)
-          ? requestedSession
-          : `${identity.id}:${crypto.randomUUID()}`;
-
+        const sessionId = requestedSession.startsWith(`${identity.id}:`) ? requestedSession : `${identity.id}:${crypto.randomUUID()}`;
         if (env.DATABASE_URL && !isAgent) {
           try {
             const membershipRole = metadata.createdByEmail === identity.email ? "owner" : "member";
@@ -409,7 +389,6 @@ export default {
             return new Response("Room membership unavailable", { status: 503 });
           }
         }
-
         const headers = new Headers(request.headers);
         headers.set("x-maker-id", identity.id);
         headers.set("x-maker-session-id", sessionId);
@@ -419,25 +398,24 @@ export default {
         const room = roomStub(env, roomCode);
         return room.fetch(new Request(request, { headers }));
       }
-
       return json({ error: "Not found" }, { status: 404 });
     }
-
     if (env.ASSETS) return env.ASSETS.fetch(request);
     return fetchStaticSite(request, env, url);
-  },
+  }
 };
-
-export class MakerspaceRoom extends DurableObject {
+var MakerspaceRoom = class extends DurableObject {
+  static {
+    __name(this, "MakerspaceRoom");
+  }
   constructor(state, env) {
     super(state, env);
     this.state = state;
     this.env = env;
-    this.claims = new Map();
-    this.messageRates = new Map();
+    this.claims = /* @__PURE__ */ new Map();
+    this.messageRates = /* @__PURE__ */ new Map();
     this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
-
   async fetch(request) {
     const url = new URL(request.url);
     if (url.hostname === "room.internal" && url.pathname === "/meta") {
@@ -455,7 +433,7 @@ export class MakerspaceRoom extends DurableObject {
           createdByEmail: String(incoming.createdByEmail || "system").toLowerCase().slice(0, 320),
           createdByName: String(incoming.createdByName || "Makerspace administrator").slice(0, 80),
           createdAt: Number.isFinite(incoming.createdAt) ? incoming.createdAt : Date.now(),
-          studio: studioOr(incoming.studio),
+          studio: studioOr(incoming.studio)
         };
         await this.state.storage.put("metadata", metadata);
         return json(metadata, { status: 201 });
@@ -465,17 +443,14 @@ export class MakerspaceRoom extends DurableObject {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("WebSocket upgrade required", { status: 426 });
     }
-
-    // An AI teammate may only join while its host (same signed-in maker) is in the room.
     if (request.headers.get("x-maker-agent") === "1") {
       const hostId = request.headers.get("x-maker-id");
       const hostPresent = this.state.getWebSockets().some((socket) => {
-        const attachment = socket.deserializeAttachment();
-        return attachment && attachment.userId === hostId && !attachment.agent;
+        const attachment2 = socket.deserializeAttachment();
+        return attachment2 && attachment2.userId === hostId && !attachment2.agent;
       });
       if (!hostPresent) return new Response("AI teammate needs its host in the room", { status: 403 });
     }
-
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const attachment = {
@@ -484,21 +459,18 @@ export class MakerspaceRoom extends DurableObject {
       name: decodeURIComponent(request.headers.get("x-maker-name") || "Maker").slice(0, 80),
       canHost: request.headers.get("x-maker-host") === "1",
       agent: request.headers.get("x-maker-agent") === "1",
-      joinedAt: Date.now(),
+      joinedAt: Date.now()
     };
     this.state.acceptWebSocket(server);
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
-
   webSocketMessage(socket, payload) {
     if (typeof payload !== "string" || payload.length > 64 * 1024) return;
     const attachment = socket.deserializeAttachment();
     const now = Date.now();
     const previousRate = this.messageRates.get(attachment.id);
-    const rate = !previousRate || now - previousRate.startedAt >= 1_000
-      ? { startedAt: now, count: 1 }
-      : { startedAt: previousRate.startedAt, count: previousRate.count + 1 };
+    const rate = !previousRate || now - previousRate.startedAt >= 1e3 ? { startedAt: now, count: 1 } : { startedAt: previousRate.startedAt, count: previousRate.count + 1 };
     this.messageRates.set(attachment.id, rate);
     if (rate.count > MAX_ROOM_MESSAGES_PER_SECOND) {
       socket.close(1008, "Message rate exceeded");
@@ -518,8 +490,7 @@ export class MakerspaceRoom extends DurableObject {
         socket.send(JSON.stringify(current));
         return;
       }
-      const participantClaimCount = [...this.claims.values()]
-        .filter((claim) => claim.participantId === attachment.id).length;
+      const participantClaimCount = [...this.claims.values()].filter((claim) => claim.participantId === attachment.id).length;
       if (!current && participantClaimCount >= MAX_CLAIMS_PER_PARTICIPANT) return;
       this.claims.set(message.componentId, message);
     }
@@ -530,16 +501,12 @@ export class MakerspaceRoom extends DurableObject {
     }
     if (message.kind === "transform") {
       const endpoint = message.transform?.activeEndpoint;
-      const resourceId = endpoint === 0 || endpoint === 1
-        ? `${message.componentId}::endpoint-${endpoint}`
-        : message.componentId;
+      const resourceId = endpoint === 0 || endpoint === 1 ? `${message.componentId}::endpoint-${endpoint}` : message.componentId;
       const current = this.claims.get(resourceId);
       if (current && current.participantId !== attachment.id) return;
     }
     if (message.kind === "studio" || message.kind === "program") {
-      const update = message.kind === "studio"
-        ? { studio: message.studio }
-        : { program: message.program, programRunning: message.running };
+      const update = message.kind === "studio" ? { studio: message.studio } : { program: message.program, programRunning: message.running };
       this.state.storage.get("metadata").then((metadata) => {
         if (metadata) return this.state.storage.put("metadata", { ...metadata, ...update });
       });
@@ -549,7 +516,6 @@ export class MakerspaceRoom extends DurableObject {
       if (peer !== socket && peer.readyState === WebSocket.OPEN) peer.send(encoded);
     }
   }
-
   webSocketClose(socket, code, reason) {
     const attachment = socket.deserializeAttachment();
     this.messageRates.delete(attachment.id);
@@ -561,7 +527,7 @@ export class MakerspaceRoom extends DurableObject {
         kind: "release",
         participantId: attachment.id,
         participantName: attachment.name,
-        componentId: resourceId,
+        componentId: resourceId
       }));
     }
     const goodbye = JSON.stringify({ kind: "goodbye", participantId: attachment.id });
@@ -572,7 +538,6 @@ export class MakerspaceRoom extends DurableObject {
     }
     socket.close(code, reason);
   }
-
   sanitizeMessage(incoming, participant) {
     if (!incoming || typeof incoming !== "object" || !ALLOWED_MESSAGE_KINDS.has(incoming.kind)) return null;
     if (incoming.kind === "hello" || incoming.kind === "presence") {
@@ -586,17 +551,11 @@ export class MakerspaceRoom extends DurableObject {
           muted: incoming.participant?.muted !== false,
           role: incoming.participant?.role === "verifier" ? "verifier" : "builder",
           ready: Boolean(incoming.participant?.ready),
-          activity: ["available", "inspecting", "moving", "discussing", "testing", "reflecting"].includes(incoming.participant?.activity)
-            ? incoming.participant.activity
-            : "available",
-          activityDetail: incoming.participant?.activityDetail
-            ? String(incoming.participant.activityDetail).slice(0, 120)
-            : undefined,
-          lastActiveAt: Number.isFinite(incoming.participant?.lastActiveAt)
-            ? incoming.participant.lastActiveAt
-            : Date.now(),
-          kind: participant.agent ? "agent" : "human",
-        },
+          activity: ["available", "inspecting", "moving", "discussing", "testing", "reflecting"].includes(incoming.participant?.activity) ? incoming.participant.activity : "available",
+          activityDetail: incoming.participant?.activityDetail ? String(incoming.participant.activityDetail).slice(0, 120) : void 0,
+          lastActiveAt: Number.isFinite(incoming.participant?.lastActiveAt) ? incoming.participant.lastActiveAt : Date.now(),
+          kind: participant.agent ? "agent" : "human"
+        }
       };
     }
     if (incoming.kind === "chat") {
@@ -606,10 +565,10 @@ export class MakerspaceRoom extends DurableObject {
           id: String(incoming.message?.id || crypto.randomUUID()).slice(0, 100),
           participantId: participant.id,
           author: participant.name,
-          body: String(incoming.message?.body || "").slice(0, 4000),
+          body: String(incoming.message?.body || "").slice(0, 4e3),
           createdAt: Date.now(),
-          context: incoming.message?.context ? String(incoming.message.context).slice(0, 160) : undefined,
-        },
+          context: incoming.message?.context ? String(incoming.message.context).slice(0, 160) : void 0
+        }
       };
     }
     if (incoming.kind === "claim" || incoming.kind === "release") {
@@ -619,7 +578,7 @@ export class MakerspaceRoom extends DurableObject {
         kind: incoming.kind,
         participantId: participant.id,
         participantName: participant.name,
-        componentId,
+        componentId
       };
     }
     if (incoming.kind === "studio") {
@@ -650,10 +609,10 @@ export class MakerspaceRoom extends DurableObject {
           action: trace.action,
           phase: trace.phase,
           studio: studioOr(trace.studio),
-          objectId: trace.objectId ? String(trace.objectId).slice(0, 160) : undefined,
-          objectName: trace.objectName ? String(trace.objectName).slice(0, 160) : undefined,
-          detail: trace.detail ? String(trace.detail).slice(0, 240) : undefined,
-        },
+          objectId: trace.objectId ? String(trace.objectId).slice(0, 160) : void 0,
+          objectName: trace.objectName ? String(trace.objectName).slice(0, 160) : void 0,
+          detail: trace.detail ? String(trace.detail).slice(0, 240) : void 0
+        }
       };
     }
     if (incoming.kind === "attention") {
@@ -664,7 +623,7 @@ export class MakerspaceRoom extends DurableObject {
         participantId: participant.id,
         participantName: participant.name,
         componentId,
-        componentName: String(incoming.componentName || "Component").slice(0, 160),
+        componentName: String(incoming.componentName || "Component").slice(0, 160)
       };
     }
     if (incoming.kind === "transform") {
@@ -679,7 +638,7 @@ export class MakerspaceRoom extends DurableObject {
         kind: "voice-state",
         participantId: participant.id,
         voiceReady: Boolean(incoming.voiceReady),
-        muted: incoming.muted !== false,
+        muted: incoming.muted !== false
       };
     }
     if (incoming.kind === "goodbye" || incoming.kind === "state-request") {
@@ -707,4 +666,186 @@ export class MakerspaceRoom extends DurableObject {
     }
     return null;
   }
+};
+
+// ../.npm/_npx/c943b712072b77c4/node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
+var drainBody = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
+  try {
+    return await middlewareCtx.next(request, env);
+  } finally {
+    try {
+      if (request.body !== null && !request.bodyUsed) {
+        const reader = request.body.getReader();
+        while (!(await reader.read()).done) {
+        }
+      }
+    } catch (e) {
+      console.error("Failed to drain the unused request body.", e);
+    }
+  }
+}, "drainBody");
+var middleware_ensure_req_body_drained_default = drainBody;
+
+// ../.npm/_npx/c943b712072b77c4/node_modules/wrangler/templates/middleware/middleware-miniflare3-json-error.ts
+function reduceError(e) {
+  return {
+    name: e?.name,
+    message: e?.message ?? String(e),
+    stack: e?.stack,
+    cause: e?.cause === void 0 ? void 0 : reduceError(e.cause)
+  };
 }
+__name(reduceError, "reduceError");
+var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
+  try {
+    return await middlewareCtx.next(request, env);
+  } catch (e) {
+    const error = reduceError(e);
+    const body = JSON.stringify(error);
+    const headers = {
+      "Content-Type": "application/json",
+      "MF-Experimental-Error-Stack": "true"
+    };
+    const encoded = encodeURIComponent(body);
+    if (encoded.length <= 8192) {
+      headers["MF-Experimental-Error-Stack-Payload"] = encoded;
+    }
+    return new Response(body, { status: 500, headers });
+  }
+}, "jsonError");
+var middleware_miniflare3_json_error_default = jsonError;
+
+// .wrangler/tmp/bundle-wwXtea/middleware-insertion-facade.js
+var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
+  middleware_ensure_req_body_drained_default,
+  middleware_miniflare3_json_error_default
+];
+var middleware_insertion_facade_default = worker_default;
+
+// ../.npm/_npx/c943b712072b77c4/node_modules/wrangler/templates/middleware/common.ts
+var __facade_middleware__ = [];
+function __facade_register__(...args) {
+  __facade_middleware__.push(...args.flat());
+}
+__name(__facade_register__, "__facade_register__");
+function __facade_invokeChain__(request, env, ctx, dispatch, middlewareChain) {
+  const [head, ...tail] = middlewareChain;
+  const middlewareCtx = {
+    dispatch,
+    next(newRequest, newEnv) {
+      return __facade_invokeChain__(newRequest, newEnv, ctx, dispatch, tail);
+    }
+  };
+  return head(request, env, ctx, middlewareCtx);
+}
+__name(__facade_invokeChain__, "__facade_invokeChain__");
+function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
+  return __facade_invokeChain__(request, env, ctx, dispatch, [
+    ...__facade_middleware__,
+    finalMiddleware
+  ]);
+}
+__name(__facade_invoke__, "__facade_invoke__");
+
+// .wrangler/tmp/bundle-wwXtea/middleware-loader.entry.ts
+var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
+  constructor(scheduledTime, cron, noRetry) {
+    this.scheduledTime = scheduledTime;
+    this.cron = cron;
+    this.#noRetry = noRetry;
+  }
+  static {
+    __name(this, "__Facade_ScheduledController__");
+  }
+  #noRetry;
+  noRetry() {
+    if (!(this instanceof ___Facade_ScheduledController__)) {
+      throw new TypeError("Illegal invocation");
+    }
+    this.#noRetry();
+  }
+};
+function wrapExportedHandler(worker) {
+  if (__INTERNAL_WRANGLER_MIDDLEWARE__ === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__.length === 0) {
+    return worker;
+  }
+  for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__) {
+    __facade_register__(middleware);
+  }
+  const fetchDispatcher = /* @__PURE__ */ __name(function(request, env, ctx) {
+    if (worker.fetch === void 0) {
+      throw new Error("Handler does not export a fetch() function.");
+    }
+    return worker.fetch(request, env, ctx);
+  }, "fetchDispatcher");
+  return {
+    ...worker,
+    fetch(request, env, ctx) {
+      const dispatcher = /* @__PURE__ */ __name(function(type, init) {
+        if (type === "scheduled" && worker.scheduled !== void 0) {
+          const controller = new __Facade_ScheduledController__(
+            Date.now(),
+            init.cron ?? "",
+            () => {
+            }
+          );
+          return worker.scheduled(controller, env, ctx);
+        }
+      }, "dispatcher");
+      return __facade_invoke__(request, env, ctx, dispatcher, fetchDispatcher);
+    }
+  };
+}
+__name(wrapExportedHandler, "wrapExportedHandler");
+function wrapWorkerEntrypoint(klass) {
+  if (__INTERNAL_WRANGLER_MIDDLEWARE__ === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__.length === 0) {
+    return klass;
+  }
+  for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__) {
+    __facade_register__(middleware);
+  }
+  return class extends klass {
+    #fetchDispatcher = /* @__PURE__ */ __name((request, env, ctx) => {
+      this.env = env;
+      this.ctx = ctx;
+      if (super.fetch === void 0) {
+        throw new Error("Entrypoint class does not define a fetch() function.");
+      }
+      return super.fetch(request);
+    }, "#fetchDispatcher");
+    #dispatcher = /* @__PURE__ */ __name((type, init) => {
+      if (type === "scheduled" && super.scheduled !== void 0) {
+        const controller = new __Facade_ScheduledController__(
+          Date.now(),
+          init.cron ?? "",
+          () => {
+          }
+        );
+        return super.scheduled(controller);
+      }
+    }, "#dispatcher");
+    fetch(request) {
+      return __facade_invoke__(
+        request,
+        this.env,
+        this.ctx,
+        this.#dispatcher,
+        this.#fetchDispatcher
+      );
+    }
+  };
+}
+__name(wrapWorkerEntrypoint, "wrapWorkerEntrypoint");
+var WRAPPED_ENTRY;
+if (typeof middleware_insertion_facade_default === "object") {
+  WRAPPED_ENTRY = wrapExportedHandler(middleware_insertion_facade_default);
+} else if (typeof middleware_insertion_facade_default === "function") {
+  WRAPPED_ENTRY = wrapWorkerEntrypoint(middleware_insertion_facade_default);
+}
+var middleware_loader_entry_default = WRAPPED_ENTRY;
+export {
+  MakerspaceRoom,
+  __INTERNAL_WRANGLER_MIDDLEWARE__,
+  middleware_loader_entry_default as default
+};
+//# sourceMappingURL=worker.js.map
