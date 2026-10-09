@@ -263,7 +263,7 @@ textarea:focus-visible {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 18px;
   padding: 10px 12px;
   border: 1px dashed var(--border);
   border-radius: 12px;
@@ -501,6 +501,8 @@ textarea:focus-visible {
 
 .workspace-shell {
   display: grid;
+  /* minmax(0, …) keeps wide content (the phone's scrolling part strip) from widening the page. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 64px 1fr;
   width: 100vw;
   height: 100vh;
@@ -661,6 +663,8 @@ textarea:focus-visible {
 .component-list { display: grid; align-content: start; justify-items: center; gap: 7px; overflow-x: hidden; overflow-y: auto; padding: 8px; }
 
 .component-card {
+  /* Anchors its visually hidden label, so it can't escape the scrolling strip on phones. */
+  position: relative;
   display: grid;
   width: 58px;
   height: 58px;
@@ -959,6 +963,9 @@ textarea:focus-visible {
 }
 
 .attempt-card:hover { border-color: #587097; }
+/* Inside the scrolling strip a hover bubble would be clipped and widen the scroll area;
+   these cards use the native title tooltip instead. */
+.attempt-list [data-tooltip]::after { display: none; }
 .attempt-card > span:nth-child(2) { display: grid; min-width: 0; gap: 2px; }
 .attempt-card strong { overflow: hidden; font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }
 .attempt-card small { color: var(--muted); font-size: 0.6rem; }
@@ -1291,7 +1298,16 @@ textarea:focus-visible {
   .lobby-grid { width: min(100% - 32px, 720px); }
 }
 
+@media (max-width: 900px) {
+  /* Hover tooltips don't exist on touch screens, and their hidden boxes widen the page. */
+  [data-tooltip]::after { display: none; }
+}
+
 @media (max-width: 620px) {
+  .workspace-shell { width: 100%; }
+  .component-rail,
+  .viewport-column,
+  .discussion-dock { min-width: 0; }
   .brand-header { height: 76px; }
   .lobby-card { padding: 24px 18px; }
   .lobby-card h1 { font-size: 2.5rem; }
@@ -1511,4 +1527,313 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   border-radius: 8px;
   font: 0.74rem/1.5 ui-monospace, "Cascadia Code", monospace;
+}
+
+/* ── AI teammate (Bolt) ───────────────────────────────────────────── */
+:root { --agent: #b794ff; --agent-soft: rgba(183, 148, 255, 0.14); --agent-line: rgba(183, 148, 255, 0.38); }
+
+.avatar.is-agent,
+.chat-message .avatar.is-agent,
+.presence-avatar.is-agent { color: #efe6ff; background: linear-gradient(150deg, #4a3570, #2a2142); border-color: var(--agent-line); }
+.avatar.is-agent > i.ph-robot,
+.presence-avatar.is-agent > i.ph-robot { position: static; font-size: 1rem; color: inherit; background: none; border: 0; }
+.ai-chip {
+  display: inline-grid;
+  place-items: center;
+  height: 15px;
+  padding: 0 5px;
+  color: var(--agent);
+  background: var(--agent-soft);
+  border: 1px solid var(--agent-line);
+  border-radius: 4px;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  vertical-align: 1px;
+}
+
+/* Chat: consecutive lines from one author read as one turn. */
+.chat-message.is-continued { margin-top: -10px; }
+.chat-message.is-continued .avatar { visibility: hidden; height: 0; }
+.chat-message.is-continued .chat-meta { display: none; }
+.chat-message.is-agent p { color: #d9d0ee; }
+.discussion-panel[data-panel="chat"] { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.typing-indicator { display: flex; align-items: center; gap: 8px; padding: 0 14px 8px 54px; color: #8f9cb4; font-size: 0.64rem; }
+.typing-indicator[hidden] { display: none; }
+.typing-dots { display: inline-flex; gap: 3px; }
+.typing-dots i { width: 5px; height: 5px; background: var(--agent); border-radius: 50%; opacity: 0.35; animation: typing-dot 1.1s ease-in-out infinite; }
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-dot { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; opacity: 0.7; } }
+
+/* Team tab card: invite Bolt, then Bolt's notebook. */
+.teammate-card {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(183, 148, 255, 0.08), rgba(183, 148, 255, 0.02));
+  border: 1px solid var(--agent-line);
+  border-radius: 10px;
+}
+.teammate-card.is-empty { background: #0f1723; border: 1px dashed var(--border-bright); }
+.teammate-card p { margin: 0; color: var(--muted); font-size: 0.65rem; line-height: 1.5; }
+.teammate-card em { color: #e3d4fb; font-style: normal; font-weight: 600; }
+.teammate-card .secondary-button { justify-self: start; gap: 6px; font-size: 0.63rem; }
+.teammate-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.teammate-title { display: flex; align-items: center; gap: 8px; color: #ece4fc; font-size: 0.7rem; font-weight: 650; }
+.teammate-mark { display: grid; width: 22px; height: 22px; place-items: center; color: var(--agent); background: var(--agent-soft); border-radius: 6px; font-size: 0.8rem; }
+.teammate-actions { display: flex; gap: 2px; }
+.teammate-actions .bare-button { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 6px; }
+.teammate-actions .bare-button:hover,
+.teammate-actions .bare-button:focus-visible { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+.teammate-notebook { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: idea; }
+.teammate-notebook li { display: grid; gap: 4px; padding: 9px 10px; background: rgba(10, 14, 24, 0.55); border: 1px solid rgba(183, 148, 255, 0.16); border-radius: 8px; }
+.notebook-label { color: var(--agent); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.teammate-notebook blockquote { margin: 0; color: var(--text); font-size: 0.68rem; line-height: 1.5; }
+.teammate-notebook blockquote::before { content: "“"; color: var(--agent); }
+.teammate-notebook blockquote::after { content: "”"; color: var(--agent); }
+.notebook-source { color: #8f9cb4; font-size: 0.58rem; }
+.notebook-source::before { content: "— "; }
+
+/* Lobby: bring Bolt along. */
+.teammate-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.teammate-toggle:hover { border-color: var(--border-bright); }
+.teammate-toggle:has(input:checked) { background: var(--agent-soft); border-color: var(--agent-line); }
+.teammate-toggle:has(input:focus-visible) { outline: 2px solid var(--agent); outline-offset: 2px; }
+.teammate-toggle > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.teammate-toggle strong { color: var(--text); font-size: 0.78rem; }
+.teammate-toggle small { color: var(--muted); font-size: 0.68rem; line-height: 1.4; }
+.teammate-toggle .teammate-mark { width: 30px; height: 30px; border-radius: 50%; font-size: 0.95rem; }
+.teammate-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.switch-track { position: relative; width: 34px; height: 20px; background: #26324a; border: 1px solid var(--border-bright); border-radius: 999px; transition: background 160ms ease, border-color 160ms ease; }
+.switch-track span { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: #c7d2e3; border-radius: 50%; transition: transform 160ms ease, background 160ms ease; }
+.teammate-toggle input:checked + .switch-track { background: rgba(183, 148, 255, 0.35); border-color: var(--agent); }
+.teammate-toggle input:checked + .switch-track span { background: #fff; transform: translateX(14px); }
+
+/* Laptop-height screens: keep the whole lobby card above the fold. */
+@media (min-width: 900px) and (max-height: 860px) {
+  .lobby-card { padding: 28px 34px; }
+  .lobby-card h1 { margin: 10px 0 8px; font-size: clamp(2.4rem, 4vw, 3.4rem); }
+  .lobby-lede { margin-bottom: 18px; font-size: 1rem; }
+  .field-label { margin-top: 14px; }
+  .audio-check { margin-top: 14px; }
+}
+
+/* ------------------------------------------------------------------
+   Immersive workspace (wide screens): the 3D scene fills the window and
+   every control floats over it as glass. Phones keep the stacked layout.
+------------------------------------------------------------------- */
+.dock-collapse,
+.dock-reopen { display: none; }
+
+@media (min-width: 901px) {
+  .workspace-shell {
+    --float-gap: 14px;
+    --header-h: 58px;
+    --float-top: calc(var(--header-h) + var(--float-gap));
+    --rail-w: 84px;
+    --dock-w: clamp(300px, 27vw, 380px);
+    --rail-space: calc(var(--float-gap) * 2 + var(--rail-w));
+    --dock-space: calc(var(--float-gap) * 2 + var(--dock-w));
+    --glass: rgba(10, 14, 23, 0.56);
+    --glass-strong: rgba(10, 14, 23, 0.72);
+    --glass-line: rgba(255, 255, 255, 0.09);
+    --glass-blur: blur(20px) saturate(150%);
+    position: relative;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .workspace-shell.is-dock-collapsed { --dock-space: var(--float-gap); }
+
+  /* Header: a slim glass bar over the top of the scene. */
+  .workspace-header {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 30;
+    height: var(--header-h);
+    background: linear-gradient(180deg, rgba(8, 11, 18, 0.78), rgba(8, 11, 18, 0.28));
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-bottom: 1px solid var(--glass-line);
+  }
+  .workspace-header::after { opacity: 0.55; }
+  .room-pill { background: rgba(255, 255, 255, 0.05); border-color: var(--glass-line); }
+
+  /* The scene takes the whole window. */
+  .workspace-grid { position: relative; display: block; height: 100vh; min-height: 0; }
+  .viewport-column { position: absolute; inset: 0; display: block; background: #090d15; }
+  .scene-frame { position: absolute; inset: 0; }
+  .scene-frame::after { box-shadow: none; background: radial-gradient(ellipse 80% 75% at 50% 52%, transparent 55%, rgba(5, 8, 14, 0.55) 100%); }
+
+  /* Shared glass surface for every floating panel. */
+  .component-rail,
+  .discussion-dock,
+  .attempt-drawer,
+  .viewport-title,
+  .toolbar-actions,
+  .dock-reopen {
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+  }
+
+  /* Parts rail, floating on the left. */
+  .component-rail {
+    position: absolute;
+    top: var(--float-top);
+    bottom: var(--float-gap);
+    left: var(--float-gap);
+    z-index: 20;
+    width: var(--rail-w);
+    overflow: hidden;
+    border-radius: 18px;
+  }
+  .component-rail .studio-switch { border-bottom-color: var(--glass-line); }
+  .component-rail .rail-heading { border-bottom-color: var(--glass-line); }
+  .component-card { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.08); }
+  .rail-footer-button { background: rgba(255, 255, 255, 0.05); border-color: var(--glass-line); }
+
+  /* Toolbar: two glass pills along the top of the open space. */
+  .viewport-toolbar {
+    position: absolute;
+    top: var(--float-top);
+    right: var(--dock-space);
+    left: var(--rail-space);
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0;
+    background: none;
+    border: 0;
+    pointer-events: none;
+    transition: right 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .viewport-title,
+  .toolbar-actions { height: 46px; padding: 0 6px; border-radius: 14px; pointer-events: auto; }
+  .viewport-title { padding: 0 14px; }
+  .toolbar-actions { align-items: center; }
+  .tool-button { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
+
+  /* Attempt history: a glass strip along the bottom of the open space. */
+  .attempt-drawer {
+    position: absolute;
+    bottom: var(--float-gap);
+    left: calc(var(--rail-space) + (100% - var(--rail-space) - var(--dock-space)) / 2);
+    z-index: 20;
+    width: max-content;
+    max-width: calc(100% - var(--rail-space) - var(--dock-space) - 260px);
+    border-radius: 14px;
+    transform: translateX(-50%);
+    transition: left 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .attempt-card { position: relative; min-height: 36px; padding: 5px 9px; }
+  .attempt-list { padding: 7px 9px; }
+  .attempt-card { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.09); }
+
+  /* Overlays inside the scene keep to the open space. */
+  .scene-status { top: calc(var(--float-top) + 58px); left: calc(var(--rail-space) + (100% - var(--rail-space) - var(--dock-space)) / 2); }
+  .control-help { top: calc(var(--float-top) + 58px); right: var(--dock-space); left: auto; }
+  .environment-hud { top: calc(var(--float-top) + 58px); right: var(--dock-space); }
+  .challenge-card { bottom: var(--float-gap); left: var(--rail-space); }
+  .selection-toolbar { right: var(--dock-space); bottom: calc(var(--float-gap) + 66px); }
+  .drop-callout { inset: var(--float-top) var(--dock-space) var(--float-gap) var(--rail-space); }
+  .scene-status,
+  .control-help,
+  .environment-hud,
+  .selection-toolbar { transition: right 280ms cubic-bezier(0.2, 0.7, 0.2, 1), left 280ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms ease-out, transform 160ms ease-out; }
+
+  /* Discussion: a translucent panel on the right that slides away. */
+  .discussion-dock {
+    position: absolute;
+    top: var(--float-top);
+    right: var(--float-gap);
+    bottom: var(--float-gap);
+    z-index: 20;
+    width: var(--dock-w);
+    overflow: hidden;
+    border-radius: 18px;
+    transition: transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 220ms ease;
+  }
+  .is-dock-collapsed .discussion-dock { opacity: 0; pointer-events: none; transform: translateX(calc(100% + var(--float-gap) * 2)); }
+  .discussion-tabs { grid-auto-columns: 1fr; grid-template-columns: none; border-bottom-color: var(--glass-line); }
+  .discussion-tabs .dock-collapse { display: grid; place-items: center; color: var(--muted); background: transparent; border: 0; border-left: 1px solid var(--glass-line); cursor: pointer; }
+  .discussion-tabs .dock-collapse:hover,
+  .discussion-tabs .dock-collapse:focus-visible { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+
+  .dock-reopen {
+    position: absolute;
+    top: var(--float-top);
+    right: var(--float-gap);
+    z-index: 21;
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    color: #dbe6f5;
+    border-radius: 14px;
+    font-size: 1.2rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.9);
+    transition: opacity 200ms ease 120ms, transform 200ms ease 120ms;
+  }
+  .is-dock-collapsed .dock-reopen { opacity: 1; pointer-events: auto; transform: none; }
+  .dock-reopen:hover,
+  .dock-reopen:focus-visible { border-color: rgba(var(--accent-rgb), 0.6); }
+  .dock-unread { position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; background: var(--agent, #b794ff); border: 2px solid #0b0f18; border-radius: 50%; opacity: 0; transform: scale(0.4); transition: opacity 160ms ease, transform 160ms ease; }
+  .dock-reopen.has-unread .dock-unread { opacity: 1; transform: none; }
+  .is-dock-collapsed .viewport-toolbar { right: calc(var(--float-gap) * 2 + 46px); }
+
+  /* Everything inside the panel turns translucent so the scene shows through. */
+  .discussion-dock .context-banner { background: rgba(83, 164, 255, 0.08); border-bottom-color: var(--glass-line); }
+  .discussion-dock .chat-composer { background: rgba(255, 255, 255, 0.04); border-color: var(--glass-line); }
+  .discussion-dock .chat-composer textarea { background: transparent; }
+  .discussion-dock .message-context { background: rgba(83, 164, 255, 0.12); }
+  .discussion-dock .phase-step { background: rgba(255, 255, 255, 0.04); border-color: var(--glass-line); }
+  .discussion-dock .phase-step.is-active { background: rgba(74, 158, 255, 0.2); border-color: rgba(74, 158, 255, 0.8); }
+  .discussion-dock .protocol-prompt,
+  .discussion-dock .team-member,
+  .discussion-dock .participation-card,
+  .discussion-dock .trace-empty,
+  .discussion-dock .teammate-card.is-empty,
+  .discussion-dock .teammate-notebook li,
+  .discussion-dock .notes-stack textarea,
+  .discussion-dock .code-list li,
+  .discussion-dock .pin-led { background: rgba(255, 255, 255, 0.04); border-color: var(--glass-line); }
+  .discussion-dock .team-sync { background: rgba(255, 255, 255, 0.05); }
+  .discussion-dock .voice-hero { border-bottom-color: var(--glass-line); }
+  .discussion-dock .participant-row { border-color: var(--glass-line); }
+  .discussion-dock .chat-message .avatar:not(.is-agent):not(.is-local) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .discussion-dock,
+    .viewport-toolbar,
+    .attempt-drawer,
+    .dock-reopen { transition: none; }
+  }
+}
+
+/* Browsers without backdrop blur get a denser glass, so text stays readable over the scene. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (min-width: 901px) {
+    .workspace-shell { --glass: rgba(10, 14, 23, 0.88); }
+  }
 }
