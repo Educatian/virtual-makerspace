@@ -37,6 +37,8 @@ Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, dep
 
 The default desktop workspace includes the Motherboard Circuit Lab and Smart Greenhouse studios, independent orbital cameras, text/voice discussion, magnetic placement, and independently draggable A/B endpoints for wires and irrigation hose.
 
+On screens wider than 900px the workspace is **immersive**: the 3D bench fills the window and the parts rail, toolbar, attempt history and discussion panel float over it as translucent glass. The discussion panel slides away with the `»` button (a chat button with an unread dot brings it back), the camera re-frames so the bench stays centered in the open space, and the toolbar's full-screen button hides the browser chrome. Phones keep the stacked layout.
+
 <table>
 <tr>
 <td width="50%"><img src="docs/images/desktop-room-admin.png" alt="Administrator room entry screen" /><br/><sub>Administrators can enter an existing room or generate a new room code.</sub></td>

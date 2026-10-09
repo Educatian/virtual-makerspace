@@ -963,6 +963,9 @@ textarea:focus-visible {
 }
 
 .attempt-card:hover { border-color: #587097; }
+/* Inside the scrolling strip a hover bubble would be clipped and widen the scroll area;
+   these cards use the native title tooltip instead. */
+.attempt-list [data-tooltip]::after { display: none; }
 .attempt-card > span:nth-child(2) { display: grid; min-width: 0; gap: 2px; }
 .attempt-card strong { overflow: hidden; font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }
 .attempt-card small { color: var(--muted); font-size: 0.6rem; }
@@ -1628,4 +1631,209 @@ textarea:focus-visible {
   .lobby-lede { margin-bottom: 18px; font-size: 1rem; }
   .field-label { margin-top: 14px; }
   .audio-check { margin-top: 14px; }
+}
+
+/* ------------------------------------------------------------------
+   Immersive workspace (wide screens): the 3D scene fills the window and
+   every control floats over it as glass. Phones keep the stacked layout.
+------------------------------------------------------------------- */
+.dock-collapse,
+.dock-reopen { display: none; }
+
+@media (min-width: 901px) {
+  .workspace-shell {
+    --float-gap: 14px;
+    --header-h: 58px;
+    --float-top: calc(var(--header-h) + var(--float-gap));
+    --rail-w: 84px;
+    --dock-w: clamp(300px, 27vw, 380px);
+    --rail-space: calc(var(--float-gap) * 2 + var(--rail-w));
+    --dock-space: calc(var(--float-gap) * 2 + var(--dock-w));
+    --glass: rgba(10, 14, 23, 0.56);
+    --glass-strong: rgba(10, 14, 23, 0.72);
+    --glass-line: rgba(255, 255, 255, 0.09);
+    --glass-blur: blur(20px) saturate(150%);
+    position: relative;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .workspace-shell.is-dock-collapsed { --dock-space: var(--float-gap); }
+
+  /* Header: a slim glass bar over the top of the scene. */
+  .workspace-header {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 30;
+    height: var(--header-h);
+    background: linear-gradient(180deg, rgba(8, 11, 18, 0.78), rgba(8, 11, 18, 0.28));
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-bottom: 1px solid var(--glass-line);
+  }
+  .workspace-header::after { opacity: 0.55; }
+  .room-pill { background: rgba(255, 255, 255, 0.05); border-color: var(--glass-line); }
+
+  /* The scene takes the whole window. */
+  .workspace-grid { position: relative; display: block; height: 100vh; min-height: 0; }
+  .viewport-column { position: absolute; inset: 0; display: block; background: #090d15; }
+  .scene-frame { position: absolute; inset: 0; }
+  .scene-frame::after { box-shadow: none; background: radial-gradient(ellipse 80% 75% at 50% 52%, transparent 55%, rgba(5, 8, 14, 0.55) 100%); }
+
+  /* Shared glass surface for every floating panel. */
+  .component-rail,
+  .discussion-dock,
+  .attempt-drawer,
+  .viewport-title,
+  .toolbar-actions,
+  .dock-reopen {
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+  }
+
+  /* Parts rail, floating on the left. */
+  .component-rail {
+    position: absolute;
+    top: var(--float-top);
+    bottom: var(--float-gap);
+    left: var(--float-gap);
+    z-index: 20;
+    width: var(--rail-w);
+    overflow: hidden;
+    border-radius: 18px;
+  }
+  .component-rail .studio-switch { border-bottom-color: var(--glass-line); }
+  .component-rail .rail-heading { border-bottom-color: var(--glass-line); }
+  .component-card { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.08); }
+  .rail-footer-button { background: rgba(255, 255, 255, 0.05); border-color: var(--glass-line); }
+
+  /* Toolbar: two glass pills along the top of the open space. */
+  .viewport-toolbar {
+    position: absolute;
+    top: var(--float-top);
+    right: var(--dock-space);
+    left: var(--rail-space);
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0;
+    background: none;
+    border: 0;
+    pointer-events: none;
+    transition: right 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .viewport-title,
+  .toolbar-actions { height: 46px; padding: 0 6px; border-radius: 14px; pointer-events: auto; }
+  .viewport-title { padding: 0 14px; }
+  .toolbar-actions { align-items: center; }
+  .tool-button { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
+
+  /* Attempt history: a glass strip along the bottom of the open space. */
+  .attempt-drawer {
+    position: absolute;
+    bottom: var(--float-gap);
+    left: calc(var(--rail-space) + (100% - var(--rail-space) - var(--dock-space)) / 2);
+    z-index: 20;
+    width: max-content;
+    max-width: calc(100% - var(--rail-space) - var(--dock-space) - 260px);
+    border-radius: 14px;
+    transform: translateX(-50%);
+    transition: left 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .attempt-card { position: relative; min-height: 36px; padding: 5px 9px; }
+  .attempt-list { padding: 7px 9px; }
+  .attempt-card { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.09); }
+
+  /* Overlays inside the scene keep to the open space. */
+  .scene-status { top: calc(var(--float-top) + 58px); left: calc(var(--rail-space) + (100% - var(--rail-space) - var(--dock-space)) / 2); }
+  .control-help { top: calc(var(--float-top) + 58px); right: var(--dock-space); left: auto; }
+  .environment-hud { top: calc(var(--float-top) + 58px); right: var(--dock-space); }
+  .challenge-card { bottom: var(--float-gap); left: var(--rail-space); }
+  .selection-toolbar { right: var(--dock-space); bottom: calc(var(--float-gap) + 66px); }
+  .drop-callout { inset: var(--float-top) var(--dock-space) var(--float-gap) var(--rail-space); }
+  .scene-status,
+  .control-help,
+  .environment-hud,
+  .selection-toolbar { transition: right 280ms cubic-bezier(0.2, 0.7, 0.2, 1), left 280ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms ease-out, transform 160ms ease-out; }
+
+  /* Discussion: a translucent panel on the right that slides away. */
+  .discussion-dock {
+    position: absolute;
+    top: var(--float-top);
+    right: var(--float-gap);
+    bottom: var(--float-gap);
+    z-index: 20;
+    width: var(--dock-w);
+    overflow: hidden;
+    border-radius: 18px;
+    transition: transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 220ms ease;
+  }
+  .is-dock-collapsed .discussion-dock { opacity: 0; pointer-events: none; transform: translateX(calc(100% + var(--float-gap) * 2)); }
+  .discussion-tabs { grid-auto-columns: 1fr; grid-template-columns: none; border-bottom-color: var(--glass-line); }
+  .discussion-tabs .dock-collapse { display: grid; place-items: center; color: var(--muted); background: transparent; border: 0; border-left: 1px solid var(--glass-line); cursor: pointer; }
+  .discussion-tabs .dock-collapse:hover,
+  .discussion-tabs .dock-collapse:focus-visible { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+
+  .dock-reopen {
+    position: absolute;
+    top: var(--float-top);
+    right: var(--float-gap);
+    z-index: 21;
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    color: #dbe6f5;
+    border-radius: 14px;
+    font-size: 1.2rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.9);
+    transition: opacity 200ms ease 120ms, transform 200ms ease 120ms;
+  }
+  .is-dock-collapsed .dock-reopen { opacity: 1; pointer-events: auto; transform: none; }
+  .dock-reopen:hover,
+  .dock-reopen:focus-visible { border-color: rgba(var(--accent-rgb), 0.6); }
+  .dock-unread { position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; background: var(--agent, #b794ff); border: 2px solid #0b0f18; border-radius: 50%; opacity: 0; transform: scale(0.4); transition: opacity 160ms ease, transform 160ms ease; }
+  .dock-reopen.has-unread .dock-unread { opacity: 1; transform: none; }
+  .is-dock-collapsed .viewport-toolbar { right: calc(var(--float-gap) * 2 + 46px); }
+
+  /* Everything inside the panel turns translucent so the scene shows through. */
+  .discussion-dock .context-banner { background: rgba(83, 164, 255, 0.08); border-bottom-color: var(--glass-line); }
+  .discussion-dock .chat-composer { background: rgba(255, 255, 255, 0.04); border-color: var(--glass-line); }
+  .discussion-dock .chat-composer textarea { background: transparent; }
+  .discussion-dock .message-context { background: rgba(83, 164, 255, 0.12); }
+  .discussion-dock .phase-step { background: rgba(255, 255, 255, 0.04); border-color: var(--glass-line); }
+  .discussion-dock .phase-step.is-active { background: rgba(74, 158, 255, 0.2); border-color: rgba(74, 158, 255, 0.8); }
+  .discussion-dock .protocol-prompt,
+  .discussion-dock .team-member,
+  .discussion-dock .participation-card,
+  .discussion-dock .trace-empty,
+  .discussion-dock .teammate-card.is-empty,
+  .discussion-dock .teammate-notebook li,
+  .discussion-dock .notes-stack textarea,
+  .discussion-dock .code-list li,
+  .discussion-dock .pin-led { background: rgba(255, 255, 255, 0.04); border-color: var(--glass-line); }
+  .discussion-dock .team-sync { background: rgba(255, 255, 255, 0.05); }
+  .discussion-dock .voice-hero { border-bottom-color: var(--glass-line); }
+  .discussion-dock .participant-row { border-color: var(--glass-line); }
+  .discussion-dock .chat-message .avatar:not(.is-agent):not(.is-local) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .discussion-dock,
+    .viewport-toolbar,
+    .attempt-drawer,
+    .dock-reopen { transition: none; }
+  }
+}
+
+/* Browsers without backdrop blur get a denser glass, so text stays readable over the scene. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (min-width: 901px) {
+    .workspace-shell { --glass: rgba(10, 14, 23, 0.88); }
+  }
 }

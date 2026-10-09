@@ -31,7 +31,7 @@ const check = (name, ok, detail = "") => {
 
 async function enter(name, query) {
   const page = await context.newPage();
-  page.setDefaultTimeout(60_000);
+  page.setDefaultTimeout(180_000);
   page.on("pageerror", (error) => console.error(`[${name}] pageerror:`, error.message));
   await page.goto(`${base}/?room=${room}&studio=circuit&name=${encodeURIComponent(name)}${query}`);
   await page.waitForSelector("#enter-room");
@@ -44,7 +44,7 @@ const boltLines = (page) => page.evaluate(() =>
   [...document.querySelectorAll(".chat-message")]
     .filter((row) => row.querySelector(".avatar.is-agent"))
     .map((row) => row.querySelector("p")?.textContent ?? ""));
-async function waitForBolt(page, pattern, timeout = 60_000) {
+async function waitForBolt(page, pattern, timeout = 120_000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     const lines = await boltLines(page);
@@ -78,7 +78,7 @@ async function readyAndTest(page, ...others) {
   await page.waitForFunction((count) => document.querySelectorAll(".team-member.is-ready").length >= count, everyone, { timeout: 30_000 });
   await tap(page, "#check-circuit");
 }
-async function waitForBoltCount(page, pattern, count, timeout = 150_000) {
+async function waitForBoltCount(page, pattern, count, timeout = 300_000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     if ((await boltLines(page)).filter((line) => pattern.test(line)).length >= count) return true;

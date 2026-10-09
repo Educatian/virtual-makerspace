@@ -789,6 +789,7 @@ function renderWorkspace(): void {
               <button class="tool-button icon-only" id="check-circuit" type="button" aria-label="Test the current system" data-tooltip="Test system"><i class="ph ph-lightning"></i><span class="sr-only">Check circuit</span></button>
               <button class="tool-button icon-only" id="toggle-speech" type="button" aria-pressed="false" aria-label="Spoken status off" data-tooltip="Spoken status off"><i class="ph ph-speaker-simple-slash"></i></button>
               <button class="tool-button icon-only" id="toggle-help" type="button" aria-label="Show controls" data-tooltip="Show controls"><i class="ph ph-question"></i></button>
+              <button class="tool-button icon-only" id="toggle-fullscreen" type="button" aria-label="Enter full screen" data-tooltip="Full screen"><i class="ph ph-corners-out"></i></button>
             </div>
           </div>
 
@@ -829,13 +830,14 @@ function renderWorkspace(): void {
           </section>
         </section>
 
-        <aside class="discussion-dock" aria-label="Discussion">
+        <aside class="discussion-dock" id="discussion-dock" aria-label="Discussion">
           <div class="discussion-tabs" role="tablist">
             <button class="discussion-tab is-active" data-tab="chat" data-tooltip="Text chat" aria-label="Text chat" type="button"><i class="ph ph-chat-circle-text"></i><span class="sr-only">Chat</span></button>
             <button class="discussion-tab" data-tab="voice" data-tooltip="Voice chat" aria-label="Voice chat" type="button"><i class="ph ph-waveform"></i><span class="sr-only">Voice</span></button>
             <button class="discussion-tab" data-tab="team" data-tooltip="Shared activity" aria-label="Shared activity" type="button"><i class="ph ph-users-three"></i><span class="sr-only">Shared activity</span></button>
             <button class="discussion-tab" data-tab="notes" data-tooltip="Notes and reflection" aria-label="Notes and reflection" type="button"><i class="ph ph-note-pencil"></i><span class="sr-only">Notes</span></button>
             <button class="discussion-tab" data-tab="code" data-tooltip="Snapino code" aria-label="Snapino code" type="button" hidden><i class="ph ph-code-block"></i><span class="sr-only">Code</span></button>
+            <button class="dock-collapse" id="dock-collapse" type="button" aria-label="Hide panel" aria-controls="discussion-dock" aria-expanded="true" data-tooltip="Hide panel"><i class="ph ph-caret-double-right"></i></button>
           </div>
 
           <div class="discussion-panel is-active" data-panel="chat">
@@ -906,6 +908,7 @@ function renderWorkspace(): void {
             </div>
           </div>
         </aside>
+        <button class="dock-reopen" id="dock-reopen" type="button" aria-label="Show discussion panel" aria-controls="discussion-dock" data-tooltip="Show panel"><i class="ph ph-chat-circle-dots"></i><span class="dock-unread" aria-hidden="true"></span></button>
       </div>
     </main>
 
@@ -1049,6 +1052,12 @@ function bindWorkspaceEvents(): void {
     if (speechEnabled) speak(`Spoken status on. ${STUDIO_COPY[activeStudio].caption}`);
     else window.speechSynthesis?.cancel();
   });
+  document.querySelector("#toggle-fullscreen")?.addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", syncFullscreenButton);
+  document.querySelector("#dock-collapse")?.addEventListener("click", () => setDockCollapsed(true));
+  document.querySelector("#dock-reopen")?.addEventListener("click", () => setDockCollapsed(false));
+  window.addEventListener("resize", updateViewInsets);
+  setDockCollapsed(readDockPreference(), false);
   document.querySelector("#toggle-help")?.addEventListener("click", () =>
     document.querySelector("#control-help")?.classList.toggle("is-hidden"),
   );
@@ -1078,6 +1087,79 @@ function bindWorkspaceEvents(): void {
   bindCodePanel();
   document.addEventListener("keydown", onKeyboardShortcut);
   window.addEventListener("beforeunload", disposeWorkspace, { once: true });
+}
+
+// ── Immersive layout ─────────────────────────────────────────────────────────
+// On wide screens the 3D scene fills the window and the panels float over it (styles.css).
+// The scene shifts its framing so the bench sits centered in the space the panels leave open.
+
+let dockCollapsed = false;
+
+function readDockPreference(): boolean {
+  try {
+    return localStorage.getItem("vm-dock-collapsed") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setDockCollapsed(collapsed: boolean, remember = true): void {
+  dockCollapsed = collapsed;
+  const shell = document.querySelector<HTMLElement>(".workspace-shell");
+  shell?.classList.toggle("is-dock-collapsed", collapsed);
+  document.querySelector("#dock-collapse")?.setAttribute("aria-expanded", String(!collapsed));
+  if (!collapsed) document.querySelector("#dock-reopen")?.classList.remove("has-unread");
+  if (remember) {
+    try {
+      localStorage.setItem("vm-dock-collapsed", collapsed ? "1" : "0");
+    } catch {
+      // A per-viewer convenience; the layout still works without it.
+    }
+  }
+  updateViewInsets();
+  // Re-frame again once the slide finishes.
+  window.setTimeout(updateViewInsets, 320);
+}
+
+/** True when the panels float over the scene (wide screens), false on the stacked phone layout. */
+function isImmersive(): boolean {
+  const dock = document.querySelector<HTMLElement>("#discussion-dock");
+  return Boolean(dock && getComputedStyle(dock).position === "absolute");
+}
+
+function updateViewInsets(): void {
+  const frame = document.querySelector<HTMLElement>("#scene-frame")?.getBoundingClientRect();
+  const rail = document.querySelector<HTMLElement>(".component-rail")?.getBoundingClientRect();
+  const dock = document.querySelector<HTMLElement>("#discussion-dock")?.getBoundingClientRect();
+  const dockElement = document.querySelector<HTMLElement>("#discussion-dock");
+  if (dockElement) dockElement.inert = dockCollapsed && isImmersive();
+  if (!workbench || !frame || !rail || !dock || !isImmersive()) {
+    workbench?.setViewInsets(0, 0);
+    return;
+  }
+  const left = Math.max(0, rail.right - frame.left);
+  const right = dockCollapsed ? 0 : Math.max(0, frame.right - dock.left);
+  workbench.setViewInsets(left, right);
+}
+
+async function toggleFullscreen(): Promise<void> {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    showSceneStatus("Full screen isn't available in this browser", "warning");
+  }
+}
+
+function syncFullscreenButton(): void {
+  const button = document.querySelector<HTMLButtonElement>("#toggle-fullscreen");
+  if (!button) return;
+  const full = Boolean(document.fullscreenElement);
+  const label = full ? "Exit full screen" : "Full screen";
+  button.innerHTML = `<i class="ph ${full ? "ph-corners-in" : "ph-corners-out"}"></i>`;
+  button.setAttribute("aria-label", label);
+  button.dataset.tooltip = label;
+  button.title = label;
 }
 
 function switchStudio(studio: StudioKind, remote = false): void {
@@ -1278,6 +1360,9 @@ function appendChatMessage(message: RoomChatMessage): void {
   `;
   list.append(row);
   list.scrollTop = list.scrollHeight;
+  if (dockCollapsed && message.participantId !== room?.participant.id && !message.id.startsWith("seed-")) {
+    document.querySelector("#dock-reopen")?.classList.add("has-unread");
+  }
   const stored = [...list.querySelectorAll<HTMLElement>(".chat-message")]
     .slice(-40)
     .map((element) => {
@@ -1758,6 +1843,7 @@ function renderAttempts(): void {
     button.type = "button";
     button.className = "attempt-card";
     button.dataset.tooltip = `${attempt.summary} · ${timeLabel(attempt.createdAt)}`;
+    button.title = button.dataset.tooltip;
     button.setAttribute("aria-label", `Restore ${attempt.summary}`);
     button.innerHTML = `<span class="attempt-index">${String(index + 1).padStart(2, "0")}</span><span class="sr-only"><strong>${escapeHtml(attempt.summary)}</strong><small>${timeLabel(attempt.createdAt)}</small></span><i class="ph ph-arrow-u-up-left"></i>`;
     button.addEventListener("click", () => workbench?.restoreAttempt(attempt));
@@ -2006,6 +2092,8 @@ function disposeWorkspace(): void {
   cancelAnimationFrame(voiceFrame);
   window.clearTimeout(activityTimer);
   document.removeEventListener("keydown", onKeyboardShortcut);
+  document.removeEventListener("fullscreenchange", syncFullscreenButton);
+  window.removeEventListener("resize", updateViewInsets);
   snapinoRunner?.stop();
   snapinoRunner = null;
   workbench?.dispose();

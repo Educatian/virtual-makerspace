@@ -248,6 +248,7 @@ export class DesktopWorkbenchScene {
   /** Remote moves glide (with a small carry lift) instead of teleporting. */
   private readonly remoteTweens = new Map<string, { base: Vector3; target: Vector3; rotation: Euler }>();
   private lastFrameAt = performance.now();
+  private readonly viewInsets = { left: 0, right: 0 };
   private readonly previewMarkers: Mesh<RingGeometry, MeshBasicMaterial>[] = [];
   private readonly previewBeams: Mesh<CylinderGeometry, MeshBasicMaterial>[] = [];
   private readonly flexMotion = new Map<string, { previous: Vector3; sway: number; velocity: number }>();
@@ -2761,12 +2762,34 @@ export class DesktopWorkbenchScene {
     this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   }
 
+  /**
+   * Panels floating over the left and right of the scene: shift the projection so the bench
+   * is centered in the open space between them. Picking uses the same projection, so it stays exact.
+   */
+  setViewInsets(left: number, right: number): void {
+    this.viewInsets.left = left;
+    this.viewInsets.right = right;
+    this.applyViewOffset();
+  }
+
+  private applyViewOffset(): void {
+    const width = Math.max(this.host.clientWidth, 1);
+    const height = Math.max(this.host.clientHeight, 1);
+    const shift = (this.viewInsets.right - this.viewInsets.left) / 2;
+    if (Math.abs(shift) < 1) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(width, height, shift, 0, width, height);
+    // Pull back a little when panels take a large share, so the parts tray stays in view.
+    const open = width - this.viewInsets.left - this.viewInsets.right;
+    this.camera.zoom = MathUtils.clamp(open / (width * 0.82), 0.74, 1);
+    this.camera.updateProjectionMatrix();
+  }
+
   private readonly resize = (): void => {
     const width = Math.max(this.host.clientWidth, 1);
     const height = Math.max(this.host.clientHeight, 1);
     this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    this.applyViewOffset();
   };
 
   /** Glides remotely moved parts toward their target, lifted slightly while carried. */
