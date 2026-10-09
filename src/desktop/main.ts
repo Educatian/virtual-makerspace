@@ -26,7 +26,7 @@ import {
   type Participant,
   type RoomChatMessage,
 } from "./collaboration.js";
-import { AI_TEAMMATE_NAME, AiTeammate, forgetAiTeammate } from "./ai-teammate.js";
+import { AI_TEAMMATE_NAME, AiTeammate, TYPING_DETAIL, forgetAiTeammate } from "./ai-teammate.js";
 import {
   DesktopWorkbenchScene,
   type ComponentSpec,
@@ -51,8 +51,21 @@ interface AuthProfile {
   provider: "cloudflare-access" | "local-preview" | "access-required";
 }
 
+/** A stable id for local preview, so per-learner state (like Bolt's notebook) survives a reload. */
+function localMakerId(): string {
+  try {
+    const existing = localStorage.getItem("vm-local-maker-id");
+    if (existing) return existing;
+    const created = `local:${crypto.randomUUID()}`;
+    localStorage.setItem("vm-local-maker-id", created);
+    return created;
+  } catch {
+    return `local:${crypto.randomUUID()}`;
+  }
+}
+
 let authProfile: AuthProfile = {
-  id: `local:${crypto.randomUUID()}`,
+  id: localMakerId(),
   name: initialName,
   role: params.get("role") === "member" ? "member" : "admin",
   provider: "local-preview",
@@ -61,6 +74,8 @@ let authProfile: AuthProfile = {
 let room: DesktopRoom | null = null;
 /** Bolt, when this tab hosts the AI teammate. */
 let aiTeammate: AiTeammate | null = null;
+/** The learner asked for Bolt (lobby switch or `?teammate=ai`); invited on entering a room. */
+let bringBolt = params.get("teammate") === "ai";
 let workbench: DesktopWorkbenchScene | null = null;
 let participants: Participant[] = [];
 let selectedComponent: ComponentSpec | null = null;
@@ -291,6 +306,13 @@ function renderLobby(): void {
             <span><strong>Mic optional</strong><small>Join muted, chat anytime. Voice is never recorded.</small></span>
             <button class="secondary-button compact" id="test-mic" type="button">Test microphone</button>
           </div>
+
+          <label class="teammate-toggle" for="lobby-teammate">
+            <span class="teammate-mark"><i class="ph ph-robot"></i></span>
+            <span><strong>Practice with ${AI_TEAMMATE_NAME}</strong><small>An AI teammate for the Circuit Bench that learns what you teach it.</small></span>
+            <input type="checkbox" id="lobby-teammate" role="switch" ${bringBolt ? "checked" : ""}>
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+          </label>
         </article>
 
         <aside class="lobby-preview" aria-label="Choose a studio">
@@ -357,6 +379,8 @@ function renderLobby(): void {
     }
     currentName = collaborationDisplayName();
     currentRoomCode = code;
+    bringBolt = Boolean(document.querySelector<HTMLInputElement>("#lobby-teammate")?.checked);
+    params.delete("teammate");
     if (button) {
       button.disabled = true;
       button.innerHTML = '<i class="ph ph-circle-notch"></i> Entering…';
@@ -523,6 +547,9 @@ function enterWorkspace(): void {
   params.set("room", currentRoomCode);
   params.set("studio", activeStudio);
   params.delete("name");
+  // Bolt is this learner's choice; keep it out of the URL so a shared room link doesn't invite a second Bolt.
+  if (params.get("teammate") === "ai") bringBolt = true;
+  params.delete("teammate");
   history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
   renderWorkspace();
 
@@ -539,6 +566,7 @@ function enterWorkspace(): void {
         removeAiTeammate();
       }
       renderParticipants();
+      renderTypingIndicator();
       renderTeamPanel();
     },
     onChat: appendChatMessage,
@@ -664,7 +692,7 @@ function enterWorkspace(): void {
   renderTeamPanel();
   addAttempt(workbench.captureAttempt(STUDIO_COPY[activeStudio].opened));
   // Wait for presence from anyone already here, so a shared study link doesn't spawn two Bolts.
-  if (params.get("teammate") === "ai") window.setTimeout(inviteAiTeammate, 1500);
+  if (bringBolt) window.setTimeout(inviteAiTeammate, 1500);
 }
 
 /**
@@ -696,6 +724,14 @@ function inviteAiTeammate(): void {
         return Boolean(owner && owner.id !== aiTeammate?.id);
       }),
     saveAttempt: (summary) => workbench?.saveAttempt(summary),
+    onRole: (agentRole) => {
+      // A lone human takes the other role, so the pair is always one builder and one verifier.
+      const humans = participants.filter((participant) => participant.kind !== "agent");
+      if (!room || humans.length > 1 || room.participant.role !== agentRole) return;
+      const next: CollaborationRole = agentRole === "builder" ? "verifier" : "builder";
+      room.setRole(next);
+      room.recordTrace("role", collaborationPhase, activeStudio, { detail: `Became ${next}` });
+    },
     onChange: renderTeamPanel,
   }, { profile, explain, role });
   room.recordTrace("role", collaborationPhase, activeStudio, { detail: `Invited ${AI_TEAMMATE_NAME} (AI teammate, ${role})` });
@@ -805,6 +841,7 @@ function renderWorkspace(): void {
           <div class="discussion-panel is-active" data-panel="chat">
             <div class="context-banner" id="chat-context"><i class="ph ph-chat-centered-dots"></i><span>General discussion</span><button class="bare-button" id="clear-context" type="button" aria-label="Clear discussion context"><i class="ph ph-x"></i></button></div>
             <div class="chat-list" id="chat-list" aria-live="polite"></div>
+            <div class="typing-indicator" id="typing-indicator" aria-live="polite" hidden><span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="typing-copy"></span></div>
             <form class="chat-composer" id="chat-form">
               <label class="sr-only" for="chat-input">Discuss your circuit</label>
               <textarea id="chat-input" rows="2" maxlength="500" placeholder="Discuss your circuit…"></textarea>
@@ -1214,13 +1251,27 @@ function appendChatMessage(message: RoomChatMessage): void {
   const list = document.querySelector<HTMLElement>("#chat-list");
   if (!list || chatMessageIds.has(message.id)) return;
   chatMessageIds.add(message.id);
+  const agent = isAgentId(message.participantId) || (message.participantId === "history" && message.author === AI_TEAMMATE_NAME);
+  // Consecutive lines from one author within two minutes read as one turn.
+  const previous = list.lastElementChild as HTMLElement | null;
+  // Group by participant; names can collide ("Host"), so history rows fall back to the name.
+  const speakerKey = message.participantId === "history" ? `name:${message.author}` : message.participantId;
+  const continued = Boolean(
+    previous &&
+    previous.dataset.speaker === speakerKey &&
+    message.createdAt - Number(previous.dataset.createdAt ?? 0) < 120_000 &&
+    !message.context,
+  );
   const row = document.createElement("article");
-  row.className = "chat-message";
+  row.className = `chat-message${continued ? " is-continued" : ""}${agent ? " is-agent" : ""}`;
   row.dataset.messageId = message.id;
+  row.dataset.author = message.author;
+  row.dataset.speaker = speakerKey;
+  row.dataset.createdAt = String(message.createdAt);
   row.innerHTML = `
-    <span class="avatar ${message.participantId === room?.participant.id ? "is-local" : ""} ${isAgentId(message.participantId) ? "is-agent" : ""}">${avatarFor(message.participantId, message.author)}</span>
+    <span class="avatar ${message.participantId === room?.participant.id ? "is-local" : ""} ${agent ? "is-agent" : ""}" aria-hidden="${continued}">${agent ? '<i class="ph ph-robot" aria-hidden="true"></i>' : escapeHtml(initials(message.author))}</span>
     <span class="chat-message-copy">
-      <span class="chat-meta"><strong>${escapeHtml(message.author)}</strong><time>${timeLabel(message.createdAt)}</time></span>
+      <span class="chat-meta"><strong>${escapeHtml(message.author)}</strong>${agent ? '<span class="ai-chip">AI</span>' : ""}<time>${timeLabel(message.createdAt)}</time></span>
       ${message.context ? `<span class="message-context"><i class="ph ph-link-simple"></i>${escapeHtml(message.context)}</span>` : ""}
       <p>${escapeHtml(message.body)}</p>
     </span>
@@ -1231,12 +1282,26 @@ function appendChatMessage(message: RoomChatMessage): void {
     .slice(-40)
     .map((element) => {
       const id = element.dataset.messageId ?? crypto.randomUUID();
-      const author = element.querySelector<HTMLElement>(".chat-meta strong")?.textContent ?? "Maker";
+      const author = element.dataset.author ?? "Maker";
       const body = element.querySelector<HTMLElement>(".chat-message-copy p")?.textContent ?? "";
       const context = element.querySelector<HTMLElement>(".message-context")?.textContent?.trim();
-      return { id, participantId: id.startsWith("seed-") ? "guide" : "history", author, body, createdAt: Date.now(), context } satisfies RoomChatMessage;
+      return { id, participantId: id.startsWith("seed-") ? "guide" : "history", author, body, createdAt: Number(element.dataset.createdAt) || Date.now(), context } satisfies RoomChatMessage;
     });
-  localStorage.setItem(`vm-chat:${currentRoomCode}`, JSON.stringify(stored));
+  try {
+    localStorage.setItem(`vm-chat:${currentRoomCode}`, JSON.stringify(stored));
+  } catch {
+    // Chat history is a convenience; the live room still works without it.
+  }
+}
+
+/** "Bolt is typing…" under the chat while any teammate is composing. */
+function renderTypingIndicator(): void {
+  const indicator = document.querySelector<HTMLElement>("#typing-indicator");
+  const copy = document.querySelector<HTMLElement>("#typing-copy");
+  if (!indicator || !copy) return;
+  const typing = participants.filter((participant) => participant.id !== room?.participant.id && participant.activityDetail === TYPING_DETAIL);
+  indicator.hidden = typing.length === 0;
+  copy.textContent = typing.length === 1 ? `${typing[0].name} is typing…` : `${typing.map((participant) => participant.name).join(" and ")} are typing…`;
 }
 
 function renderParticipants(): void {
@@ -1260,7 +1325,7 @@ function renderParticipants(): void {
         (participant) => `
           <article class="participant-row">
             <span class="avatar ${participant.id === room?.participant.id ? "is-local" : ""} ${participant.kind === "agent" ? "is-agent" : ""}">${avatarFor(participant.id, participant.name)}</span>
-            <span><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}${participant.kind === "agent" ? " · AI teammate" : ""}</strong><small>${escapeHtml(participant.activityDetail || activityLabel(participant.activity))} · ${escapeHtml(roleLabel(participant.role))}</small></span>
+            <span><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}${participant.kind === "agent" ? ' <span class="ai-chip">AI</span>' : ""}</strong><small>${escapeHtml(participant.activityDetail || activityLabel(participant.activity))} · ${escapeHtml(roleLabel(participant.role))}</small></span>
             <i class="ph ${participant.voiceReady ? (participant.muted ? "ph-microphone-slash" : "ph-waveform") : "ph-chat-circle-text"}"></i>
           </article>`,
       )
@@ -1349,37 +1414,52 @@ function traceLabel(trace: ActivityTrace): string {
 
 function renderTeammateCard(): string {
   const agentInRoom = participants.find((participant) => participant.kind === "agent");
+  const otherHumans = participants.filter((participant) => participant.kind !== "agent" && participant.id !== room?.participant.id).length;
   if (!aiTeammate) {
     if (agentInRoom) {
-      return `<section class="teammate-card"><div class="teammate-heading"><span><i class="ph ph-robot"></i> ${escapeHtml(agentInRoom.name)} · AI teammate</span></div><p>Hosted by another maker. Teach ${escapeHtml(agentInRoom.name)} in chat — explain what to do <em>and why</em>.</p></section>`;
+      return `
+        <section class="teammate-card">
+          <div class="teammate-heading"><span class="teammate-title"><span class="teammate-mark"><i class="ph ph-robot"></i></span>${escapeHtml(agentInRoom.name)} is on the team</span></div>
+          <p>Teach ${escapeHtml(agentInRoom.name)} in chat: say what to do <em>and why</em>. Another maker is hosting it.</p>
+        </section>`;
     }
     return `
       <section class="teammate-card is-empty">
-        <div class="teammate-heading"><span><i class="ph ph-robot"></i> AI teammate</span></div>
-        <p>No partner yet? ${AI_TEAMMATE_NAME} is a teammate who is still learning circuits. It builds and checks using only what your team teaches it.</p>
-        <button class="secondary-button compact" id="invite-ai" type="button"><i class="ph ph-user-plus"></i> Add ${AI_TEAMMATE_NAME}</button>
+        <div class="teammate-heading"><span class="teammate-title"><span class="teammate-mark"><i class="ph ph-robot"></i></span>${otherHumans ? "Want an extra teammate?" : "Working solo?"}</span></div>
+        <p>${AI_TEAMMATE_NAME} is an AI teammate that's still learning circuits. It builds and checks with only what you teach it.</p>
+        <button class="secondary-button compact" id="invite-ai" type="button"><i class="ph ph-plus"></i> Add ${AI_TEAMMATE_NAME}</button>
       </section>`;
   }
   const notebook = aiTeammate.mind.notebook();
   return `
     <section class="teammate-card">
-      <div class="teammate-heading"><span><i class="ph ph-robot"></i> ${AI_TEAMMATE_NAME}'s notebook</span><span class="teammate-actions"><button class="bare-button" id="reset-ai" type="button" data-tooltip="Remove ${AI_TEAMMATE_NAME} and forget what it learned here" aria-label="Reset ${AI_TEAMMATE_NAME}"><i class="ph ph-arrow-counter-clockwise"></i></button><button class="bare-button" id="remove-ai" type="button" data-tooltip="Remove ${AI_TEAMMATE_NAME} from the room" aria-label="Remove ${AI_TEAMMATE_NAME}"><i class="ph ph-x"></i></button></span></div>
+      <div class="teammate-heading">
+        <span class="teammate-title"><span class="teammate-mark"><i class="ph ph-notebook"></i></span>${AI_TEAMMATE_NAME}'s notebook</span>
+        <span class="teammate-actions">
+          <button class="bare-button" id="reset-ai" type="button" data-tooltip="Remove ${AI_TEAMMATE_NAME} and erase its notebook" aria-label="Reset ${AI_TEAMMATE_NAME}"><i class="ph ph-arrow-counter-clockwise"></i></button>
+          <button class="bare-button" id="remove-ai" type="button" data-tooltip="Remove ${AI_TEAMMATE_NAME} from the room" aria-label="Remove ${AI_TEAMMATE_NAME}"><i class="ph ph-x"></i></button>
+        </span>
+      </div>
       ${notebook.length === 0
-        ? `<p class="teammate-empty">Nothing yet. ${AI_TEAMMATE_NAME} only learns an idea when someone explains it <em>and why</em> in chat.</p>`
-        : `<ul class="teammate-notebook">${notebook.map((entry) => `<li><strong>${escapeHtml(entry.label)}</strong><q>${escapeHtml(entry.quote)}</q><small>Taught by ${escapeHtml(entry.taughtBy)}</small></li>`).join("")}</ul>`}
+        ? `<p class="teammate-empty">Empty for now. ${AI_TEAMMATE_NAME} writes an idea down only when someone explains what to do <em>and why</em>.</p>`
+        : `<ol class="teammate-notebook">${notebook.map((entry) => `<li><span class="notebook-label">${escapeHtml(entry.label)}</span><blockquote>${escapeHtml(entry.quote)}</blockquote><span class="notebook-source">${escapeHtml(entry.taughtBy)}</span></li>`).join("")}</ol>`}
     </section>`;
 }
+
+let lastTeamPanelHtml = "";
 
 function renderTeamPanel(): void {
   const panel = document.querySelector<HTMLElement>("#team-panel-content");
   if (!panel) return;
   const local = participants.find((participant) => participant.id === room?.participant.id) ?? room?.participant;
   const contributionActions = new Set<ActivityTrace["action"]>(["move", "discuss", "test", "snapshot", "reflect"]);
+  // Bolt's moves count as contributions; its chat does not, so a talkative agent can't
+  // crowd out the humans' share.
+  const counts = (trace: ActivityTrace): boolean =>
+    contributionActions.has(trace.action) && !(trace.action === "discuss" && isAgentId(trace.participantId));
   const scoredParticipants = participants.map((participant) => ({
     participant,
-    score: activityTraces.filter(
-      (trace) => trace.participantId === participant.id && contributionActions.has(trace.action),
-    ).length,
+    score: activityTraces.filter((trace) => trace.participantId === participant.id && counts(trace)).length,
   }));
   const totalScore = scoredParticipants.reduce((sum, item) => sum + item.score, 0);
   const equalShare = scoredParticipants.length > 0 ? 100 / scoredParticipants.length : 100;
@@ -1388,13 +1468,15 @@ function renderTeamPanel(): void {
     share: totalScore === 0 ? equalShare : (item.score / totalScore) * 100,
   }));
   const participationColors = ["#53a4ff", "#55d98b", "#fbbf24", "#c084fc", "#fb7185", "#22d3ee"];
+  const colorFor = (participant: Participant, index: number): string =>
+    participant.kind === "agent" ? "#b794ff" : participationColors[index % participationColors.length];
   const allReady = participants.length > 1 && participants.every((participant) => participant.ready);
   const phaseIndex = collaborationPhases.findIndex((phase) => phase.id === collaborationPhase);
   const partnerLabel = participants.length > 1
     ? participants.map((participant) => participant.name).join(" + ")
-    : `${currentName} · waiting for partner`;
+    : `${currentName} · waiting for a partner`;
 
-  panel.innerHTML = `
+  const html = `
     <section class="team-summary">
       <span class="section-label">Team protocol</span>
       <div class="team-title-row"><h2>${escapeHtml(partnerLabel)}</h2><span class="team-sync ${participants.length > 1 ? "is-live" : ""}" data-tooltip="${participants.length > 1 ? `${participants.length} collaborators connected` : "Share the room link"}"><i class="ph ${participants.length > 1 ? "ph-link" : "ph-link-break"}"></i></span></div>
@@ -1403,7 +1485,7 @@ function renderTeamPanel(): void {
 
     <section class="phase-stepper" aria-label="Shared activity phase">
       ${collaborationPhases.map((phase, index) => `
-        <button class="phase-step ${phase.id === collaborationPhase ? "is-active" : ""} ${index < phaseIndex ? "is-complete" : ""}" data-phase="${phase.id}" type="button" data-tooltip="${escapeHtml(phase.label)}" aria-label="Move team to ${escapeHtml(phase.label)}">
+        <button class="phase-step ${phase.id === collaborationPhase ? "is-active" : ""} ${index < phaseIndex ? "is-complete" : ""}" data-phase="${phase.id}" id="phase-${phase.id}" type="button" data-tooltip="${escapeHtml(phase.label)}" aria-label="Move team to ${escapeHtml(phase.label)}" aria-pressed="${phase.id === collaborationPhase}">
           <i class="ph ${index < phaseIndex ? "ph-check" : phase.icon}"></i><span>${escapeHtml(phase.label)}</span>
         </button>`).join("")}
     </section>
@@ -1414,14 +1496,14 @@ function renderTeamPanel(): void {
       ${participants.map((participant) => `
         <article class="team-member ${participant.ready ? "is-ready" : ""}">
           <span class="avatar ${participant.id === room?.participant.id ? "is-local" : ""} ${participant.kind === "agent" ? "is-agent" : ""}">${avatarFor(participant.id, participant.name)}</span>
-          <span class="team-member-copy"><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}${participant.kind === "agent" ? " · AI" : ""}</strong><small>${escapeHtml(roleLabel(participant.role))} · ${escapeHtml(participant.activityDetail || activityLabel(participant.activity))}</small></span>
+          <span class="team-member-copy"><strong>${escapeHtml(participant.name)}${participant.id === room?.participant.id ? " · You" : ""}${participant.kind === "agent" ? ' <span class="ai-chip">AI</span>' : ""}</strong><small>${escapeHtml(roleLabel(participant.role))} · ${escapeHtml(participant.activityDetail || activityLabel(participant.activity))}</small></span>
           <i class="ph ${participant.ready ? "ph-check-circle" : "ph-circle-dashed"}" data-tooltip="${participant.ready ? "Ready to test" : "Not ready"}"></i>
         </article>`).join("")}
     </section>
 
     <section class="coordination-controls">
       <button class="secondary-button compact" id="switch-role" type="button"><i class="ph ph-arrows-left-right"></i> ${local?.role === "verifier" ? "Become builder" : "Become verifier"}</button>
-      <button class="primary-button compact ${local?.ready ? "is-ready" : ""}" id="toggle-ready" type="button"><i class="ph ${local?.ready ? "ph-check-circle" : "ph-circle"}"></i> ${local?.ready ? "Ready" : "Mark ready"}</button>
+      <button class="primary-button compact ${local?.ready ? "is-ready" : ""}" id="toggle-ready" type="button" aria-pressed="${Boolean(local?.ready)}"><i class="ph ${local?.ready ? "ph-check-circle" : "ph-circle"}"></i> ${local?.ready ? "Ready" : "Mark ready"}</button>
     </section>
 
     ${renderTeammateCard()}
@@ -1429,12 +1511,12 @@ function renderTeamPanel(): void {
     <section class="participation-card">
       <div class="participation-heading"><span><i class="ph ph-scales"></i> Participation</span><small>${scoredParticipants.length > 1 ? `${scoredParticipants.length} collaborators` : "Collaborator needed"}</small></div>
       <div class="participation-bar" aria-label="Participation by collaborator">
-        ${participationShares.map((item, index) => `<span style="width:${item.share.toFixed(2)}%;--participant-color:${participationColors[index % participationColors.length]}" title="${escapeHtml(item.participant.name)} · ${Math.round(item.share)}%"></span>`).join("")}
+        ${participationShares.map((item, index) => `<span style="width:${item.share.toFixed(2)}%;--participant-color:${colorFor(item.participant, index)}" title="${escapeHtml(item.participant.name)} · ${Math.round(item.share)}%"></span>`).join("")}
       </div>
       <div class="participation-legend">
-        ${participationShares.map((item, index) => `<span><i style="--participant-color:${participationColors[index % participationColors.length]}"></i>${escapeHtml(item.participant.name)} ${Math.round(item.share)}%</span>`).join("")}
+        ${participationShares.map((item, index) => `<span><i style="--participant-color:${colorFor(item.participant, index)}"></i>${escapeHtml(item.participant.name)} ${Math.round(item.share)}%</span>`).join("")}
       </div>
-      <p>Based on moves, discussion, tests, snapshots, and reflection—not speaking time.</p>
+      <p>Based on moves, discussion, tests, snapshots, and reflection—not speaking time.${aiTeammate || participants.some((participant) => participant.kind === "agent") ? ` ${AI_TEAMMATE_NAME}'s chat isn't counted.` : ""}</p>
     </section>
 
     <section class="activity-trace">
@@ -1447,39 +1529,62 @@ function renderTeamPanel(): void {
     </section>
   `;
 
-  panel.querySelectorAll<HTMLButtonElement>("[data-phase]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const phase = button.dataset.phase as CollaborationPhase;
-      if (phase === collaborationPhase) return;
-      room?.setPhase(phase);
-      room?.recordTrace("phase", phase, activeStudio, { detail: `Moved team to ${phase}` });
-    });
-  });
-  panel.querySelector<HTMLButtonElement>("#switch-role")?.addEventListener("click", () => {
-    if (!room) return;
-    const role: CollaborationRole = room.participant.role === "builder" ? "verifier" : "builder";
-    room.setRole(role);
-    room.recordTrace("role", collaborationPhase, activeStudio, { detail: `Became ${role}` });
-  });
-  panel.querySelector<HTMLButtonElement>("#toggle-ready")?.addEventListener("click", () => {
-    if (!room) return;
-    const ready = !room.participant.ready;
-    room.setReady(ready);
-    room.recordTrace("ready", collaborationPhase, activeStudio, { detail: ready ? "Marked ready to test" : "Withdrew readiness" });
-    if (ready && participants.length > 1 && participants.filter((participant) => participant.id !== room?.participant.id).every((participant) => participant.ready)) {
-      showSceneStatus("Everyone is ready to test", "valid");
-    }
-  });
-  panel.querySelector<HTMLButtonElement>("#export-trace")?.addEventListener("click", exportActivityTrace);
-  panel.querySelector<HTMLButtonElement>("#invite-ai")?.addEventListener("click", inviteAiTeammate);
-  panel.querySelector<HTMLButtonElement>("#remove-ai")?.addEventListener("click", removeAiTeammate);
-  panel.querySelector<HTMLButtonElement>("#reset-ai")?.addEventListener("click", () => {
-    removeAiTeammate();
-    forgetAiTeammate(currentRoomCode);
-    showSceneStatus(`${AI_TEAMMATE_NAME} forgot what it was taught in this room`, "neutral");
-  });
   panel.classList.toggle("is-ready", allReady);
+  if (!panel.dataset.bound) {
+    // Delegated once per workspace, so re-renders never drop a click mid-press.
+    panel.dataset.bound = "1";
+    panel.addEventListener("click", onTeamPanelClick);
+  }
+  // Re-render only when something visible changed, keeping focus on the same control.
+  if (html === lastTeamPanelHtml && panel.childElementCount > 0) return;
+  lastTeamPanelHtml = html;
+  const focusedId = panel.contains(document.activeElement) ? document.activeElement?.id : "";
+  panel.innerHTML = html;
+  if (focusedId) panel.querySelector<HTMLElement>(`#${CSS.escape(focusedId)}`)?.focus();
   installNativeTooltips();
+}
+
+function onTeamPanelClick(event: MouseEvent): void {
+  const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("button");
+  if (!button || !room) return;
+  if (button.dataset.phase) {
+    const phase = button.dataset.phase as CollaborationPhase;
+    if (phase === collaborationPhase) return;
+    room.setPhase(phase);
+    room.recordTrace("phase", phase, activeStudio, { detail: `Moved team to ${phase}` });
+    return;
+  }
+  switch (button.id) {
+    case "switch-role": {
+      const role: CollaborationRole = room.participant.role === "builder" ? "verifier" : "builder";
+      room.setRole(role);
+      room.recordTrace("role", collaborationPhase, activeStudio, { detail: `Became ${role}` });
+      break;
+    }
+    case "toggle-ready": {
+      const ready = !room.participant.ready;
+      room.setReady(ready);
+      room.recordTrace("ready", collaborationPhase, activeStudio, { detail: ready ? "Marked ready to test" : "Withdrew readiness" });
+      if (ready && participants.length > 1 && participants.filter((participant) => participant.id !== room?.participant.id).every((participant) => participant.ready)) {
+        showSceneStatus("Everyone is ready to test", "valid");
+      }
+      break;
+    }
+    case "export-trace":
+      exportActivityTrace();
+      break;
+    case "invite-ai":
+      inviteAiTeammate();
+      break;
+    case "remove-ai":
+      removeAiTeammate();
+      break;
+    case "reset-ai":
+      removeAiTeammate();
+      forgetAiTeammate(currentRoomCode, authProfile.id);
+      showSceneStatus(`${AI_TEAMMATE_NAME}'s notebook was erased`, "neutral");
+      break;
+  }
 }
 
 function addActivityTrace(trace: ActivityTrace): void {
@@ -1917,6 +2022,7 @@ function disposeWorkspace(): void {
   activityTraceIds.clear();
   activityTraces = [];
   collaborationPhase = "frame";
+  lastTeamPanelHtml = "";
 }
 
 async function initialize(): Promise<void> {

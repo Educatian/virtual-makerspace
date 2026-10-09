@@ -30,10 +30,13 @@ import {
   CONCEPTS,
   TeachableMind,
   type AgentProfileId,
+  type LearningEvent,
   type MindSnapshot,
 } from "./teachable-agent.js";
 
 export const AI_TEAMMATE_NAME = "Bolt";
+/** Activity detail Bolt shows while composing a message; the chat renders it as "typing". */
+export const TYPING_DETAIL = "Typing…";
 
 const CIRCUIT_IDS: string[] = [
   CIRCUIT_PARTS.battery,
@@ -55,6 +58,8 @@ export interface TeammateHost {
   /** True when someone other than Bolt holds the part or either of its cable ends. */
   isHeldByOther(componentId: string): boolean;
   saveAttempt(summary: string): void;
+  /** Bolt took a role, so a lone human can take the other one. */
+  onRole(role: CollaborationRole): void;
   /** Bolt's beliefs or notebook changed. */
   onChange(): void;
 }
@@ -73,7 +78,6 @@ export class AiTeammate {
   readonly mind: TeachableMind;
   private readonly host: TeammateHost;
   private readonly options: TeammateOptions;
-  private readonly joinedAt = Date.now();
   private readonly timers = new Set<number>();
   private participants: Participant[] = [];
   private speaking: Promise<void> = Promise.resolve();
@@ -84,15 +88,20 @@ export class AiTeammate {
   private builtByBolt = false;
   private workDone = false;
   private reviewTimer = 0;
-  private studioNoticeFor: StudioChoice | null = null;
-  private enteredPhase: CollaborationPhase | null = null;
+  /** Bolt reacts to phases only after its greeting, so it doesn't talk over itself on join. */
+  private started = false;
+  private enteredKey = "";
+  /** One-time lines already said this session, so Bolt never repeats its prompts. */
+  private readonly said = new Set<string>();
+  private lastPlan = "";
+  /** A build was announced and hasn't finished yet; a restart carries on without re-announcing. */
+  private buildAnnounced = false;
   private disposed = false;
 
   constructor(host: TeammateHost, options: TeammateOptions) {
     this.host = host;
     this.options = options;
     this.mind = new TeachableMind({ profile: options.profile, restored: this.loadMemory() });
-    this.saveMemory();
     this.room = new DesktopRoom(
       host.roomCode,
       AI_TEAMMATE_NAME,
@@ -102,26 +111,28 @@ export class AiTeammate {
           this.maybeReady();
         },
         onChat: (message) => this.onChat(message),
-        onPhase: (phase) => this.enterPhase(phase, true),
+        onPhase: (phase) => this.enterPhase(phase),
         onTrace: (trace) => this.onTrace(trace),
         onTransform: (componentId, _transform, participantId) => this.onBoardChange(componentId, participantId),
-        onStudio: () => this.later(400, () => {
-          this.enteredPhase = null;
-          this.enterPhase(this.host.phase(), true);
-        }),
+        onStudio: () => {
+          this.cancelBuild();
+          this.later(400, () => this.enterPhase(this.host.phase()));
+        },
       },
       host.authId,
       { agent: true },
     );
     this.room.setRole(options.role);
+    this.host.onRole(options.role);
     this.later(900, () => {
       const remembered = this.mind.notebook().length > 0;
       void this.say(
         remembered
-          ? `Hi again! I'm ${AI_TEAMMATE_NAME}. I still remember what you taught me last time.`
-          : `Hi! I'm ${AI_TEAMMATE_NAME}, your AI teammate. I'm still learning circuits, so I'll make mistakes. When I do, teach me why — I'll remember what you tell me.`,
+          ? `Hi again! I'm ${AI_TEAMMATE_NAME}. I still remember what you taught me.`
+          : `Hi! I'm ${AI_TEAMMATE_NAME}. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.`,
       );
-      this.enterPhase(this.host.phase(), false);
+      this.started = true;
+      this.enterPhase(this.host.phase());
     });
   }
 
@@ -146,7 +157,7 @@ export class AiTeammate {
     const speaker = this.participants.find((participant) => participant.id === message.participantId);
     if (!speaker || speaker.kind === "agent") return;
     if (this.host.studio() !== "circuit") {
-      if (/\b(bolt)\b/i.test(message.body)) void this.say("I've only learned the Circuit Bench so far — I'll follow your lead here.");
+      if (/\bbolt\b|볼트/i.test(message.body)) this.sayOnce(`elsewhere:${this.host.studio()}`, "I only know the Circuit Bench so far, so you lead here.");
       return;
     }
 
@@ -154,16 +165,8 @@ export class AiTeammate {
     const humans = this.participants.filter((participant) => participant.kind !== "agent").length;
     const heard = this.mind.hear(message.body, speaker.name, { addressed: humans <= 1 });
     this.saveMemory();
-    for (const event of heard.learned) {
-      this.trace("teach", {
-        objectId: `concept:${event.concept}`,
-        objectName: CONCEPTS[event.concept].label,
-        detail: event.to === "taught"
-          ? `Learned "${CONCEPTS[event.concept].label}" from ${event.teacher} (explained)`
-          : `Heard "${CONCEPTS[event.concept].label}" from ${event.teacher} without a reason`,
-      });
-    }
-    for (const reply of heard.replies) void this.say(reply, heard.asked ? `Asked why: ${CONCEPTS[heard.asked].label}` : undefined);
+    for (const event of heard.learned) this.trace("teach", teachTrace(event));
+    for (const reply of heard.replies) void this.say(reply, heard.asked ? `Asked ${speaker.name} why` : undefined);
 
     for (const command of heard.commands) {
       if (command === "become-builder" && this.room.participant.role !== "builder") {
@@ -171,18 +174,17 @@ export class AiTeammate {
         void this.say("Okay, I'll build. You check my work.");
       } else if (command === "become-verifier" && this.room.participant.role !== "verifier") {
         this.setRole("verifier");
-        void this.say("Okay — you build, and I'll ask about anything I don't understand.");
+        this.said.add("verifier-intro");
+        void this.say("Okay, you build. I'll ask when something surprises me.");
       }
     }
 
-    const learnedSomething = heard.learned.some((event) => event.to === "taught");
+    const learnedSomething = heard.learned.some((event) => event.to === "taught" && event.from !== "taught");
     const wantsBuild = heard.commands.includes("rebuild") || heard.commands.includes("become-builder");
-    // A builder fixes its own build as soon as it is taught; otherwise it waits for Build.
-    const fixOwnBuild = learnedSomething && (this.builtByBolt || this.building || ["build", "test"].includes(this.host.phase()));
-    if (this.room.participant.role === "builder" && (wantsBuild || fixOwnBuild)) {
-      this.scheduleBuild(1600);
-    }
-    if (learnedSomething) this.host.onChange();
+    // A builder fixes its own build as soon as it is taught; otherwise it waits to be asked.
+    const fixOwnBuild = learnedSomething && (this.builtByBolt || this.building || this.host.phase() === "build");
+    if (this.room.participant.role === "builder" && (wantsBuild || fixOwnBuild)) this.scheduleBuild(1600);
+    if (heard.learned.length) this.host.onChange();
   }
 
   private onTrace(trace: ActivityTrace): void {
@@ -208,42 +210,45 @@ export class AiTeammate {
 
   // ── Acting ───────────────────────────────────────────────────────────────────
 
-  private enterPhase(phase: CollaborationPhase, changed: boolean): void {
-    if (this.disposed) return;
+  private enterPhase(phase: CollaborationPhase): void {
+    if (this.disposed || !this.started) return;
     // The room re-announces the current phase to newcomers; only a real change counts.
-    if (changed && phase === this.enteredPhase) return;
-    this.enteredPhase = phase;
+    const key = `${this.host.studio()}:${phase}`;
+    if (key === this.enteredKey) return;
+    this.enteredKey = key;
     this.mind.resetRemarks();
+
     if (this.host.studio() !== "circuit") {
       this.workDone = true;
-      if (this.studioNoticeFor !== this.host.studio()) {
-        this.studioNoticeFor = this.host.studio();
-        void this.say("I've only learned the Circuit Bench so far. I'll watch, and mark ready when you do.");
-      }
+      this.sayOnce(`studio:${this.host.studio()}`, "I've only learned the Circuit Bench so far. I'll watch here, and mark ready when you do.");
       this.maybeReady();
       return;
     }
-    this.studioNoticeFor = null;
     const builder = this.room.participant.role === "builder";
     this.workDone = !builder || (this.builtByBolt && !this.building);
 
     if (phase === "frame") {
-      void this.say(builder
-        ? `${this.mind.describePlan(this.options.explain)} Does that sound right?`
-        : "What's your plan? Walk me through it and I'll check each step.");
+      if (builder) this.sayPlan();
+      else this.sayOnce("verifier-plan", "What's your plan? Walk me through it and I'll check each step.");
     } else if (phase === "build") {
-      if (builder) this.scheduleBuild(changed ? 1400 : 600);
+      if (builder) this.scheduleBuild(1200);
       else {
-        void this.say("Go ahead and build — I'll ask about anything I don't understand.");
+        this.sayOnce("verifier-intro", "Okay, you build. I'll ask when something surprises me.");
         this.later(2600, () => this.review());
       }
-    } else if (phase === "test") {
-      if (builder && !this.builtByBolt) this.scheduleBuild(600);
     } else if (phase === "reflect") {
       void this.say(this.mind.reflection());
       this.workDone = true;
     }
+    // Test: Bolt never rebuilds here, so it can't undo a teammate's fix just before the test.
     this.maybeReady();
+  }
+
+  private sayPlan(): void {
+    const plan = this.mind.describePlan(this.options.explain);
+    if (plan === this.lastPlan) return;
+    this.lastPlan = plan;
+    void this.say(`${plan} Does that sound right?`);
   }
 
   private review(): void {
@@ -251,17 +256,18 @@ export class AiTeammate {
     const remark = this.mind.reviewBoard(this.analyze(), ([a, b]) => `${partLabel(a)} and ${partLabel(b)}`);
     this.saveMemory();
     if (!remark) return;
-    void this.say(
-      remark.text,
-      remark.kind === "conflict"
-        ? `Asked about ${CONCEPTS[remark.concept].label}`
-        : `Applied what it was taught: ${CONCEPTS[remark.concept].label}`,
-    );
+    void this.say(remark.text, remark.kind === "conflict" ? "Asked about the build" : "Applied what it was taught");
   }
 
   private scheduleBuild(delay: number): void {
     const run = ++this.buildRun;
     this.later(delay, () => void this.build(run));
+  }
+
+  /** Stop any build in progress, e.g. when Bolt changes role or the studio changes. */
+  private cancelBuild(): void {
+    this.buildRun += 1;
+    this.buildAnnounced = false;
   }
 
   private get building(): boolean {
@@ -271,9 +277,10 @@ export class AiTeammate {
   private async build(run: number): Promise<void> {
     if (this.disposed || run !== this.buildRun) return;
     // This run supersedes any older one; it alone clears the flag when it ends.
+    const superseding = this.activeRun !== null;
     this.activeRun = run;
     try {
-      await this.runBuild(run);
+      await this.runBuild(run, superseding);
     } finally {
       if (this.activeRun === run) {
         this.activeRun = null;
@@ -285,8 +292,8 @@ export class AiTeammate {
     }
   }
 
-  private async runBuild(run: number): Promise<void> {
-    if (this.host.studio() !== "circuit") return;
+  private async runBuild(run: number, superseding: boolean): Promise<void> {
+    if (this.host.studio() !== "circuit" || this.room.participant.role !== "builder") return;
     const current = this.placements();
     const plan = planCircuitLayout(this.mind.layoutBeliefs());
     const planned = new Map(plan.map((part) => [part.id, part.sockets] as const));
@@ -306,50 +313,58 @@ export class AiTeammate {
     if (moves.length === 0) {
       this.builtByBolt = true;
       this.workDone = true;
-      void this.say("The board already matches how I'd build it.");
+      this.buildAnnounced = false;
+      if (!superseding) void this.say("The board already matches how I'd build it.");
       return;
     }
 
     this.workDone = false;
     if (this.room.participant.ready) this.room.setReady(false);
-    await this.say(this.builtByBolt
-      ? "Let me rebuild with what you taught me."
-      : this.options.explain ? `I'll build my plan. ${this.mind.describePlan(true)}` : "I'll build my plan now.");
+    // One announcement per build; a build restarted mid-way just carries on quietly.
+    if (!superseding && !this.buildAnnounced) {
+      this.buildAnnounced = true;
+      await this.say(this.builtByBolt || this.said.has("built")
+        ? "Let me rebuild with what you taught me."
+        : "I'll build my plan now.");
+    }
     if (this.disposed || run !== this.buildRun) return;
     this.room.setActivity("moving", "Building its plan");
 
     let skipped = 0;
     for (const move of moves) {
-      if (this.disposed || run !== this.buildRun) return;
+      if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") return;
       if (this.host.isHeldByOther(move.id)) {
         skipped += 1;
         continue;
       }
       const name = partLabel(move.id);
       this.host.yieldComponent(move.id);
-      // Grab (the host renders Bolt's ghost hand on the part), carry, then let go.
+      // Grab (the host renders Bolt's hand on the part), carry, then let go.
       this.room.claim(move.id);
       this.trace("claim", { objectId: move.id, objectName: name });
-      await sleep(550);
-      if (this.disposed || run !== this.buildRun) {
+      await sleep(650);
+      if (this.disposed) return;
+      if (run !== this.buildRun) {
         this.room.release(move.id);
         return;
       }
       this.room.sendTransform(move.id, move.transform);
-      await sleep(800);
+      await sleep(900);
       if (this.disposed) return;
       this.room.release(move.id);
       this.trace("move", { objectId: move.id, objectName: name });
-      await sleep(500);
+      await sleep(350);
     }
     if (this.disposed || run !== this.buildRun) return;
 
+    this.said.add("built");
+    this.buildAnnounced = false;
     this.builtByBolt = skipped === 0;
     this.workDone = true;
     this.host.saveAttempt(`${AI_TEAMMATE_NAME} built its plan`);
     void this.say(skipped
-      ? "Someone was holding a part, so I skipped it. Check it over, then we can test."
-      : "Done. Check it over, then we can test.");
+      ? "Someone was holding a part, so I left it. Have a look, then we can test."
+      : "Done. Have a look, then we can test.");
   }
 
   private maybeReady(): void {
@@ -364,9 +379,12 @@ export class AiTeammate {
   }
 
   private setRole(role: CollaborationRole): void {
+    this.cancelBuild();
     this.room.setRole(role);
     this.trace("role", { detail: `Became ${role}` });
     this.workDone = role === "verifier" || this.builtByBolt;
+    if (role === "builder" && this.room.participant.ready) this.room.setReady(false);
+    this.host.onRole(role);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -375,14 +393,20 @@ export class AiTeammate {
   private say(text: string, detail?: string): Promise<void> {
     this.speaking = this.speaking.then(async () => {
       if (this.disposed) return;
-      this.room.setActivity("discussing", "Typing…");
-      await sleep(Math.min(600 + text.length * 12, 2200));
+      this.room.setActivity("discussing", TYPING_DETAIL);
+      await sleep(Math.min(500 + text.length * 14, 2000));
       if (this.disposed) return;
       this.room.sendChat(text);
-      this.trace("discuss", { detail: detail ?? "AI teammate message" });
-      if (!this.building) this.room.setActivity("available");
+      this.trace("discuss", { detail: detail ?? "Room discussion" });
+      this.room.setActivity(this.building ? "moving" : "available", this.building ? "Building its plan" : undefined);
     });
     return this.speaking;
+  }
+
+  private sayOnce(key: string, text: string): void {
+    if (this.said.has(key)) return;
+    this.said.add(key);
+    void this.say(text);
   }
 
   private trace(action: ActivityTrace["action"], details: Pick<ActivityTrace, "objectId" | "objectName" | "detail"> = {}): void {
@@ -414,14 +438,9 @@ export class AiTeammate {
     this.timers.add(timer);
   }
 
-  private memoryKey(): string {
-    return `vm-agent:${this.host.roomCode}`;
-  }
-
-  /** Saved beliefs for this room; the mind ignores them if they don't fit the requested profile. */
   private loadMemory(): MindSnapshot | null {
     try {
-      const raw = localStorage.getItem(this.memoryKey());
+      const raw = localStorage.getItem(memoryKey(this.host.roomCode, this.host.authId));
       return raw ? (JSON.parse(raw) as MindSnapshot) : null;
     } catch {
       return null;
@@ -430,17 +449,33 @@ export class AiTeammate {
 
   private saveMemory(): void {
     try {
-      localStorage.setItem(this.memoryKey(), JSON.stringify(this.mind.snapshot()));
+      localStorage.setItem(memoryKey(this.host.roomCode, this.host.authId), JSON.stringify(this.mind.snapshot()));
     } catch {
       // Memory is a convenience; Bolt still works for this session without it.
     }
   }
 }
 
-/** Forget what Bolt was taught in a room (used by the "Reset" control). */
-export function forgetAiTeammate(roomCode: string): void {
+/** Bolt remembers per learner and room, so the next person at a shared machine starts fresh. */
+function memoryKey(roomCode: string, authId: string): string {
+  return `vm-agent:${roomCode}:${authId}`;
+}
+
+/** Trace text for a belief change. It names the idea only once the team has taught it. */
+function teachTrace(event: LearningEvent): Pick<ActivityTrace, "objectId" | "objectName" | "detail"> {
+  const label = CONCEPTS[event.concept].label;
+  const detail = event.quality === "explained"
+    ? `Learned from ${event.teacher}: ${label.toLowerCase()}`
+    : event.quality === "named"
+      ? `Asked ${event.teacher} why`
+      : `Took ${event.teacher}'s idea on board`;
+  return { objectId: `concept:${event.concept}`, objectName: event.quality === "explained" ? label : undefined, detail };
+}
+
+/** Forget what Bolt was taught in a room by this learner (the notebook's "Reset" control). */
+export function forgetAiTeammate(roomCode: string, authId: string): void {
   try {
-    localStorage.removeItem(`vm-agent:${roomCode}`);
+    localStorage.removeItem(memoryKey(roomCode, authId));
   } catch {
     // ignore
   }

@@ -263,7 +263,7 @@ textarea:focus-visible {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 18px;
   padding: 10px 12px;
   border: 1px dashed var(--border);
   border-radius: 12px;
@@ -501,6 +501,8 @@ textarea:focus-visible {
 
 .workspace-shell {
   display: grid;
+  /* minmax(0, …) keeps wide content (the phone's scrolling part strip) from widening the page. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 64px 1fr;
   width: 100vw;
   height: 100vh;
@@ -661,6 +663,8 @@ textarea:focus-visible {
 .component-list { display: grid; align-content: start; justify-items: center; gap: 7px; overflow-x: hidden; overflow-y: auto; padding: 8px; }
 
 .component-card {
+  /* Anchors its visually hidden label, so it can't escape the scrolling strip on phones. */
+  position: relative;
   display: grid;
   width: 58px;
   height: 58px;
@@ -1291,7 +1295,16 @@ textarea:focus-visible {
   .lobby-grid { width: min(100% - 32px, 720px); }
 }
 
+@media (max-width: 900px) {
+  /* Hover tooltips don't exist on touch screens, and their hidden boxes widen the page. */
+  [data-tooltip]::after { display: none; }
+}
+
 @media (max-width: 620px) {
+  .workspace-shell { width: 100%; }
+  .component-rail,
+  .viewport-column,
+  .discussion-dock { min-width: 0; }
   .brand-header { height: 76px; }
   .lobby-card { padding: 24px 18px; }
   .lobby-card h1 { font-size: 2.5rem; }
@@ -1514,19 +1527,105 @@ textarea:focus-visible {
 }
 
 /* ── AI teammate (Bolt) ───────────────────────────────────────────── */
+:root { --agent: #b794ff; --agent-soft: rgba(183, 148, 255, 0.14); --agent-line: rgba(183, 148, 255, 0.38); }
+
 .avatar.is-agent,
-.presence-avatar.is-agent { color: #f3e8ff; background: #3b2a57; border-color: #a77bf0; }
-.avatar.is-agent i,
+.chat-message .avatar.is-agent,
+.presence-avatar.is-agent { color: #efe6ff; background: linear-gradient(150deg, #4a3570, #2a2142); border-color: var(--agent-line); }
+.avatar.is-agent > i.ph-robot,
 .presence-avatar.is-agent > i.ph-robot { position: static; font-size: 1rem; color: inherit; background: none; border: 0; }
-.teammate-card { display: grid; gap: 7px; padding: 10px; background: #130f1f; border: 1px solid #3b2a57; border-radius: 8px; }
-.teammate-card.is-empty { background: #0f1723; border-color: var(--border); border-style: dashed; }
-.teammate-card p { margin: 0; color: var(--muted); font-size: 0.65rem; line-height: 1.48; }
-.teammate-card .secondary-button { justify-self: start; font-size: 0.63rem; }
-.teammate-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #e3d4fb; font-size: 0.66rem; font-weight: 650; }
-.teammate-heading > span { display: flex; align-items: center; gap: 6px; }
-.teammate-actions { gap: 2px; }
-.teammate-notebook { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.teammate-notebook li { display: grid; gap: 3px; padding-left: 9px; border-left: 2px solid #a77bf0; }
-.teammate-notebook strong { color: #e3d4fb; font-size: 0.64rem; text-transform: capitalize; }
-.teammate-notebook q { color: var(--text); font-size: 0.66rem; line-height: 1.45; }
-.teammate-notebook small { color: var(--muted); font-size: 0.57rem; }
+.ai-chip {
+  display: inline-grid;
+  place-items: center;
+  height: 15px;
+  padding: 0 5px;
+  color: var(--agent);
+  background: var(--agent-soft);
+  border: 1px solid var(--agent-line);
+  border-radius: 4px;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  vertical-align: 1px;
+}
+
+/* Chat: consecutive lines from one author read as one turn. */
+.chat-message.is-continued { margin-top: -10px; }
+.chat-message.is-continued .avatar { visibility: hidden; height: 0; }
+.chat-message.is-continued .chat-meta { display: none; }
+.chat-message.is-agent p { color: #d9d0ee; }
+.discussion-panel[data-panel="chat"] { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.typing-indicator { display: flex; align-items: center; gap: 8px; padding: 0 14px 8px 54px; color: #8f9cb4; font-size: 0.64rem; }
+.typing-indicator[hidden] { display: none; }
+.typing-dots { display: inline-flex; gap: 3px; }
+.typing-dots i { width: 5px; height: 5px; background: var(--agent); border-radius: 50%; opacity: 0.35; animation: typing-dot 1.1s ease-in-out infinite; }
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-dot { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; opacity: 0.7; } }
+
+/* Team tab card: invite Bolt, then Bolt's notebook. */
+.teammate-card {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(183, 148, 255, 0.08), rgba(183, 148, 255, 0.02));
+  border: 1px solid var(--agent-line);
+  border-radius: 10px;
+}
+.teammate-card.is-empty { background: #0f1723; border: 1px dashed var(--border-bright); }
+.teammate-card p { margin: 0; color: var(--muted); font-size: 0.65rem; line-height: 1.5; }
+.teammate-card em { color: #e3d4fb; font-style: normal; font-weight: 600; }
+.teammate-card .secondary-button { justify-self: start; gap: 6px; font-size: 0.63rem; }
+.teammate-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.teammate-title { display: flex; align-items: center; gap: 8px; color: #ece4fc; font-size: 0.7rem; font-weight: 650; }
+.teammate-mark { display: grid; width: 22px; height: 22px; place-items: center; color: var(--agent); background: var(--agent-soft); border-radius: 6px; font-size: 0.8rem; }
+.teammate-actions { display: flex; gap: 2px; }
+.teammate-actions .bare-button { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 6px; }
+.teammate-actions .bare-button:hover,
+.teammate-actions .bare-button:focus-visible { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+.teammate-notebook { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: idea; }
+.teammate-notebook li { display: grid; gap: 4px; padding: 9px 10px; background: rgba(10, 14, 24, 0.55); border: 1px solid rgba(183, 148, 255, 0.16); border-radius: 8px; }
+.notebook-label { color: var(--agent); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.teammate-notebook blockquote { margin: 0; color: var(--text); font-size: 0.68rem; line-height: 1.5; }
+.teammate-notebook blockquote::before { content: "“"; color: var(--agent); }
+.teammate-notebook blockquote::after { content: "”"; color: var(--agent); }
+.notebook-source { color: #8f9cb4; font-size: 0.58rem; }
+.notebook-source::before { content: "— "; }
+
+/* Lobby: bring Bolt along. */
+.teammate-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.teammate-toggle:hover { border-color: var(--border-bright); }
+.teammate-toggle:has(input:checked) { background: var(--agent-soft); border-color: var(--agent-line); }
+.teammate-toggle:has(input:focus-visible) { outline: 2px solid var(--agent); outline-offset: 2px; }
+.teammate-toggle > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.teammate-toggle strong { color: var(--text); font-size: 0.78rem; }
+.teammate-toggle small { color: var(--muted); font-size: 0.68rem; line-height: 1.4; }
+.teammate-toggle .teammate-mark { width: 30px; height: 30px; border-radius: 50%; font-size: 0.95rem; }
+.teammate-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.switch-track { position: relative; width: 34px; height: 20px; background: #26324a; border: 1px solid var(--border-bright); border-radius: 999px; transition: background 160ms ease, border-color 160ms ease; }
+.switch-track span { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: #c7d2e3; border-radius: 50%; transition: transform 160ms ease, background 160ms ease; }
+.teammate-toggle input:checked + .switch-track { background: rgba(183, 148, 255, 0.35); border-color: var(--agent); }
+.teammate-toggle input:checked + .switch-track span { background: #fff; transform: translateX(14px); }
+
+/* Laptop-height screens: keep the whole lobby card above the fold. */
+@media (min-width: 900px) and (max-height: 860px) {
+  .lobby-card { padding: 28px 34px; }
+  .lobby-card h1 { margin: 10px 0 8px; font-size: clamp(2.4rem, 4vw, 3.4rem); }
+  .lobby-lede { margin-bottom: 18px; font-size: 1rem; }
+  .field-label { margin-top: 14px; }
+  .audio-check { margin-top: 14px; }
+}

@@ -87,7 +87,7 @@ check("Bolt joins over the Worker as an agent named Bolt", hostRoster.some((row)
 check("Bolt's greeting relays through the Durable Object", await waitFor(host, /I'm Bolt/));
 
 await say(host, "Bolt, you build it. Holes in a row aren't connected — the board connects them in vertical column strips, so parts have to share a column.");
-await waitFor(host, /column strips, not along the row/);
+await waitFor(host, /share a column\. Got it/);
 await say(host, "The path has to come back to the other side of the battery because current flows around a complete loop.");
 // Teaching mid-build supersedes the running build, so expect at least one finished build.
 check("Bolt builds over WebSocket after being taught", await waitFor(host, /^Done\./, 1, 300_000));

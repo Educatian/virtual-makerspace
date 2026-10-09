@@ -645,6 +645,8 @@ export class DesktopRoom {
   }
 
   private post(message: RoomMessage): void {
+    // A closed BroadcastChannel throws on postMessage; late async callers just stop here.
+    if (this.closed) return;
     this.channel?.postMessage(message);
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));

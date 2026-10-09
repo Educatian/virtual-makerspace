@@ -113,13 +113,13 @@ check("Bolt asks what it got wrong", Boolean(await waitForBolt(learner, /What di
 
 // Naming an idea without a reason earns a "why?" and no rebuild.
 await say(learner, "Use the columns.");
-check("Bolt asks why when only told what", Boolean(await waitForBolt(learner, /why would that connect them/)));
+check("Bolt asks why when only told what", Boolean(await waitForBolt(learner, /would that connect them/i)));
 
 await say(learner, "Holes in a row aren't connected — the board connects them in vertical column strips, so parts have to share a column.");
-check("Bolt learns column strips", Boolean(await waitForBolt(learner, /column strips, not along the row/)));
+check("Bolt learns column strips", Boolean(await waitForBolt(learner, /share a column\. Got it/)));
 check("Bolt rebuilds after learning", await waitForBoltCount(learner, /^Done\./, 2));
 await say(learner, "The path has to come back to the other side of the battery because current flows around a complete loop.");
-check("Bolt learns the complete loop", Boolean(await waitForBolt(learner, /complete loop\. I'll remember/)));
+check("Bolt learns the complete loop", Boolean(await waitForBolt(learner, /come back to the battery\. Got it/)));
 check("Bolt rebuilds again", await waitForBoltCount(learner, /^Done\./, 3));
 await learner.waitForTimeout(1000);
 check("loop + strips light the LED", await powered(learner));
@@ -127,7 +127,7 @@ await readyAndTest(learner);
 check("Bolt notices nothing protects the LED? (not yet taught)", Boolean(await waitForBolt(learner, /fine right on the battery|done\?/)));
 
 await say(learner, "Add a resistor because it limits the current so the LED doesn't burn out.");
-check("Bolt learns the series resistor", Boolean(await waitForBolt(learner, /resistor limits how much current/)));
+check("Bolt learns the series resistor", Boolean(await waitForBolt(learner, /too much current from reaching the LED\. Got it/)));
 check("Bolt rebuilds with the resistor", await waitForBoltCount(learner, /^Done\./, 4));
 await learner.waitForTimeout(1000);
 check("Bolt's rebuild stays lit with the resistor", await powered(learner));
@@ -140,7 +140,11 @@ const teachTraces = await learner.evaluate(() => JSON.parse(localStorage.getItem
 check("teach events land in the shared trace", teachTraces >= 3, `${teachTraces} teach events`);
 const leakedBody = await learner.evaluate(() => (localStorage.getItem(`vm-trace:${new URLSearchParams(location.search).get("room")}`) ?? "").includes("burn out"));
 check("trace never stores the learner's words", !leakedBody);
-if (shots) await learner.locator(".discussion-dock").screenshot({ path: `${shots}/3-notebook.png` });
+if (shots) {
+  // Clip a page screenshot: element screenshots wait for a stable frame, which a software renderer rarely gives.
+  const dock = await learner.evaluate(() => { const r = document.querySelector(".discussion-dock").getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+  await learner.screenshot({ path: `${shots}/3-notebook.png`, clip: dock });
+}
 
 const partner = await enter("Ben", "");
 await tap(partner, '.discussion-tab[data-tab="team"]');

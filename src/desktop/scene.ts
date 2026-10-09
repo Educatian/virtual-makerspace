@@ -351,6 +351,12 @@ export class DesktopWorkbenchScene {
 
   switchStudio(studio: StudioKind, announce = true): void {
     this.clearSelection();
+    // Teammates' hands stay (their anchors hide them while the studio is hidden); just
+    // finish any glide so no part is left mid-air in the studio being hidden.
+    for (const id of [...this.remoteTweens.keys()]) {
+      const component = this.components.get(id);
+      if (component) this.cancelRemoteTween(component, true);
+    }
     this.activeStudio = studio;
     this.circuitGroup.visible = studio === "circuit";
     this.greenhouseGroup.visible = studio === "greenhouse";
@@ -497,11 +503,11 @@ export class DesktopWorkbenchScene {
     if (!object) return;
     if (owner) {
       const endpointIndex = endpointMatch ? (Number(endpointMatch[2]) as 0 | 1) : null;
-      this.remoteHands.grab(componentId, owner, () => {
-        if (!object.visible || !object.parent?.visible) return null;
-        return endpointIndex === null
-          ? object.getWorldPosition(new Vector3())
-          : this.getEndpointWorldPositions(object)[endpointIndex];
+      this.remoteHands.grab(componentId, owner, (out) => {
+        if (!object.visible || !object.parent?.visible) return false;
+        if (endpointIndex === null) object.getWorldPosition(out);
+        else object.localToWorld(out.copy(this.getEndpointPositions(object)[endpointIndex]));
+        return true;
       });
     } else {
       this.remoteHands.release(componentId);
@@ -509,7 +515,7 @@ export class DesktopWorkbenchScene {
     if (endpointMatch) {
       const index = Number(endpointMatch[2]) as 0 | 1;
       const indicator = ((object.userData.endpointIndicators ?? []) as Mesh<TorusGeometry, MeshBasicMaterial>[])[index];
-      if (indicator) indicator.material.color.setHex(owner ? 0x56c8ff : 0x39ff9a);
+      if (indicator) indicator.material.color.setHex(owner ? (owner.kind === "agent" ? 0xb794ff : 0x5cc8ff) : 0x39ff9a);
       return;
     }
     object.userData.owner = owner;

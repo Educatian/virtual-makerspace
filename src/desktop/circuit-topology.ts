@@ -181,15 +181,20 @@ export interface PlannedPart {
 }
 
 function wireForSpan(span: number): string {
-  if (span <= 2) return "wire-red";
-  if (span <= 4) return "wire-blue";
+  if (span <= WIRE_MAX_SPAN["wire-red"]) return "wire-red";
+  if (span <= WIRE_MAX_SPAN["wire-blue"]) return "wire-blue";
   return "wire-yellow";
 }
+
+/** Longest span, in columns, each jumper wire can bridge (scene snaps up to 1.86 × its length). */
+export const WIRE_MAX_SPAN: Record<string, number> = { "wire-red": 3, "wire-blue": 7, "wire-yellow": 11 };
 
 /**
  * The layout a builder would produce from its beliefs, in the order it places parts.
  * Spans match each part's natural lead spacing (battery 2, resistor 3, LED 1 column).
- * Only a builder that holds all three ideas produces a safe, lit circuit.
+ * Only a builder that holds all three ideas produces a safe, lit circuit. Parts go in the
+ * board corner nearest the default camera (high rows and columns), with the tall battery
+ * furthest back, so the result is easy to see and nothing hides behind it.
  */
 export function planCircuitLayout(beliefs: LayoutBeliefs): PlannedPart[] {
   const chain: Array<{ id: string; span: number }> = [{ id: CIRCUIT_PARTS.battery, span: 2 }];
@@ -198,9 +203,9 @@ export function planCircuitLayout(beliefs: LayoutBeliefs): PlannedPart[] {
   const plan: PlannedPart[] = [];
 
   if (beliefs.strips) {
-    // Each part starts in the column where the previous one ended, one row lower.
-    const startCol = 2;
-    let row = 1;
+    // Each part starts in the column where the previous one ended, one row nearer.
+    const startCol = 8;
+    let row = 7;
     let col = startCol;
     for (const part of chain) {
       plan.push({ id: part.id, sockets: [socketIndex(row, col), socketIndex(row, col + part.span)] });
@@ -218,14 +223,15 @@ export function planCircuitLayout(beliefs: LayoutBeliefs): PlannedPart[] {
 
   // Naive "rows are connected": parts lined up end to end along one row,
   // each starting in the hole right after the previous one.
-  const row = 1;
-  let col = 1;
+  const row = 8;
+  const startCol = 6;
+  let col = startCol;
   for (const part of chain) {
     plan.push({ id: part.id, sockets: [socketIndex(row, col), socketIndex(row, col + part.span)] });
     col += part.span + 1;
   }
   if (beliefs.loop) {
-    plan.push({ id: wireForSpan(col), sockets: [socketIndex(row, col), socketIndex(row, 0)] });
+    plan.push({ id: wireForSpan(col - startCol + 1), sockets: [socketIndex(row, col), socketIndex(row, startCol - 1)] });
   }
   return plan;
 }
