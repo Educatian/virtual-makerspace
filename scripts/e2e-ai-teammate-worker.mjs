@@ -89,11 +89,14 @@ check("Bolt's greeting relays through the Durable Object", await waitFor(host, /
 await say(host, "Bolt, you build it. Holes in a row aren't connected — the board connects them in vertical column strips, so parts have to share a column.");
 await waitFor(host, /share a column\. Got it/);
 await say(host, "The path has to come back to the other side of the battery because current flows around a complete loop.");
+await waitFor(host, /come back to the battery\. Got it/);
+// Without a resistor the LED would sit straight across 9 V (a burnout, not a success).
+await say(host, "Add a resistor because it limits the current so the LED doesn't burn out.");
 // Teaching mid-build supersedes the running build, so expect at least one finished build.
 check("Bolt builds over WebSocket after being taught", await waitFor(host, /^Done\./, 1, 300_000));
 let lit = false;
 for (let i = 0; i < 60 && !lit; i += 1) { lit = await powered(host); if (!lit) await host.waitForTimeout(2000); }
-check("host scene lights from Bolt's relayed moves", lit);
+check("host scene lights safely from Bolt's relayed moves", lit);
 
 const member = await maker("member@example.test");
 await member.waitForTimeout(8000);
@@ -101,6 +104,24 @@ const memberRoster = await roster(member);
 check("a late joiner sees Bolt as an agent", memberRoster.some((row) => row.agent && /Bolt/.test(row.name)), JSON.stringify(memberRoster));
 check("the late joiner gets Bolt's circuit from the human host", await powered(member));
 check("the late joiner is not offered a second Bolt", await member.evaluate(() => !document.querySelector("#invite-ai")));
+
+// Electrical values cross the Worker: a live transform, then a late-join state-response.
+const meter = (page) => page.evaluate(() => document.querySelector("#inspector-pill")?.textContent?.trim() ?? "");
+const waitForMeter = async (page, pattern) => {
+  for (let i = 0; i < 60; i += 1) {
+    if (pattern.test(await meter(page))) return true;
+    await page.waitForTimeout(500);
+  }
+  return false;
+};
+await host.evaluate(() => document.querySelector('.component-card[data-component-id="resistor-1k"]')?.click());
+await host.waitForSelector('.value-editor[data-part="resistor-1k"]', { state: "attached" });
+await host.evaluate(() => document.querySelector('.value-editor[data-part="resistor-1k"] .preset[data-value="470"]')?.click());
+check("a resistor value edit relays through the Durable Object", await waitForMeter(member, /Safe · 14/), await meter(member));
+await member.close();
+const late = await maker("late@example.test");
+await late.waitForTimeout(8000);
+check("a later joiner's state-response carries the edited value", await waitForMeter(late, /Safe · 14/), await meter(late));
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

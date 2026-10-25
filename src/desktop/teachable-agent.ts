@@ -431,8 +431,11 @@ export class TeachableMind {
       if (concept === "strips" && analysis.rowNeighbors.length) {
         candidates.push({ concept, kind: "applied", text: `Wait — ${describe(analysis.rowNeighbors[0])} sit side by side in one row. ${source} ${copy.recall}, so are they actually joined?` });
       }
-      if (concept === "resistor" && analysis.unsafeLeds.length) {
+      if (concept === "resistor" && analysis.unprotectedLeds.length) {
         candidates.push({ concept, kind: "applied", text: `The LED is straight across the battery. ${source} ${copy.recall} — should we add one?` });
+      } else if (concept === "resistor" && analysis.overdrivenLeds.length) {
+        const amps = analysis.ledAmps[analysis.overdrivenLeds[0]] ?? 0;
+        candidates.push({ concept, kind: "applied", text: `The meter says the LED gets about ${milliamps(amps)} — more than its 20 mA rating. ${source} ${copy.recall}, so would a bigger resistor be safer?` });
       }
       if (concept === "loop" && analysis.batteryPlaced && analysis.placed.length >= 3 && !analysis.bothBatteryTerminalsUsed) {
         candidates.push({ concept, kind: "applied", text: `Nothing reaches the other side of the battery yet. ${source} ${copy.recall} — where does it return?` });
@@ -448,23 +451,38 @@ export class TeachableMind {
     return remark;
   }
 
-  /** Bolt's reaction after the team powers the circuit. */
+  /**
+   * Bolt's reaction after the team powers the circuit. It reads the same engine result the
+   * workbench shows: "lights" means a safely lit LED; too much current is never a success.
+   */
   reactToTest(analysis: CircuitAnalysis, builtByBolt: boolean, explain: boolean): string {
     if (analysis.powered) {
-      if (analysis.unsafeLeds.length) {
-        if (this.knows("resistor")) {
-          return `It lights — but there's no resistor in the loop. ${this.source("resistor")} ${CONCEPTS.resistor.recall}. Should we add one?`;
-        }
-        return explain
-          ? `It lights! So the LED was fine right on the battery? ${CONCEPTS.resistor.naiveThought}`
-          : "It lights! So we're done?";
-      }
+      const amps = analysis.ledAmps[analysis.board.safeLitLeds[0]] ?? 0;
       if (!this.knows("resistor")) {
         this.pending = { concept: "resistor", at: this.now() };
         this.askedAt.set("resistor", this.now());
-        return "It lights! But I still don't get why we needed the resistor.";
+        return `It lights, at about ${milliamps(amps)}! But I still don't get why we needed the resistor.`;
       }
-      return "It lights, and the resistor is in the loop. That matches what I know now.";
+      return `It lights at about ${milliamps(amps)}, inside the LED's 20 mA rating, and the resistor is in the loop. That matches what I know now.`;
+    }
+    if (analysis.short) {
+      return "The meter says the battery is shorted — current is rushing straight from + to − without going through the LED. Which part bridges them?";
+    }
+    if (analysis.unprotectedLeds.length) {
+      const amps = analysis.ledAmps[analysis.unprotectedLeds[0]] ?? 0;
+      if (this.knows("resistor")) {
+        return `The meter says the LED would take about ${milliamps(amps)} and burn out — there's no resistor in the loop. ${this.source("resistor")} ${CONCEPTS.resistor.recall}. Should we add one?`;
+      }
+      return explain
+        ? `Whoa — the meter says the LED would take about ${milliamps(amps)} and burn out. So it wasn't fine right on the battery? ${CONCEPTS.resistor.naiveThought}`
+        : `The meter says the LED would burn out at about ${milliamps(amps)}. Are we done?`;
+    }
+    if (analysis.overdrivenLeds.length) {
+      const amps = analysis.ledAmps[analysis.overdrivenLeds[0]] ?? 0;
+      return `It glows, but at about ${milliamps(amps)} — above the LED's 20 mA rating, so it would wear out fast. Would a bigger resistor, like the 1 kΩ, fix that?`;
+    }
+    if (analysis.reversedLeds.length) {
+      return "The LED stays dark and the meter says it's in backwards. Its long lead (the anode) should face the battery's + side. Should we flip it?";
     }
     if (builtByBolt) {
       const naive = this.naiveConcepts();
@@ -523,6 +541,11 @@ export class TeachableMind {
     this.state[concept] = { ...this.state[concept], ...extra, status, changedAt: this.now() };
     this.transitions.push({ concept, from, to: status, at: this.now(), quality });
   }
+}
+
+function milliamps(amps: number): string {
+  const ma = Math.abs(amps) * 1000;
+  return `${ma >= 100 ? Math.round(ma / 10) * 10 : Math.round(ma)} mA`;
 }
 
 function joinList(items: string[]): string {

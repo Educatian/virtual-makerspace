@@ -7,18 +7,31 @@ const { TeachableMind } = await import("../src/desktop/teachable-agent.ts");
 const toPlacements = (plan) => Object.fromEntries(plan.map((part) => [part.id, part.sockets]));
 const all = (strips, loop, resistor) => analyzeCircuit(toPlacements(planCircuitLayout({ strips, loop, resistor })));
 
-// The scene's own diagnostic layout (DesktopWorkbenchScene.loadCircuitDemo) must read as powered.
-const demo = analyzeCircuit({ "battery-9v": [21, 23], "resistor-220": [36, 39], "led-red": [52, 53] });
-assert.equal(demo.powered, true, "demo circuit lights");
+// The scene's own diagnostic layout (DesktopWorkbenchScene.loadCircuitDemo) must read as a safe success.
+const demo = analyzeCircuit({ "battery-9v": [21, 23], "resistor-1k": [36, 39], "led-red": [53, 52] });
+assert.equal(demo.powered, true, "demo circuit lights safely");
 assert.equal(demo.resistorInSeries, true);
 assert.deepEqual(demo.unsafeLeds, []);
+assert.ok(demo.ledAmps["led-red"] > 0.006 && demo.ledAmps["led-red"] < 0.008, "demo LED runs at ~7 mA");
+// The old demo (220 Ω, LED leads swapped) is neither safe at 9 V nor oriented correctly.
+const legacy = analyzeCircuit({ "battery-9v": [21, 23], "resistor-220": [36, 39], "led-red": [52, 53] });
+assert.equal(legacy.powered, false);
+assert.deepEqual(legacy.reversedLeds, ["led-red"]);
+const flipped = analyzeCircuit({ "battery-9v": [21, 23], "resistor-220": [36, 39], "led-red": [53, 52] });
+assert.deepEqual(flipped.overdrivenLeds, ["led-red"], "220 Ω at 9 V (~30 mA) overdrives a 20 mA LED");
+assert.equal(flipped.powered, false, "an overdriven LED is not a success");
+// A 220 Ω resistor edited to 470 Ω in the inspector is a safe build.
+assert.equal(analyzeCircuit({ "battery-9v": [21, 23], "resistor-220": [36, 39], "led-red": [53, 52] }, { "resistor-220": { ohms: 470 } }).powered, true);
 
-// Only a builder holding all three ideas makes a safe, lit circuit.
+// Only a builder holding all three ideas makes a safe, lit circuit. Strips + loop without the
+// resistor puts the LED straight across 9 V: the engine reports a burnout, never a success.
 for (const strips of [false, true]) for (const loop of [false, true]) for (const resistor of [false, true]) {
   const a = all(strips, loop, resistor);
-  const shouldLight = strips && loop;
-  assert.equal(a.powered, shouldLight, `powered for strips=${strips} loop=${loop} resistor=${resistor}`);
-  assert.equal(a.unsafeLeds.length > 0, shouldLight && !resistor, `unsafe for strips=${strips} loop=${loop} resistor=${resistor}`);
+  const label = `strips=${strips} loop=${loop} resistor=${resistor}`;
+  assert.equal(a.powered, strips && loop && resistor, `success for ${label}`);
+  assert.equal(a.unprotectedLeds.length > 0, strips && loop && !resistor, `burnout for ${label}`);
+  assert.deepEqual(a.reversedLeds, [], `Bolt's plans orient the LED anode toward + (${label})`);
+  assert.equal(a.short, false, `no plan shorts the battery (${label})`);
 }
 const correct = all(true, true, true);
 assert.ok(correct.columnBridges.length >= 3, "correct build joins parts through column strips");
@@ -183,7 +196,14 @@ assert.equal(reviewer.reviewBoard(correct, describe), null, "no repeats until re
 
 const unsafe = all(true, true, false);
 assert.equal(mind.reviewBoard(unsafe, describe).kind, "applied", "taught Bolt flags a missing resistor");
-assert.match(mind.reactToTest(unsafe, false, false), /no resistor/);
+assert.match(mind.reactToTest(unsafe, false, false), /burn out — there's no resistor/);
+assert.match(fresh.reactToTest(unsafe, true, true), /burn out\. So it wasn't fine right on the battery\?/, "untaught Bolt sees the burnout and voices its naive idea");
+assert.doesNotMatch(fresh.reactToTest(unsafe, true, false), /fine right on the battery/, "PF: no unprompted reasoning");
+assert.match(mind.reactToTest(correct, true, false), /about 7 mA, inside the LED's 20 mA rating/);
+assert.match(mind.reactToTest(flipped, false, false), /above the LED's 20 mA rating/);
+assert.match(mind.reactToTest(legacy, false, false), /backwards/);
+const overReviewer = new TeachableMind({ restored: mind.snapshot() });
+assert.match(overReviewer.reviewBoard(flipped, describe)?.text ?? "", /about 30 mA — more than its 20 mA rating/);
 assert.match(fresh.reactToTest(naive, true, false), /What did I get wrong/);
 assert.doesNotMatch(fresh.reactToTest(naive, true, false), /row/, "PF: no unprompted reasoning");
 assert.match(fresh.reactToTest(naive, true, true), /row/, "DI: voices its own reasoning");

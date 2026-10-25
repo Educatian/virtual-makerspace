@@ -10,6 +10,12 @@ export interface SharedTransform {
   activeEndpoint?: 0 | 1;
   /** Slide-switch state for Snap Lab S1. */
   on?: boolean;
+  /**
+   * Edited electrical values for Circuit Bench parts (resistor ohms, battery volts). Absent
+   * means "unchanged" (older clients never send it); every snapshot includes it explicitly.
+   * Validated with the same bounds by the Worker relay (cloudflare/worker.js sanitizeProps).
+   */
+  props?: { ohms?: number; volts?: number };
 }
 
 export interface Participant {
@@ -50,7 +56,12 @@ export type TraceAction =
   | "ready"
   | "reflect"
   /** An AI teammate's belief changed because a teammate taught it (no message body). */
-  | "teach";
+  | "teach"
+  /**
+   * A non-spatial edit: an electrical value change, undo/redo, project import or reset. Kept
+   * apart from "claim"/"move" so existing claim/move research metrics do not count them.
+   */
+  | "edit";
 
 export interface ActivityTrace {
   id: string;

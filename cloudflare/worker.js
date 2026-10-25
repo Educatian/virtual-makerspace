@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { sanitizeTransform } from "./sanitize.js";
 
 const ROOM_CODE = /^[A-Z2-9]{4,12}$/;
 const COMPONENT_IDS = new Set([
@@ -83,44 +84,6 @@ function componentResource(value, allowEndpoint = true) {
   const match = resource.match(/^([a-z0-9-]+)(?:::endpoint-([01]))?$/);
   if (!match || !COMPONENT_IDS.has(match[1]) || (!allowEndpoint && match[2] !== undefined)) return null;
   return resource;
-}
-
-function finiteTuple(value, limit = 20) {
-  if (!Array.isArray(value) || value.length !== 3) return null;
-  const tuple = value.map(Number);
-  if (tuple.some((item) => !Number.isFinite(item) || Math.abs(item) > limit)) return null;
-  return tuple;
-}
-
-function sanitizeTransform(value) {
-  if (!value || typeof value !== "object") return null;
-  const position = finiteTuple(value.position);
-  const rotation = finiteTuple(value.rotation, Math.PI * 16);
-  if (!position || !rotation) return null;
-  const transform = { position, rotation };
-  if (value.sockets === null) transform.sockets = null;
-  else if (value.sockets !== undefined) {
-    if (!Array.isArray(value.sockets) || value.sockets.length !== 2) return null;
-    const sockets = value.sockets.map((socket) => {
-      if (socket === null) return null;
-      const index = Number(socket);
-      return Number.isInteger(index) && index >= 0 && index <= 2_000 ? index : undefined;
-    });
-    if (sockets.includes(undefined)) return null;
-    transform.sockets = sockets;
-  }
-  if (value.endpoints !== undefined) {
-    if (!Array.isArray(value.endpoints) || value.endpoints.length !== 2) return null;
-    const endpoints = value.endpoints.map((endpoint) => finiteTuple(endpoint, 20));
-    if (endpoints.some((endpoint) => !endpoint)) return null;
-    transform.endpoints = endpoints;
-  }
-  if (value.activeEndpoint !== undefined) {
-    if (value.activeEndpoint !== 0 && value.activeEndpoint !== 1) return null;
-    transform.activeEndpoint = value.activeEndpoint;
-  }
-  if (typeof value.on === "boolean") transform.on = value.on;
-  return transform;
 }
 
 function sanitizeSignal(value) {
@@ -637,7 +600,7 @@ export class MakerspaceRoom extends DurableObject {
     }
     if (incoming.kind === "trace") {
       const trace = incoming.trace || {};
-      if (!["inspect", "claim", "move", "discuss", "test", "snapshot", "role", "phase", "ready", "reflect", "teach"].includes(trace.action)) return null;
+      if (!["inspect", "claim", "move", "discuss", "test", "snapshot", "role", "phase", "ready", "reflect", "teach", "edit"].includes(trace.action)) return null;
       if (!["frame", "build", "test", "reflect"].includes(trace.phase)) return null;
       return {
         kind: "trace",
@@ -669,7 +632,7 @@ export class MakerspaceRoom extends DurableObject {
     }
     if (incoming.kind === "transform") {
       const componentId = componentResource(incoming.componentId, false);
-      const transform = sanitizeTransform(incoming.transform);
+      const transform = sanitizeTransform(incoming.transform, componentId);
       const sequence = Number(incoming.sequence);
       if (!componentId || !transform || !Number.isSafeInteger(sequence) || sequence < 0) return null;
       return { kind: "transform", participantId: participant.id, componentId, transform, sequence };
@@ -693,7 +656,7 @@ export class MakerspaceRoom extends DurableObject {
       if (entries.length > COMPONENT_IDS.size) return null;
       for (const [componentIdValue, transformValue] of entries) {
         const componentId = componentResource(componentIdValue, false);
-        const transform = sanitizeTransform(transformValue);
+        const transform = componentId ? sanitizeTransform(transformValue, componentId) : null;
         if (!componentId || !transform) return null;
         transforms[componentId] = transform;
       }

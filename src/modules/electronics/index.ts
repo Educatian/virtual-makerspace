@@ -200,9 +200,9 @@ export const electronicsModule: VMModule = {
     const Y = 0.94;
     spawnLed(world, [0.1, Y, -1.22], 0xff3030, "led_red");
     spawnLed(world, [0.2, Y, -1.22], 0x30ff30, "led_green");
-    spawnResistor(world, [0.4, Y, -1.22], 0xc8a060, "resistor_gold");
+    spawnResistor(world, [0.4, Y, -1.22], 0xc8a060, "resistor_gold", 220);
     spawnBattery(world, [0.62, Y, -1.22], "battery");
-    spawnResistor(world, [0.1, Y, -1.05], 0xa07050, "resistor_brown");
+    spawnResistor(world, [0.1, Y, -1.05], 0xa07050, "resistor_brown", 1000);
     spawnWire(world, [0.3, Y, -1.05], 0.048, 0xc62828, "wire_red_short");
     spawnWire(world, [0.55, Y, -1.05], 0.12, 0x1565c0, "wire_blue_med");
     spawnWire(world, [0.4, Y, -0.94], 0.24, 0xfdd835, "wire_yellow_long");

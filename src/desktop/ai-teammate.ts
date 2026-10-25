@@ -24,6 +24,7 @@ import {
   planCircuitLayout,
   type CircuitAnalysis,
   type CircuitPlacements,
+  type CircuitProps,
   type SocketPair,
 } from "./circuit-topology.js";
 import {
@@ -274,6 +275,11 @@ export class AiTeammate {
     return this.activeRun !== null;
   }
 
+  /** True while Bolt is moving parts for a build (bulk edits should wait). */
+  get isBuilding(): boolean {
+    return this.building;
+  }
+
   private async build(run: number): Promise<void> {
     if (this.disposed || run !== this.buildRun) return;
     // This run supersedes any older one; it alone clears the flag when it ends.
@@ -426,8 +432,16 @@ export class AiTeammate {
     return placements;
   }
 
+  /** Edited electrical values (resistance, supply voltage) as the room currently shares them. */
+  private props(): CircuitProps {
+    const transforms = this.host.transforms();
+    const props: CircuitProps = {};
+    for (const id of CIRCUIT_IDS) props[id] = transforms[id]?.props ?? null;
+    return props;
+  }
+
   private analyze(): CircuitAnalysis {
-    return analyzeCircuit(this.placements());
+    return analyzeCircuit(this.placements(), this.props());
   }
 
   private later(ms: number, task: () => void): void {
