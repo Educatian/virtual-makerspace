@@ -569,6 +569,25 @@ const serverView = (net) => JSON.stringify([...net.core.state].map(([id, entry])
   ok(old.acceptTransform("led-red", joiner.stampTransform("led-red")), "and so does its first move");
 }
 
+// ── A program load with the same statements stops the program for every peer ─────────────
+{
+  const net = new Net();
+  const A = new Client("A");
+  const B = new Client("B");
+  net.connect(A);
+  net.connect(B);
+  net.settle();
+  const Q = [{ op: "write", pin: "D5", value: true }];
+  B.edit([], { program: Q, running: true, conditional: false });
+  net.settle();
+  eq([A.program, B.program], [{ program: Q, running: true }, { program: Q, running: true }], "Q runs on both peers");
+  // A imports a project holding Q (same statements): the import sends Q stopped.
+  const op = A.edit([{ componentId: "led-red", transform: seat([53, 52]) }], { program: Q, running: false });
+  net.settle();
+  eq(A.results.get(op)?.ok, true, "the import (parts + stop, one batch) is accepted");
+  eq([A.program, B.program], [{ program: Q, running: false }, { program: Q, running: false }], "and both peers end stopped");
+}
+
 // ── Random interleavings: everyone always ends identical ───────────────────────────────────
 {
   let seed = Number(process.env.SYNC_SEED ?? 42);

@@ -45,6 +45,23 @@ const LIMIT = 50;
 const round = (value: number): number => Math.round(value * 1000) / 1000;
 const roundTuple = (tuple: readonly number[] | undefined): string => (tuple ? tuple.map(round).join(",") : "");
 
+/**
+ * What an explicit program load (import, restore) must send to the room. The policy is that a
+ * loaded program is always stopped, so a stop is sent whenever the room's program is running —
+ * even if the statements are identical. Only a statement change is an undo step (Run/Stop is
+ * not edit history).
+ */
+export function planProgramLoad(
+  roomProgram: readonly SnapinoStatement[],
+  roomRunning: boolean,
+  requested: readonly SnapinoStatement[] | undefined,
+): { send?: { program: SnapinoStatement[]; running: false }; statementsChanged: boolean; stops: boolean } {
+  if (!requested) return { statementsChanged: false, stops: false };
+  const statementsChanged = !sameProgram(roomProgram, requested);
+  if (!statementsChanged && !roomRunning) return { statementsChanged: false, stops: false };
+  return { send: { program: [...requested], running: false }, statementsChanged, stops: roomRunning };
+}
+
 /** Whether two programs have the same statements (running state is not part of an edit). */
 export function sameProgram(a: readonly SnapinoStatement[] | null | undefined, b: readonly SnapinoStatement[] | null | undefined): boolean {
   return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);

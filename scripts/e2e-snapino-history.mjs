@@ -135,6 +135,23 @@ await host.waitForTimeout(1500);
 check("a stale undo never overwrites the teammate's newer program R", programKey(await bench(host)) === JSON.stringify(R) && programKey(await bench(member)) === JSON.stringify(R), await status(host));
 check("and the parts stay as the room has them", partsKey(await bench(member)) === QT.parts);
 
+// Importing the program that is already running (same statements) stops it for everyone —
+// with the same parts (a stop alone) and with changed parts (parts + stop in one edit).
+check("R is running on both peers before the import", (await bench(host)).running && (await bench(member)).running);
+const undoBeforeStop = (await bench(host)).canUndo;
+await importProject(host, { ...projectQT, parts: qParts, program: R, savedAt: new Date().toISOString() });
+const stoppedSame = await until(() => bench(member), (state) => !state.running);
+check("same parts + same running program: the import stops it on the teammate", !stoppedSame.running && programKey(stoppedSame) === JSON.stringify(R) && partsKey(stoppedSame) === QT.parts);
+check("and on the importer", !(await bench(host)).running && programKey(await bench(host)) === JSON.stringify(R), await status(host));
+check("a stop alone adds no undo step", (await bench(host)).canUndo === undoBeforeStop);
+await press(member, "Run blocks");
+await until(() => bench(host), (state) => state.running);
+const pParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
+await importProject(host, { ...projectQT, parts: pParts, program: R, savedAt: new Date().toISOString() });
+const stoppedChanged = await until(() => bench(member), (state) => !state.running && partsKey(state) === PS.parts);
+check("changed parts + same running program: parts and stop arrive together on the teammate", !stoppedChanged.running && partsKey(stoppedChanged) === PS.parts && programKey(stoppedChanged) === JSON.stringify(R));
+check("and on the importer", !(await bench(host)).running && partsKey(await bench(host)) === PS.parts);
+
 // Export: the room's program and the importer's unsaved draft are kept apart.
 const D = [{ op: "follow", pin: "D5", invert: false }];
 await host.evaluate((program) => window.__vmQa.editDraft(program), D);
@@ -148,6 +165,7 @@ const savedProject = saved ? JSON.parse(saved) : null;
 check("autosave holds the latest room program and the draft", JSON.stringify(savedProject?.program) === JSON.stringify(R) && JSON.stringify(savedProject?.draftProgram) === JSON.stringify(D));
 
 // Recovery compares programs: same parts, different saved program → offered.
+const savedParts = partsKey(await bench(host));
 await memberContext.close();
 await host.evaluate(([code, program]) => {
   const key = `vm-project:${code}:snapino`;
@@ -164,7 +182,7 @@ check("rejoining after everyone left: the bench was reset but the room kept its 
 check("recovery is offered (saved parts and program differ from the room's)", banner);
 await tap(back, '[data-recovery="restore"]');
 const restored = await until(() => bench(back), (state) => programKey(state) === JSON.stringify(T));
-check("restoring brings back the saved parts and program as one edit", partsKey(restored) === QT.parts && programKey(restored) === JSON.stringify(T) && !restored.running);
+check("restoring brings back the saved parts and program as one edit", partsKey(restored) === savedParts && programKey(restored) === JSON.stringify(T) && !restored.running);
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

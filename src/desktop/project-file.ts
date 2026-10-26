@@ -194,6 +194,22 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
   return { ok: true, project };
 }
 
+/**
+ * True only for a bench with nothing worth recovering: no part seated, every electrical value
+ * at its default, no slide switch on, and no program or draft. Edited values on parts left in
+ * the tray (e.g. a resistor set to 470 Ω) are NOT empty.
+ */
+export function isDefaultProject(project: ProjectFile, defaultsFor: (id: string) => PartProps | null): boolean {
+  if (project.program?.length || project.draftProgram?.length) return false;
+  return project.parts.every((part) => {
+    if (part.sockets) return false;
+    if (part.on === true) return false;
+    if (!part.props) return true;
+    const defaults = defaultsFor(part.id);
+    return (part.props.ohms ?? null) === (defaults?.ohms ?? null) && (part.props.volts ?? null) === (defaults?.volts ?? null);
+  });
+}
+
 export function projectFileName(project: ProjectFile): string {
   const stamp = project.savedAt.slice(0, 16).replace(/[:T]/g, "-");
   return `makerspace-${project.studio}-${stamp}.json`;

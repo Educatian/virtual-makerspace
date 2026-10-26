@@ -179,7 +179,9 @@ edits that the room accepted: moves, value edits, return-to-tray, demo layouts, 
   change that has not reached this client yet also refuses it.
 - A part currently held by someone else blocks the step without discarding it; so does being
   offline or an unanswered request.
-- **Program policy:** an import, undo or redo that restores a program leaves it **stopped** —
+- **Program policy:** an import, undo or redo that restores a program leaves it **stopped** — an
+  import stops a running program even when the file holds the very same statements (sent in the
+  same atomic edit as any part changes; a stop alone is not an undo step) —
   press Run to start it. Run/Stop are not undo steps, and programs are compared by statements.
   A stale undo can never overwrite a teammate's newer program.
 - History is cleared on a studio change.
@@ -198,8 +200,9 @@ edits that the room accepted: moves, value edits, return-to-tray, demo layouts, 
 
 **Local recovery:** this browser keeps the latest bench for the room and studio
 (`localStorage`): parts, values, the room program and any draft. It saves after every change —
-local or a teammate's, edits, imports, undo, program-only changes — and an empty bench (nothing
-seated, no program) clears it. On re-entry, if the saved parts, values or program differ from
+local or a teammate's, edits, imports, undo, program-only changes. Only a bench entirely at its
+defaults (nothing seated, every value at its default, switches off, no program or draft) clears it;
+edited values on parts left in the tray (e.g. a resistor set to 470 Ω) are kept and recoverable. On re-entry, if the saved parts, values or program differ from
 the room's, a banner offers to restore them (as one undoable edit). Never automatic.
 
 **Reset bench** (with a confirmation dialog) returns every part of the studio to the tray with
@@ -347,7 +350,7 @@ Quest headset, none of which were tested.
 ## Tests
 
 ```bash
-npm test              # typecheck + engine + agent + project-state + Snapino (g++ syntax) + sync races
+npm test              # typecheck + engine + agent + project-state + Snapino (g++ syntax) + sync races + WorkbenchTools
 npm run build
 node scripts/e2e-ai-teammate.mjs http://localhost:4173          # BroadcastChannel, one browser
 # With wrangler dev on :8799 and scripts/access-proxy.mjs on :8800 (fresh random rooms):

@@ -23,8 +23,8 @@ import {
 } from "../circuit/part-props.ts";
 import type { CircuitAnalysis } from "./circuit-topology.js";
 import type { CollaborationPhase, DesktopRoom, EditResult, SharedTransform } from "./collaboration.js";
-import { EditHistory, sameProgram, sameTransform, type HistoryChange } from "./edit-history.ts";
-import { buildProject, parseProject, projectFileName, type ProjectFile } from "./project-file.ts";
+import { EditHistory, planProgramLoad, sameProgram, sameTransform, type HistoryChange } from "./edit-history.ts";
+import { buildProject, isDefaultProject, parseProject, projectFileName, type ProjectFile } from "./project-file.ts";
 import type { ComponentSpec, DesktopWorkbenchScene, StudioKind } from "./scene.js";
 import type { SnapinoStatement } from "./snapino.ts";
 
@@ -438,9 +438,11 @@ export class WorkbenchTools {
   // ── Shared edits ──────────────────────────────────────────────────────────────
 
   /**
-   * Submits `changes` (and optionally a new room program, which then stays stopped) as one
-   * atomic room edit. Only on acceptance: history entry, "edit" trace, status. Returns whether
-   * the room accepted it (true also when nothing needed to change).
+   * Submits `changes` (and optionally a program to load, which is always loaded stopped) as one
+   * atomic room edit. A program load stops a running room program even when its statements are
+   * the same; only a statement change becomes part of the undo step. Only on acceptance: history
+   * entry, "edit" trace, status. Returns whether the room accepted it (true also when nothing
+   * needed to change).
    */
   async submit(
     changes: Array<{ id: string; transform: SharedTransform }>,
@@ -452,9 +454,10 @@ export class WorkbenchTools {
     if (!workbench || !room) return false;
     const before = workbench.getSharedTransforms();
     const real = changes.filter((change) => !sameTransform(before[change.id], change.transform));
-    const programBefore = this.host.roomProgram().program;
-    const program = options.program && !sameProgram(programBefore, options.program) ? options.program : undefined;
-    if (!real.length && !program) {
+    const { program: programBefore, running: roomRunning } = this.host.roomProgram();
+    const load = planProgramLoad(programBefore, roomRunning, options.program);
+    const program = load.send?.program;
+    if (!real.length && !load.send) {
       this.host.status(`${label} · nothing to change`, "neutral");
       return true;
     }
@@ -463,7 +466,7 @@ export class WorkbenchTools {
       this.host.status(`${label} refused · ${held.holder} is holding ${PART_NAMES[held.id] ?? "a part"}; try again when they let go`, "warning");
       return false;
     }
-    const result = await room.submitEdit(real, program ? { program, running: false } : undefined);
+    const result = await room.submitEdit(real, load.send);
     if (!result.ok) {
       this.host.status(refusalCopy(label, result), "warning");
       this.lastEditorKey = "";
@@ -474,11 +477,18 @@ export class WorkbenchTools {
     if (options.record !== false) {
       const after = workbench.getSharedTransforms();
       const recorded: HistoryChange[] = real.map((change) => ({ id: change.id, before: before[change.id], after: after[change.id] }));
-      this.history.record(label, recorded, program ? { before: programBefore, after: program } : undefined);
+      // A stop alone is not an undo step (Run/Stop is not edit history); new statements are.
+      this.history.record(label, recorded, program && load.statementsChanged ? { before: programBefore, after: program } : undefined);
     }
+    const programNote = !program ? "" : load.statementsChanged ? (load.stops ? "program, stopped" : "program") : "program stopped";
     const count = real.length + (program ? 1 : 0);
-    this.trace(options.traceId ?? (real.length === 1 && !program ? real[0].id : undefined), count > 1 || program ? `${label} (${describeCount(real.length, Boolean(program))})` : label);
-    this.host.status(`${label} · shared with the room`, options.tone ?? "neutral");
+    this.trace(options.traceId ?? (real.length === 1 && !program ? real[0].id : undefined), count > 1 || program ? `${label} (${describeCount(real.length, programNote)})` : label);
+    this.host.status(
+      !real.length && program && !load.statementsChanged
+        ? `${label} · same program, now stopped for everyone`
+        : `${label} · shared with the room${load.stops ? " (program stopped)" : ""}`,
+      options.tone ?? "neutral",
+    );
     this.updateHistoryButtons();
     this.lastEditorKey = "";
     this.queueRender();
@@ -642,6 +652,11 @@ export class WorkbenchTools {
 
   // ── Export / import / recovery ────────────────────────────────────────────────
 
+  private isEmpty(project: ProjectFile): boolean {
+    const workbench = this.host.workbench();
+    return isDefaultProject(project, (id) => workbench?.defaultPartProps(id) ?? null);
+  }
+
   private currentProject(): ProjectFile | null {
     const workbench = this.host.workbench();
     if (!workbench) return null;
@@ -749,11 +764,14 @@ export class WorkbenchTools {
     return `vm-project:${this.host.roomCode()}:${this.host.studio()}`;
   }
 
-  /** Saves the latest bench (parts, values, room program, draft); an empty bench clears it. */
+  /**
+   * Saves the latest bench (parts, values — also of parts left in the tray —, switch states,
+   * room program, draft); only a bench entirely at its defaults clears it.
+   */
   private autosave(): void {
     const project = this.currentProject();
     if (!project || !this.recoveryChecked) return;
-    if (isEmptyProject(project)) {
+    if (this.isEmpty(project)) {
       removeKey(this.storageKey());
       return;
     }
@@ -774,7 +792,7 @@ export class WorkbenchTools {
     const parsed = parseProject(saved, (studio) => workbench.studioCatalog(studio));
     const current = this.currentProject();
     if (!parsed.ok || !current || parsed.project.studio !== this.host.studio()) return;
-    if (isEmptyProject(parsed.project) || sameContent(parsed.project, current)) return;
+    if (this.isEmpty(parsed.project) || sameContent(parsed.project, current)) return;
     const host = document.querySelector<HTMLElement>("#recovery-banner");
     if (!host) return;
     const when = new Date(parsed.project.savedAt);
@@ -789,10 +807,6 @@ export class WorkbenchTools {
   }
 }
 
-/** Nothing seated, no program and no draft: nothing worth recovering. */
-function isEmptyProject(project: ProjectFile): boolean {
-  return !project.parts.some((part) => part.sockets) && !project.program?.length && !project.draftProgram?.length;
-}
 
 /** Same parts, values, switch states, room program and draft (ignores savedAt). */
 function sameContent(a: ProjectFile, b: ProjectFile): boolean {
@@ -801,10 +815,10 @@ function sameContent(a: ProjectFile, b: ProjectFile): boolean {
     sameProgram(a.draftProgram ?? null, b.draftProgram ?? null);
 }
 
-function describeCount(parts: number, program: boolean): string {
+function describeCount(parts: number, program: string): string {
   const items = [];
   if (parts) items.push(`${parts} part${parts === 1 ? "" : "s"}`);
-  if (program) items.push("program");
+  if (program) items.push(program);
   return items.join(" + ");
 }
 

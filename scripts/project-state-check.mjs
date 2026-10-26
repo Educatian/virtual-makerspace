@@ -3,8 +3,8 @@
 //   node --experimental-strip-types scripts/project-state-check.mjs
 import assert from "node:assert/strict";
 
-const { EditHistory, sameTransform, sameProgram } = await import("../src/desktop/edit-history.ts");
-const { buildProject, parseProject, PROJECT_FORMAT, MAX_PROJECT_BYTES } = await import("../src/desktop/project-file.ts");
+const { EditHistory, sameTransform, sameProgram, planProgramLoad } = await import("../src/desktop/edit-history.ts");
+const { buildProject, parseProject, isDefaultProject, PROJECT_FORMAT, MAX_PROJECT_BYTES } = await import("../src/desktop/project-file.ts");
 const { sanitizeProps } = await import("../src/circuit/part-props.ts");
 const worker = await import("../cloudflare/sanitize.js");
 
@@ -303,6 +303,34 @@ for (const [kind, raw] of [
   const draftOnCircuit = JSON.parse(JSON.stringify(buildProject(catalogFor("circuit"), {})));
   draftOnCircuit.draftProgram = Q;
   eq(parseProject(JSON.stringify(draftOnCircuit), catalogFor).ok, false, "only Snapino projects carry a draft");
+}
+
+// ── Final acceptance patch: program loads always stop; off-board values are not "empty" ────
+{
+  const Q = [{ op: "write", pin: "D5", value: true }];
+  const T = [{ op: "write", pin: "D6", value: true }];
+  eq(planProgramLoad(Q, true, Q), { send: { program: Q, running: false }, statementsChanged: false, stops: true }, "same statements while running: an authoritative stop is sent");
+  eq(planProgramLoad(Q, false, Q), { statementsChanged: false, stops: false }, "same statements, already stopped: nothing to send");
+  eq(planProgramLoad(Q, true, T), { send: { program: T, running: false }, statementsChanged: true, stops: true }, "new statements while running: loaded stopped");
+  eq(planProgramLoad(Q, false, T), { send: { program: T, running: false }, statementsChanged: true, stops: false }, "new statements while stopped: loaded stopped");
+  eq(planProgramLoad(Q, true, undefined), { statementsChanged: false, stops: false }, "a project without a program leaves the room program alone");
+
+  const defaults = (id) => ({ "resistor-1k": { ohms: 1000 }, "battery-9v": { volts: 9 } })[id] ?? null;
+  const cat = { studio: "circuit", parts: { "resistor-1k": "resistor", "battery-9v": "battery", "led-red": null }, socketCount: 192, switches: [] };
+  const tray = (overrides = {}) => buildProject(cat, {
+    "resistor-1k": { ...home(1), props: { ohms: 1000 } }, "battery-9v": { ...home(2), props: { volts: 9 } }, "led-red": home(3), ...overrides,
+  });
+  ok(isDefaultProject(tray(), defaults), "every part in the tray at default values is empty");
+  const edited = tray({ "resistor-1k": { ...home(1), props: { ohms: 470 } } });
+  ok(!isDefaultProject(edited, defaults), "a tray-only 470 Ω resistor is not empty");
+  const reparsed = parseProject(JSON.stringify(edited), () => cat);
+  ok(reparsed.ok && !isDefaultProject(reparsed.project, defaults) && reparsed.project.parts.find((part) => part.id === "resistor-1k").props.ohms === 470, "and survives save → parse");
+  ok(!isDefaultProject(tray({ "battery-9v": { ...home(2), props: { volts: 5 } } }), defaults), "an off-board 5 V battery is not empty");
+  ok(!isDefaultProject(tray({ "led-red": seated(53, 52) }), defaults), "a seated part is not empty");
+  const sw = { studio: "snap", parts: { "snap-s1": null }, socketCount: 63, switches: ["snap-s1"], sharedSockets: true };
+  ok(!isDefaultProject(buildProject(sw, { "snap-s1": { ...home(1), on: true } }), () => null), "a switch left on is not empty");
+  ok(isDefaultProject(buildProject(sw, { "snap-s1": { ...home(1), on: false } }), () => null), "a switch off in the tray is empty");
+  ok(!isDefaultProject(buildProject({ studio: "snapino", parts: {}, socketCount: 63 }, {}, Q), () => null), "a program alone is not empty");
 }
 
 console.log(`project state: ${checks} checks passed`);
