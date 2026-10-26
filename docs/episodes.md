@@ -202,7 +202,7 @@ The workshop goal is met by a delivered round that the team has also explained.
 - **Not an AVR.** The blocks run in the bench's block runner; the generated `.ino` is not executed.
 - **Software-rendered evidence.** Frame-timing evidence comes from SwiftShader in headless Chromium; there are no real-GPU, phone or Quest measurements.
   - The Snapino base and carrier GLBs (hundreds of static meshes) are now merged per material at load. The same 1440×900 overview (`scripts/qa-3d.mjs`, shot `8-snapino-overview`) went from 1,229 to 683 draw calls with identical triangles (96,826). The PCB close-up draws 115 calls, but more triangles (45,914), because merged meshes are culled as a whole. This is still a heavy scene for a low-end phone, and no real phone was measured.
-  - On a slow frame, the lamp shows the state at that frame's time. The test checks exactly that, not a frame rate.
+  - On a slow frame, the lamp shows the state at that frame's time: the transmission sets the bench pins in the scene's pre-render hook, so the frame that is drawn and the frame that is logged are the same. The test checks exactly that, not a frame rate.
 - **Same-device tabs.** Without a server, tabs converge by Lamport order. Concurrent conflicting actions resolve to one winner, and roles are not arbitrated as strictly as on the server.
 - **Desktop only.** The WebXR path does not include the episode.
 - **Identity is the participant id.** The `sentBy` rule follows the room's participant id, not the person: someone who joins again under a new id is treated as a new participant.

@@ -47,8 +47,9 @@ const flash = (ms, after) => [D5(true), { op: "wait", ms }, D5(false), ...(after
 // Software rendering in two browsers takes seconds per frame, so the frame-by-frame lamp check uses
 // INJURED · NORTH at the slow end of every band (~12 s, still exactly that message under the protocol).
 const SLOW_INJURED_NORTH = [...flash(1450, 550), ...flash(1450, 4000), { op: "wait", ms: 4000 }, ...flash(1450, 550), ...flash(420, 550), ...flash(420, 0)];
-// SAFE followed by 20 s of silence: a transmission still running when a teammate acts on it.
-const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length: 4 }, () => ({ op: "wait", ms: 5000 }))];
+// SAFE followed by 60 s of silence: a transmission still running when a teammate acts on it
+// (an import's file dialog and confirmation take tens of seconds under software rendering).
+const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 }))];
 const shot = async (page, name) => { if (shots) await page.screenshot({ path: `${shots}/${name}.png` }); };
 const panelText = (page) => page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? "");
 const episode = (page) => page.evaluate(() => window.__vmQa?.episode?.() ?? { state: null, role: null, elapsed: null });
@@ -318,7 +319,7 @@ const same = await host.evaluate(() => ({ bench: window.__vmQa.bench(), program:
 const sameParts = Object.entries(same.bench.parts).map(([id, part]) => ({ id, sockets: part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(host, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: sameParts, program: same.program });
 const stopped = await until(() => episode(member), (state) => state.state?.round?.stopReason);
-check("importing the identical program while transmitting stops it (program-changed)", stopped.state.round.stopReason === "program-changed");
+check("importing the identical program while transmitting stops it (program-changed)", stopped.state.round.stopReason === "program-changed", `stopReason ${stopped.state?.round?.stopReason} at ${Math.round(stopped.elapsed)} of ${stopped.state?.round?.durationMs} ms`);
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null);
 

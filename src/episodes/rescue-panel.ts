@@ -245,7 +245,11 @@ export class RescueEpisode {
     });
   }
 
-  private tick(): void {
+  /**
+   * Called by the 3D bench immediately before it renders each frame, so the lamp in that frame
+   * shows the shared timeline at that frame's time (not the previous frame's state).
+   */
+  driveFrame(): void {
     if (this.disposed) return;
     const state = this.state;
     const now = this.serverNow();
@@ -260,6 +264,13 @@ export class RescueEpisode {
     } else {
       this.drive({ ...LOW_PINS }, false);
     }
+  }
+
+  private tick(): void {
+    if (this.disposed) return;
+    const state = this.state;
+    const now = this.serverNow();
+    const running = Boolean(state?.active && this.host.inSnapino() && transmitting(state!, now));
     this.render();
     // Keep ticking while something moves (a transmission, a replay); otherwise rest.
     if (running || this.replay) this.schedule();

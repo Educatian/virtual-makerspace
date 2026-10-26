@@ -2960,7 +2960,11 @@ export class DesktopWorkbenchScene {
     }
   }
 
+  /** Runs first in every frame (the Rescue Signal transmission drives the bench pins here). */
+  beforeFrame: (() => void) | null = null;
+
   private readonly render = (): void => {
+    this.beforeFrame?.();
     this.orbit.update();
     const now = performance.now();
     const frameSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);

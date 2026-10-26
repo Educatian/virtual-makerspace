@@ -2443,6 +2443,7 @@ function createEpisode(): void {
     ...(params.has("qa") ? { probe: (elapsed: number) => { lightLog.push({ elapsed, lights: workbench?.snapinoRunning() ?? [] }); if (lightLog.length > 2000) lightLog.shift(); } } : {}),
   });
   episode.bind();
+  if (workbench) workbench.beforeFrame = () => episode?.driveFrame();
   if (room) room.episodeBench = (id) => {
     const parts = workbench?.snapinoBench() ?? {};
     return parts[id] ?? null;
