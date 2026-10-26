@@ -4,6 +4,7 @@ import {
   Box3,
   BoxGeometry,
   BoxHelper,
+  BufferGeometry,
   CatmullRomCurve3,
   CircleGeometry,
   Color,
@@ -15,6 +16,7 @@ import {
   Group,
   HemisphereLight,
   InstancedMesh,
+  Material,
   MathUtils,
   Mesh,
   MeshBasicMaterial,
@@ -45,6 +47,7 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 import { formatAmps, formatVolts } from "../circuit/dc-engine.ts";
 import { sanitizeProps, type PartProps } from "../circuit/part-props.ts";
@@ -63,6 +66,7 @@ import {
 } from "./bench-models.js";
 import { RemoteHands, type HandOwner } from "./remote-hands.js";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
+import { analyzeSnapino, SNAPINO_LOADS, SNAPINO_PADS, type SnapinoBench } from "../circuit/snapino-circuit.ts";
 
 export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino";
 export type ComponentKind =
@@ -237,8 +241,6 @@ const SNAPINO_COMPONENTS: ComponentSpec[] = [
   { id: "sno-w4b", model: "snap-w4", name: "Snap Wire 4", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 4, studio: "snapino" },
 ];
 /** Base-grid stud index (row * 9 + col) under each Snapino pad — row B, columns 2–7. */
-const SNAPINO_PADS = { D2: 10, D3: 11, D5: 12, D6: 13, "5V": 14, GND: 15 } as const;
-const SNAPINO_LOADS = ["sno-l1", "sno-d1", "sno-m1"];
 
 const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS, ...SNAPINO_COMPONENTS];
 
@@ -280,6 +282,7 @@ export class DesktopWorkbenchScene {
   private readonly snapBaseGroup = new Group();
   private snapinoPins: PinStates = { ...LOW_PINS };
   private snapinoInputHigh = false;
+  private snapinoRunningLoads: string[] = [];
   private readonly circuitSockets: Vector3[] = [];
   private readonly greenhouseSockets: Vector3[] = [];
   private readonly snapSockets: Vector3[] = [];
@@ -460,6 +463,34 @@ export class DesktopWorkbenchScene {
     this.orbit.target.copy(target);
     this.camera.position.copy(target).add(offset);
     this.orbit.update();
+  }
+
+  /**
+   * Rescue Signal receiver's view: from across the table, framed on the Snapino lamp (or LED)
+   * that is seated, at a distance where the light is the thing to watch.
+   */
+  viewForReceiver(): void {
+    const target = new Vector3(0, BOARD_SURFACE + 0.25, -0.1);
+    for (const id of ["sno-l1", "sno-d1"]) {
+      const component = this.components.get(id);
+      const sockets = component?.userData.sockets as EndpointSockets | undefined;
+      if (component && this.isFullyConnected(sockets)) {
+        component.getWorldPosition(target);
+        target.y = Math.max(target.y, BOARD_SURFACE + 0.2);
+        break;
+      }
+    }
+    this.orbit.target.copy(target);
+    this.camera.position.set(target.x - 2.2, target.y + 1.5, target.z - 3.4);
+    this.orbit.update();
+  }
+
+  /** World position of a part's group (visual QA framing), or null if it isn't on this bench. */
+  partWorldPosition(id: string): [number, number, number] | null {
+    const component = this.components.get(id);
+    if (!component) return null;
+    const position = component.getWorldPosition(new Vector3());
+    return [position.x, position.y, position.z];
   }
 
   resetView(): void {
@@ -1866,6 +1897,8 @@ export class DesktopWorkbenchScene {
         procedural.visible = false;
         group.add(detailed);
         if (name === "snapino_board") this.addSnapinoSilkscreen(detailed);
+        // The base and carrier never move: one draw call per material instead of one per mesh.
+        mergeStaticMeshes(detailed);
       }
       this.evaluateCurrentSystem();
       if (this.selected) this.selectionBox.setFromObject(this.selected);
@@ -2663,10 +2696,27 @@ export class DesktopWorkbenchScene {
     return powered;
   }
 
-  /** Pin levels come from the running program (main.ts drives a SnapinoRunner). */
+  /** The Snapino parts' placements and switch state, as the shared circuit model reads them. */
+  snapinoBench(): SnapinoBench {
+    const bench: SnapinoBench = {};
+    for (const spec of SNAPINO_COMPONENTS) {
+      const component = this.components.get(spec.id);
+      if (!component) continue;
+      const sockets = component.userData.sockets as EndpointSockets;
+      bench[spec.id] = { sockets: this.isFullyConnected(sockets) ? [sockets[0], sockets[1]] : null, ...(spec.kind === "snapswitch" ? { on: Boolean(component.userData.switchOn) } : {}) };
+    }
+    return bench;
+  }
+
+  /** Pin levels come from the running program (main.ts drives a SnapinoRunner) or a transmission. */
   setSnapinoPins(pins: PinStates): void {
     this.snapinoPins = { ...pins };
     if (this.activeStudio === "snapino") this.evaluateSnapino();
+  }
+
+  /** Snapino loads the scene is showing as running right now (lit lamp/LED, spinning motor). */
+  snapinoRunning(): string[] {
+    return [...this.snapinoRunningLoads];
   }
 
   /** D2 reads HIGH when S1 (or a wire) bridges it to the 5V pad. */
@@ -2679,41 +2729,12 @@ export class DesktopWorkbenchScene {
    * program set HIGH) and the other end reaches GND. 5V straight to GND is a short.
    */
   private evaluateSnapino(announce = false): boolean {
-    const parent = Array.from(this.snapSockets, (_, index) => index);
-    const find = (value: number): number => {
-      while (parent[value] !== value) {
-        parent[value] = parent[parent[value]];
-        value = parent[value];
-      }
-      return value;
-    };
     const part = (id: string): Group => this.components.get(id)!;
     const socketsOf = (id: string): EndpointSockets => part(id).userData.sockets as EndpointSockets;
-    for (const spec of SNAPINO_COMPONENTS) {
-      const sockets = socketsOf(spec.id);
-      if (!this.isFullyConnected(sockets)) continue;
-      if (spec.kind === "snapwire" || (spec.kind === "snapswitch" && part(spec.id).userData.switchOn)) {
-        parent[find(sockets[0])] = find(sockets[1]);
-      }
-    }
-    const vcc = find(SNAPINO_PADS["5V"]);
-    const gnd = find(SNAPINO_PADS.GND);
-    const short = vcc === gnd;
-    this.snapinoInputHigh = !short && find(SNAPINO_PADS.D2) === vcc;
-    const pinShort = OUTPUT_PINS.find((pin) => this.snapinoPins[pin] && find(SNAPINO_PADS[pin]) === gnd);
-    const high = (net: number): boolean =>
-      net === vcc || OUTPUT_PINS.some((pin) => this.snapinoPins[pin] && find(SNAPINO_PADS[pin]) === net);
-
-    const running = new Set<string>();
-    if (!short) {
-      for (const id of SNAPINO_LOADS) {
-        const sockets = socketsOf(id);
-        if (!this.isFullyConnected(sockets)) continue;
-        const a = find(sockets[0]);
-        const b = find(sockets[1]);
-        if ((high(a) && b === gnd) || (high(b) && a === gnd)) running.add(id);
-      }
-    }
+    // One model for the lamp the learner sees and for the episode's signal (snapino-circuit.ts).
+    const { short, inputHigh, pinShort, running } = analyzeSnapino(this.snapinoBench(), this.snapinoPins);
+    this.snapinoInputHigh = inputHigh;
+    this.snapinoRunningLoads = [...running];
     for (const id of ["sno-l1", "sno-d1"]) {
       const load = part(id);
       for (const material of (load.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
@@ -3091,4 +3112,38 @@ export function defaultQuality(): RenderQuality {
   const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
   if (coarse || cores <= 2) return "low";
   return "medium";
+}
+
+
+/**
+ * Merges a static model's meshes that share a material (and attribute layout) into one mesh
+ * each, baking their transforms relative to `root`. Used for the Snap/Snapino base and carrier
+ * GLBs, which are hundreds of separate meshes but never move or get picked individually.
+ */
+function mergeStaticMeshes(root: Object3D): void {
+  root.updateMatrixWorld(true);
+  const inverse = root.matrixWorld.clone().invert();
+  type Bucket = { material: Material; geometries: BufferGeometry[]; meshes: Mesh[] };
+  const buckets = new Map<string, Bucket>();
+  root.traverse((child) => {
+    if (!(child instanceof Mesh) || Array.isArray(child.material) || child instanceof InstancedMesh) return;
+    const geometry = child.geometry as BufferGeometry;
+    const key = `${child.material.uuid}|${Object.keys(geometry.attributes).sort().join(",")}|${geometry.index ? "i" : "n"}`;
+    const bucket: Bucket = buckets.get(key) ?? { material: child.material as Material, geometries: [], meshes: [] };
+    const baked = geometry.clone();
+    baked.applyMatrix4(child.matrixWorld.clone().premultiply(inverse));
+    bucket.geometries.push(baked);
+    bucket.meshes.push(child);
+    buckets.set(key, bucket);
+  });
+  for (const bucket of buckets.values()) {
+    if (bucket.meshes.length < 2) continue;
+    const merged = mergeGeometries(bucket.geometries, false);
+    if (!merged) continue;
+    for (const mesh of bucket.meshes) mesh.removeFromParent();
+    const mesh = new Mesh(merged, bucket.material);
+    mesh.receiveShadow = true;
+    mesh.name = `merged_${bucket.material.name || "static"}`;
+    root.add(mesh);
+  }
 }

@@ -6,6 +6,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { RoomCore } from "../cloudflare/room-core.js";
 import { componentResource, sanitizeEdit, sanitizeProgram, sanitizeTransform } from "../cloudflare/sanitize.js";
+import { sanitizeRescueAction } from "../src/episodes/rescue-state.ts";
 
 const port = Number(process.env.COLLAB_PORT ?? 8787);
 const rooms = new Map();
@@ -23,7 +24,7 @@ function roomFor(request) {
  * rev-ack, claim-granted/denied, transform-rejected — come only from the room, never relayed. */
 const CLIENT_KINDS = new Set([
   "hello", "presence", "goodbye", "chat", "transform", "claim", "release", "voice-state", "phase", "trace",
-  "attention", "state-request", "state-response", "signal", "studio", "program", "edit", "room-state-request",
+  "attention", "state-request", "state-response", "signal", "studio", "program", "edit", "room-state-request", "episode",
 ]);
 
 /** Validates the bench messages the room core acts on; other client kinds pass through. */
@@ -44,6 +45,10 @@ function sanitize(message, participant) {
     case "edit": {
       const edit = sanitizeEdit(message);
       return edit ? { kind: "edit", participantId: participant.id, ...edit } : null;
+    }
+    case "episode": {
+      const action = sanitizeRescueAction(message.action);
+      return action && typeof message.opId === "string" && /^[\w-]{1,80}$/.test(message.opId) ? { kind: "episode", participantId: participant.id, opId: message.opId, action } : null;
     }
     case "program": {
       const program = sanitizeProgram(message.program);

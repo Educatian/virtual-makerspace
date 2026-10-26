@@ -102,7 +102,7 @@ export function componentResource(value, allowEndpoint = true) {
 const SNAPINO_PINS = new Set(["D3", "D5", "D6"]);
 
 export function sanitizeProgram(value) {
-  if (!Array.isArray(value) || value.length > 24) return null;
+  if (!Array.isArray(value) || value.length > 48) return null; // MAX_STATEMENTS in src/desktop/snapino.ts
   const program = [];
   for (const item of value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;

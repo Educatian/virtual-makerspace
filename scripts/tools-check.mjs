@@ -169,4 +169,35 @@ for (const variant of ["same parts", "changed parts"]) {
   ok(banner.hidden, "a default-only saved copy is never offered");
 }
 
+// ── 3. Episode 1 design: exported, saved, imported after the atomic edit, refusals reported ─
+{
+  const room = new FakeRoom("snapino");
+  const A = room.client("snapino", "A");
+  let design = { mission: "ridge", intent: ["INJURED", "NORTH"] };
+  const applied = [];
+  let allow = true;
+  A.tools.host.episodeDesign = () => design;
+  A.tools.host.applyEpisodeDesign = async (next) => { applied.push({ ...next, afterOperations: room.operations.length }); if (allow) design = next; return allow; };
+  room.bench["sno-l1"] = { ...room.bench["sno-l1"], ...seatedAt([12, 30]) };
+  const exported = A.tools.currentProject();
+  eq(exported.episode, { id: "rescue-signal", v: 1, mission: "ridge", intent: ["INJURED", "NORTH"] }, "export carries the workshop design");
+  A.tools.recoveryChecked = true;
+  A.tools.autosave();
+  eq(JSON.parse(storage.get("vm-project:TEST:snapino")).episode.intent, ["INJURED", "NORTH"], "autosave keeps the design");
+  // Import a different design with changed parts: the parts go first (one atomic edit), then the design.
+  const file = { ...exported, parts: exported.parts.map((part) => (part.id === "sno-w3" ? { ...part, sockets: [30, 33] } : part)), episode: { id: "rescue-signal", v: 1, mission: "creek", intent: ["SAFE", "WATER"] } };
+  room.operations.length = 0;
+  ok(await A.tools.importText(JSON.stringify(file), false), "the import is accepted");
+  eq(applied.at(-1), { mission: "creek", intent: ["SAFE", "WATER"], afterOperations: 1 }, "the design is applied after the parts edit");
+  eq(design.intent, ["SAFE", "WATER"], "and takes effect");
+  // The room refuses the design (e.g. not the sender, or a round is open): the learner is told.
+  allow = false;
+  A.statuses.length = 0;
+  await A.tools.importText(JSON.stringify({ ...file, episode: { id: "rescue-signal", v: 1, mission: "storm", intent: ["HELP"] } }), false);
+  ok(A.statuses.some((message) => /design was not applied/.test(message)), "a refused design is reported, not silently dropped");
+  // A tampered design is refused by the parser before anything is sent.
+  room.operations.length = 0;
+  ok(!(await A.tools.importText(JSON.stringify({ ...file, episode: { id: "rescue-signal", v: 1, mission: "ridge", intent: ["HELLO"] } }), false)) && room.operations.length === 0, "a design with non-protocol words is refused before any edit");
+}
+
 console.log(`workbench tools: ${checks} checks passed`);

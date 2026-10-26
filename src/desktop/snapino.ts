@@ -13,7 +13,8 @@ export type SnapinoStatement =
   | { op: "wait"; ms: number }
   | { op: "follow"; pin: SnapinoPin; invert: boolean };
 
-export const MAX_STATEMENTS = 24;
+/** Room for a three-word rescue message (each flash is write, wait, write, wait). */
+export const MAX_STATEMENTS = 48;
 export const LOW_PINS: PinStates = { D3: false, D5: false, D6: false };
 
 export const EXAMPLES: Record<string, { label: string; program: SnapinoStatement[] }> = {

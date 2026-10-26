@@ -27,6 +27,7 @@ import { EditHistory, planProgramLoad, sameProgram, sameTransform, type HistoryC
 import { buildProject, isDefaultProject, parseProject, projectFileName, type ProjectFile } from "./project-file.ts";
 import type { ComponentSpec, DesktopWorkbenchScene, StudioKind } from "./scene.js";
 import type { SnapinoStatement } from "./snapino.ts";
+import type { Word } from "../episodes/rescue-signal.ts";
 
 export interface ToolsHost {
   workbench(): DesktopWorkbenchScene | null;
@@ -44,6 +45,10 @@ export interface ToolsHost {
   draftProgram(): SnapinoStatement[] | null;
   /** Loads a program into this participant's editor only (not shared until they press Run). */
   loadDraft(program: SnapinoStatement[]): void;
+  /** Rescue Signal design to export (Snapino, workshop open), or null. */
+  episodeDesign?(): { mission: string; intent: Word[] } | null;
+  /** Applies an imported Rescue Signal design through the room; false if refused. */
+  applyEpisodeDesign?(design: { mission: string; intent: Word[] }): Promise<boolean>;
   status(message: string, tone: "neutral" | "valid" | "warning"): void;
   selected(): ComponentSpec | null;
   /** The meter opened or closed: re-frame the camera around it. */
@@ -668,6 +673,7 @@ export class WorkbenchTools {
       snapino ? this.host.roomProgram().program : null,
       new Date(),
       snapino ? this.host.draftProgram() : null,
+      snapino ? this.host.episodeDesign?.() ?? null : null,
     );
   }
 
@@ -743,6 +749,12 @@ export class WorkbenchTools {
       changes.push({ id: part.id, transform });
     }
     const applied = await this.submit(changes, label, { program: project.program, tone: "valid" });
+    if (applied && project.episode && this.host.applyEpisodeDesign) {
+      // The workshop design is room state with its own rules (the sender's, not during a
+      // round): applied after the parts and program, and reported if the room refuses it.
+      const designed = await this.host.applyEpisodeDesign({ mission: project.episode.mission, intent: project.episode.intent });
+      if (!designed) this.host.status(`${label} · the Rescue Signal design was not applied (only the sender can change it, and not during a round)`, "warning");
+    }
     if (applied && project.draftProgram) {
       this.host.loadDraft(project.draftProgram);
       this.host.status(`${label} · its unsaved code draft is in your editor (press Run to share it)`, "valid");
@@ -811,6 +823,7 @@ export class WorkbenchTools {
 /** Same parts, values, switch states, room program and draft (ignores savedAt). */
 function sameContent(a: ProjectFile, b: ProjectFile): boolean {
   return JSON.stringify(a.parts) === JSON.stringify(b.parts) &&
+    JSON.stringify(a.episode ?? null) === JSON.stringify(b.episode ?? null) &&
     sameProgram(a.program, b.program) &&
     sameProgram(a.draftProgram ?? null, b.draftProgram ?? null);
 }
@@ -890,7 +903,7 @@ export function socketLabel(socket: number): string {
   return `${"abcdefghij"[row - 1]}${col}`;
 }
 
-function confirmDialog(title: string, body: string, ok: string): Promise<boolean> {
+export function confirmDialog(title: string, body: string, ok: string): Promise<boolean> {
   const dialog = document.querySelector<HTMLDialogElement>("#confirm-dialog");
   if (!dialog) return Promise.resolve(window.confirm(`${title}\n\n${body}`));
   dialog.querySelector("#confirm-title")!.textContent = title;

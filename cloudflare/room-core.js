@@ -23,6 +23,14 @@
  * Pure: no sockets or storage. `handle()` returns what to send and what to persist.
  */
 
+import {
+  initialRescueState,
+  onParticipantLeft,
+  onRoomEmpty,
+  onTransmitterChanged,
+  reduceRescue,
+} from "../src/episodes/rescue-state.ts";
+
 const resourceParts = (resourceId) => {
   const match = /^(.*)::endpoint-([01])$/.exec(resourceId);
   return match ? { componentId: match[1], endpoint: Number(match[2]) } : { componentId: resourceId, endpoint: null };
@@ -39,6 +47,35 @@ export class RoomCore {
     this.state = new Map(initial.entries ?? []);
     this.programRev = initial.programRev ?? 0;
     this.program = initial.program ?? null;
+    /** Rescue Signal episode state (src/episodes/rescue-state.ts); persisted by the host. */
+    this.episode = initial.episode ?? initialRescueState();
+    /** Server clock (injectable for tests). */
+    this.now = initial.now ?? (() => Date.now());
+  }
+
+  episodeMessage(program) {
+    return {
+      kind: "episode-state",
+      state: this.episode,
+      serverNow: this.now(),
+      ...(program ? { program: { ...program, rev: this.programRev } } : {}),
+    };
+  }
+
+  /**
+   * An accepted change touched the Snapino transmitter (a part or the program): a running
+   * transmission ends there. Returns the episode update to broadcast to everyone, if any.
+   */
+  transmitterChanged(componentIds, programChanged, out) {
+    const touched = componentIds.some((id) => id.startsWith("sno-"));
+    if (!touched && !programChanged) return;
+    const next = onTransmitterChanged(this.episode, this.now(), programChanged ? "program-changed" : "bench-changed");
+    if (!next) return;
+    this.episode = next;
+    const update = this.episodeMessage();
+    out.sender.push(update);
+    out.others.push(update);
+    out.persist.episode = this.episode;
   }
 
   rev(componentId) {
@@ -81,6 +118,8 @@ export class RoomCore {
       // Nothing on the bench has been changed through the room since it started (or since the
       // last participant left): a reconnecting client's bench may seed it.
       fresh: this.state.size === 0,
+      episode: this.episode,
+      serverNow: this.now(),
     }];
   }
 
@@ -138,6 +177,7 @@ export class RoomCore {
         out.persist.state = [[message.componentId, entry]];
         out.others.push({ ...message, rev: entry.rev });
         out.sender.push({ kind: "rev-ack", componentId: message.componentId, rev: entry.rev });
+        this.transmitterChanged([message.componentId], false, out);
         return out;
       }
       case "edit": {
@@ -175,6 +215,7 @@ export class RoomCore {
         }
         out.others.push({ kind: "edit", participantId: participant.id, opId: message.opId, changes: applied, ...(program ? { program } : {}) });
         out.sender.push({ kind: "edit-result", opId: message.opId, ok: true, changes: applied.map(({ componentId, rev }) => ({ componentId, rev })), ...(program ? { programRev: program.rev } : {}) });
+        this.transmitterChanged(applied.map((change) => change.componentId), Boolean(program), out);
         return out;
       }
       case "room-state-request":
@@ -187,6 +228,32 @@ export class RoomCore {
         out.persist.program = { program: message.program, programRunning: message.running, programRev: this.programRev };
         out.others.push({ ...message, programRev: this.programRev });
         out.sender.push({ kind: "program-ack", programRev: this.programRev });
+        this.transmitterChanged([], true, out);
+        return out;
+      }
+      case "episode": {
+        const actor = { id: participant.id, name: participant.name };
+        const result = reduceRescue(this.episode, message.action, actor, this.now(), (id) => this.state.get(id)?.transform ?? null);
+        if (!result.ok) {
+          out.sender.push({ kind: "episode-result", opId: message.opId, ok: false, reason: result.reason });
+          out.sender.push(this.episodeMessage());
+          return out;
+        }
+        this.episode = result.state;
+        out.persist.episode = this.episode;
+        let program;
+        if (result.program) {
+          // A transmission sends the program it runs: it becomes the room's program, stopped
+          // (the transmission, not an endless loop(), drives the pins).
+          this.programRev += 1;
+          this.program = { program: result.program.program, running: false };
+          program = this.program;
+          out.persist.program = { program: this.program.program, programRunning: false, programRev: this.programRev };
+        }
+        const update = this.episodeMessage(program);
+        out.sender.push(update);
+        out.sender.push({ kind: "episode-result", opId: message.opId, ok: true });
+        out.others.push(update);
         return out;
       }
       default:
@@ -203,13 +270,23 @@ export class RoomCore {
       this.claims.delete(resourceId);
       released.push({ kind: "release", participantId: participant.id, participantName: participant.name, componentId: resourceId });
     }
+    const episode = onParticipantLeft(this.episode, participant.id);
+    if (episode) {
+      this.episode = episode;
+      released.push(this.episodeMessage());
+    }
     return released;
   }
 
-  /** Everyone left: the bench returns to its default state (as before this protocol). */
+  /**
+   * Everyone left: the bench returns to its default state (as before this protocol). The
+   * episode keeps its design and rounds; roles are freed and a running transmission ends.
+   */
   reset() {
     this.claims.clear();
     this.state.clear();
+    const episode = onRoomEmpty(this.episode, this.now());
+    if (episode) this.episode = episode;
   }
 
   store(componentId, transform) {

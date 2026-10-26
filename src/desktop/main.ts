@@ -2,6 +2,7 @@ import {
   EXAMPLES,
   MAX_STATEMENTS,
   OUTPUT_PINS,
+  LOW_PINS,
   SnapinoRunner,
   clampMs,
   describeStatement,
@@ -27,7 +28,9 @@ import {
   type RoomChatMessage,
 } from "./collaboration.js";
 import { AI_TEAMMATE_NAME, AiTeammate, TYPING_DETAIL, forgetAiTeammate } from "./ai-teammate.js";
-import { WorkbenchTools } from "./workbench-tools.js";
+import { confirmDialog, WorkbenchTools } from "./workbench-tools.js";
+import { RescueEpisode } from "../episodes/rescue-panel.ts";
+import { transmitting as episodeTransmitting, type RescueState } from "../episodes/rescue-state.ts";
 import { sameProgram, sameTransform } from "./edit-history.ts";
 import type { SharedTransform } from "./collaboration.js";
 import {
@@ -79,9 +82,20 @@ let room: DesktopRoom | null = null;
 let aiTeammate: AiTeammate | null = null;
 /** The learner asked for Bolt (lobby switch or `?teammate=ai`); invited on entering a room. */
 let bringBolt = params.get("teammate") === "ai";
+/** The lobby's episode switch (or `?episode=rescue-signal`). */
+let lobbyEpisode = params.get("episode") === "rescue-signal";
 let workbench: DesktopWorkbenchScene | null = null;
 /** Inspector/meter, undo/redo, project files and recovery around the shared scene. */
 let tools: WorkbenchTools | null = null;
+/** Episode 1, Rescue Signal Workshop (Snapino studio). */
+let episode: RescueEpisode | null = null;
+let queuedEpisode: RescueState | null = null;
+/** A transmission drives the Snapino pins; Run's loop() must not touch them meanwhile. */
+let transmissionActive = false;
+/** Opened from the lobby or `?episode=rescue-signal`: open the workshop once the room answers. */
+let wantEpisode = false;
+/** QA only: per-frame record of the episode-driven lamp (see `__vmQa.lightLog`). */
+const lightLog: Array<{ elapsed: number; lights: string[] }> = [];
 let participants: Participant[] = [];
 let selectedComponent: ComponentSpec | null = null;
 let currentRoomCode = initialRoomCode;
@@ -321,6 +335,13 @@ function renderLobby(): void {
             <input type="checkbox" id="lobby-teammate" role="switch" ${bringBolt ? "checked" : ""}>
             <span class="switch-track" aria-hidden="true"><span></span></span>
           </label>
+
+          <label class="teammate-toggle" for="lobby-episode">
+            <span class="teammate-mark episode-mark"><i class="ph ph-broadcast"></i></span>
+            <span><strong>Episode 1 · Rescue Signal Workshop</strong><small>Snapino Bridge: one learner builds and codes a light signal, the other reads it.</small></span>
+            <input type="checkbox" id="lobby-episode" role="switch" ${lobbyEpisode ? "checked" : ""}>
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+          </label>
         </article>
 
         <aside class="lobby-preview" aria-label="Choose a studio">
@@ -359,6 +380,10 @@ function renderLobby(): void {
       if (!roomStudioLocked) selectLobbyStudio(toStudio(button.dataset.studio));
     });
   });
+  // The workshop runs in the Snapino studio.
+  document.querySelector<HTMLInputElement>("#lobby-episode")?.addEventListener("change", (event) => {
+    if ((event.currentTarget as HTMLInputElement).checked && !roomStudioLocked) selectLobbyStudio("snapino");
+  });
   let lookupTimer = 0;
   document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input", (event) => {
     window.clearTimeout(lookupTimer);
@@ -389,6 +414,7 @@ function renderLobby(): void {
     currentRoomCode = code;
     bringBolt = Boolean(document.querySelector<HTMLInputElement>("#lobby-teammate")?.checked);
     params.delete("teammate");
+    lobbyEpisode = Boolean(document.querySelector<HTMLInputElement>("#lobby-episode")?.checked);
     if (button) {
       button.disabled = true;
       button.innerHTML = '<i class="ph ph-circle-notch"></i> Entering…';
@@ -572,6 +598,8 @@ function enterWorkspace(): void {
   // Bolt is this learner's choice; keep it out of the URL so a shared room link doesn't invite a second Bolt.
   if (params.get("teammate") === "ai") bringBolt = true;
   params.delete("teammate");
+  wantEpisode = lobbyEpisode;
+  params.delete("episode");
   history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
   renderWorkspace();
 
@@ -682,6 +710,13 @@ function enterWorkspace(): void {
     onAttention: (_componentId, componentName, participant) => {
       showSceneStatus(`${participant.name} is pointing to ${componentName}`, "neutral");
     },
+    onEpisode: (state) => {
+      if (episode) episode.setState(state);
+      else queuedEpisode = state;
+      maybeOpenEpisode();
+      tools?.noteChange();
+      refreshGuideSeed();
+    },
   }, authProfile.id);
 
   workbench = new DesktopWorkbenchScene(sceneHost, {
@@ -764,9 +799,19 @@ function enterWorkspace(): void {
       return null;
     },
     boltBuilding: () => Boolean(aiTeammate?.isBuilding),
-    roomProgram: () => ({ program: roomProgram, running: programRunning }),
+    // A running transmission counts as a running program: loading a program stops it.
+    roomProgram: () => ({ program: roomProgram, running: programRunning || Boolean(room?.episode && episodeTransmitting(room.episode, room.serverTime())) }),
     draftProgram: () => (programDirty ? program : null),
     loadDraft: (next) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
+    episodeDesign: () => (room?.episode?.active ? { mission: room.episode.mission, intent: [...room.episode.intent] } : null),
+    applyEpisodeDesign: async (design) => {
+      if (!room) return false;
+      if (!room.episode?.active) {
+        const opened = await room.episodeAction({ type: "open" });
+        if (!opened.ok) return false;
+      }
+      return (await room.episodeAction({ type: "set-design", mission: design.mission, words: design.intent })).ok;
+    },
     status: showSceneStatus,
     selected: () => selectedComponent,
     layoutChanged: () => updateViewInsets(),
@@ -795,6 +840,24 @@ function enterWorkspace(): void {
       },
       /** Edit the local code editor (as typing in it would), without uploading. */
       editDraft: (next: SnapinoStatement[]) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
+      /** Frames driven by a transmission: elapsed time and the lights the bench showed. */
+      lightLog: () => lightLog.splice(0),
+      /** Drive the bench's Snapino pins locally (visual QA of a lit/unlit lamp; no room traffic). */
+      pins: (levels: Partial<PinStates>) => workbench?.setSnapinoPins({ ...LOW_PINS, ...levels }),
+      /** Frame the receiver's view of the lamp (the panel's "Receiver's view" button). */
+      receiverView: () => workbench?.viewForReceiver(),
+      /** Drop the realtime socket like a network failure (server rooms; reconnects by itself). */
+      dropConnection: () => room?.dropConnectionForQa() ?? false,
+      /** World position of a part (close-up framing). */
+      partPosition: (id: string) => workbench?.partWorldPosition(id) ?? null,
+      /** Snapino loads the 3D bench shows running (lit lamp/LED) right now. */
+      lights: () => workbench?.snapinoRunning() ?? [],
+      /** The episode as this client holds it, with its elapsed transmission time. */
+      episode: () => {
+        const state = room?.episode ?? null;
+        const round = state?.round ?? null;
+        return { state, role: state ? (state.roles.sender?.id === room?.participant.id ? "sender" : state.roles.receiver?.id === room?.participant.id ? "receiver" : null) : null, elapsed: round && room ? room.serverTime() - round.startedAt : null, online: room?.online ?? false };
+      },
       /** Drop a cable end into a socket through the real drag path (claim → move → release). */
       dropEnd: (componentId: string, index: 0 | 1, socket: number) => workbench?.qaDropEndpoint(componentId, index, socket) ?? false,
       /** Seat a part locally (no room traffic) for close-up captures. */
@@ -807,6 +870,7 @@ function enterWorkspace(): void {
   }
   snapinoRunner = new SnapinoRunner(
     (pins) => {
+      if (transmissionActive) return;
       pinLevels = pins;
       workbench?.setSnapinoPins(pins);
       renderPinLeds();
@@ -822,6 +886,7 @@ function enterWorkspace(): void {
   renderComponentPalette();
   bindWorkspaceEvents();
   tools.bind();
+  createEpisode();
   workbench.reevaluate();
   // Offer local recovery once any shared state from teammates has had time to arrive.
   window.setTimeout(() => tools?.offerRecovery(), 2600);
@@ -935,6 +1000,7 @@ function renderWorkspace(): void {
                   <p class="project-menu-note">Files hold parts, values and the Snapino program — never names, chat or activity.</p>
                 </div>
               </div>
+              <button class="tool-button icon-only" id="episode-button" type="button" aria-label="Rescue Signal Workshop" data-tooltip="Episode 1 · Rescue Signal Workshop" hidden><i class="ph ph-broadcast"></i></button>
               <button class="tool-button icon-only" id="reset-view" type="button" aria-label="Reset view" data-tooltip="Reset camera"><i class="ph ph-crosshair"></i><span class="sr-only">Reset view</span></button>
               <button class="tool-button icon-only" id="check-circuit" type="button" aria-label="Test the current system" data-tooltip="Test system"><i class="ph ph-lightning"></i><span class="sr-only">Check circuit</span></button>
               <button class="tool-button icon-only" id="toggle-speech" type="button" aria-pressed="false" aria-label="Spoken status off" data-tooltip="Spoken status off"><i class="ph ph-speaker-simple-slash"></i></button>
@@ -972,6 +1038,7 @@ function renderWorkspace(): void {
             </aside>
             <div class="selection-toolbar" id="selection-toolbar" hidden></div>
             ${WorkbenchTools.markup()}
+            ${RescueEpisode.markup()}
             <div class="drop-callout" id="drop-callout"><i class="ph ph-cube"></i> Drop into the 3D workspace</div>
           </div>
 
@@ -1177,6 +1244,11 @@ function bindWorkspaceEvents(): void {
   });
 
   document.querySelector("#reset-view")?.addEventListener("click", () => workbench?.resetView());
+  document.querySelector("#episode-button")?.addEventListener("click", () => {
+    if (!episode) return;
+    if (episode.active) episode.toggleCollapsed();
+    else void episode.open();
+  });
   document.querySelector("#toggle-magnet")?.addEventListener("click", () => {
     const enabled = workbench?.toggleMagnetism() ?? false;
     const button = document.querySelector<HTMLButtonElement>("#toggle-magnet");
@@ -1327,7 +1399,7 @@ function updateViewInsets(): void {
   }
   // The bench centers in the space left of the dock and right of the rail — and of the
   // circuit meter when it is open, so the meter never sits on top of the board.
-  const left = Math.max(0, Math.max(rail.right, tools?.inspectorRight() ?? 0) - frame.left);
+  const left = Math.max(0, Math.max(rail.right, tools?.inspectorRight() ?? 0, episode?.panelRight() ?? 0) - frame.left);
   const right = dockCollapsed ? 0 : Math.max(0, frame.right - dock.left);
   workbench.setViewInsets(left, right);
 }
@@ -1369,6 +1441,8 @@ function switchStudio(studio: StudioKind, remote = false): void {
   renderSelection();
   updateStudioUi();
   tools?.updateStudio();
+  episode?.refresh();
+  updateEpisodeButton();
   loadChatHistory();
   workbench.saveAttempt(STUDIO_COPY[studio].opened);
   if (studio === "snapino" && programRunning) snapinoRunner?.start(roomProgram);
@@ -1486,13 +1560,24 @@ function renderSelection(): void {
   });
 }
 
+/** Room guidance follows the activity: the Rescue Signal roles while that workshop is open. */
+const RESCUE_SEED = "Rescue Signal Workshop: the sender chooses a message, builds the lamp transmitter and writes its blocks; the receiver watches the light and records a first reading. Then compare, explain the difference and revise together.";
+function guideSeed(): string {
+  const workshop = activeStudio === "snapino" && (room?.episode ? room.episode.active : wantEpisode);
+  return workshop ? RESCUE_SEED : STUDIO_COPY[activeStudio].seed;
+}
+function refreshGuideSeed(): void {
+  const text = document.querySelector<HTMLElement>('#chat-list [data-message-id="seed-1"] .chat-message-copy p');
+  if (text && text.textContent !== guideSeed()) text.textContent = guideSeed();
+}
+
 function appendSeedMessages(): void {
   const now = Date.now();
   appendChatMessage({
     id: "seed-1",
     participantId: "guide",
     author: "Workshop Guide",
-    body: STUDIO_COPY[activeStudio].seed,
+    body: guideSeed(),
     createdAt: now,
     context: "Room guidance",
   });
@@ -1507,7 +1592,7 @@ function loadChatHistory(): void {
         message.id === "seed-1"
           ? {
               ...message,
-              body: STUDIO_COPY[activeStudio].seed,
+              body: guideSeed(),
             }
           : message,
       );
@@ -2136,7 +2221,7 @@ function applyRoomProgram(next: SnapinoStatement[], running: boolean): void {
   programRunning = running;
   if (!programDirty) program = roomProgram.map((statement) => ({ ...statement }));
   programDirty = !sameProgram(program, roomProgram);
-  if (running && activeStudio === "snapino") snapinoRunner?.start(roomProgram.map((statement) => ({ ...statement })));
+  if (running && activeStudio === "snapino" && !transmissionActive) snapinoRunner?.start(roomProgram.map((statement) => ({ ...statement })));
   else snapinoRunner?.stop();
   renderCodePanel();
   tools?.noteChange();
@@ -2325,6 +2410,65 @@ function saveReflection(): void {
   showSceneStatus("Reflection saved · thanks for building together", "valid");
 }
 
+/** Episode 1 (Rescue Signal Workshop): the panel, wired to the room, the bench and the editor. */
+function createEpisode(): void {
+  episode = new RescueEpisode({
+    room: () => room,
+    workbench: () => workbench,
+    inSnapino: () => activeStudio === "snapino",
+    condition: () => ((params.get("condition") ?? "DI").toUpperCase() === "PF" ? "PF" : "DI"),
+    editorProgram: () => program.map((statement) => ({ ...statement })),
+    loadEditor: (next) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
+    openCodeEditor: () => {
+      if (dockCollapsed) setDockCollapsed(false);
+      switchDiscussionTab("code");
+    },
+    setTransmitting: (active) => {
+      if (active === transmissionActive) return;
+      transmissionActive = active;
+      if (active) snapinoRunner?.stop();
+      else if (programRunning && activeStudio === "snapino") snapinoRunner?.start(roomProgram.map((statement) => ({ ...statement })));
+    },
+    setPins: (pins) => {
+      pinLevels = pins;
+      workbench?.setSnapinoPins(pins);
+      renderPinLeds();
+    },
+    humans: () => participants.filter((participant) => participant.kind !== "agent").length,
+    status: showSceneStatus,
+    trace: (action, detail) => room?.recordTrace(action, collaborationPhase, activeStudio, { detail }),
+    confirm: confirmDialog,
+    layoutChanged: () => updateViewInsets(),
+    // QA (?qa): what the bench showed on each driven frame, to check it against the timeline.
+    ...(params.has("qa") ? { probe: (elapsed: number) => { lightLog.push({ elapsed, lights: workbench?.snapinoRunning() ?? [] }); if (lightLog.length > 2000) lightLog.shift(); } } : {}),
+  });
+  episode.bind();
+  if (room) room.episodeBench = (id) => {
+    const parts = workbench?.snapinoBench() ?? {};
+    return parts[id] ?? null;
+  };
+  if (queuedEpisode) {
+    episode.setState(queuedEpisode);
+    queuedEpisode = null;
+  }
+  updateEpisodeButton();
+  maybeOpenEpisode();
+}
+
+/** The workshop was asked for (lobby/URL): open it in this room once its state is known. */
+function maybeOpenEpisode(): void {
+  if (!wantEpisode || !episode || !room || activeStudio !== "snapino") return;
+  if (room.mode === "server" && !room.episode) return;
+  wantEpisode = false;
+  void episode.open();
+}
+
+function updateEpisodeButton(): void {
+  const button = document.querySelector<HTMLButtonElement>("#episode-button");
+  if (button) button.hidden = activeStudio !== "snapino";
+  refreshGuideSeed();
+}
+
 function leaveRoom(): void {
   disposeWorkspace();
   history.replaceState(null, "", location.pathname);
@@ -2341,6 +2485,11 @@ function disposeWorkspace(): void {
   snapinoRunner = null;
   tools?.dispose();
   tools = null;
+  episode?.dispose();
+  episode = null;
+  queuedEpisode = null;
+  transmissionActive = false;
+  wantEpisode = false;
   workbench?.dispose();
   aiTeammate?.dispose();
   aiTeammate = null;
