@@ -93,7 +93,9 @@ await waitFor(host, /come back to the battery\. Got it/);
 // Without a resistor the LED would sit straight across 9 V (a burnout, not a success).
 await say(host, "Add a resistor because it limits the current so the LED doesn't burn out.");
 // Teaching mid-build supersedes the running build, so expect at least one finished build.
-check("Bolt builds over WebSocket after being taught", await waitFor(host, /^Done\./, 1, 300_000));
+const built = await waitFor(host, /^Done\./, 1, 300_000);
+// On failure, say what Bolt did say (e.g. that a claim was not granted in time and a part was left).
+check("Bolt builds over WebSocket after being taught", built, built ? "" : `Bolt said: ${JSON.stringify((await boltLines(host)).slice(-4))}`);
 let lit = false;
 for (let i = 0; i < 60 && !lit; i += 1) { lit = await powered(host); if (!lit) await host.waitForTimeout(2000); }
 check("host scene lights safely from Bolt's relayed moves", lit);
