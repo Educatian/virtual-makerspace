@@ -302,6 +302,7 @@ export class DesktopRoom {
   /** Round trip of the clock sample the offset currently comes from (Infinity: none yet). */
   private clockRtt = Infinity;
   private clockTimers: number[] = [];
+  private clockRetries = 0;
   /** Peer mode: reads this tab's Snapino parts for a transmission snapshot. */
   episodeBench: (id: string) => { sockets?: unknown; on?: unknown } | null = () => null;
 
@@ -449,6 +450,15 @@ export class DesktopRoom {
       this.offsetAt = t1;
       this.clockRtt = rtt;
     }
+    // A busy page (first draws, a slow device) answers late, so its first samples have long round
+    // trips. Keep sampling every 2 s (at most 30 extra pings) until one is under 500 ms.
+    if (this.clockRtt > 500 && this.clockRetries < 30 && this.socket) {
+      this.clockRetries += 1;
+      const socket = this.socket;
+      this.clockTimers.push(window.setTimeout(() => {
+        if (this.socket === socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "clock", t0: Date.now() }));
+      }, 2000));
+    }
   }
 
   /** The current clock estimate's round trip (error bound: half of it); null if none yet. */
@@ -458,6 +468,7 @@ export class DesktopRoom {
 
   private startClockSync(socket: WebSocket): void {
     this.stopClockSync();
+    this.clockRetries = 0;
     const ping = (): void => {
       if (this.socket === socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "clock", t0: Date.now() }));
     };
