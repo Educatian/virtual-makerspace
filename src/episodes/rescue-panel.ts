@@ -68,6 +68,8 @@ export interface EpisodeHost {
   trace(action: "role" | "test" | "reflect", detail: string): void;
   confirm(title: string, body: string, ok: string): Promise<boolean>;
   layoutChanged(): void;
+  /** The panel appeared (workshop opened in the Snapino studio) or went away. */
+  shown?(visible: boolean): void;
   /** QA only: called every driven frame with the elapsed transmission time. */
   probe?(elapsedMs: number): void;
 }
@@ -244,11 +246,15 @@ export class RescueEpisode {
     return Boolean(this.state?.active);
   }
 
-  /** Right edge of the panel (client px) for framing the bench beside it; 0 when hidden. */
-  panelRight(): number {
-    const panel = document.querySelector<HTMLElement>("#episode-panel");
-    if (!panel || panel.hidden) return 0;
-    return panel.getBoundingClientRect().right;
+  /**
+   * Whether the live diagram may annotate wiring faults. DI: always. PF: the team explores first,
+   * so notes wait until a round has been compared (a reading given) or closed. The diagram itself
+   * always shows every connection as built, in both conditions.
+   */
+  diagramFaultsAllowed(): boolean {
+    const state = this.state;
+    if (!state?.active || this.host.condition() === "DI") return true;
+    return state.history.length > 0 || Boolean(state.round?.reading);
   }
 
   async open(): Promise<void> {
@@ -324,6 +330,7 @@ export class RescueEpisode {
     const visible = this.host.inSnapino() && Boolean(state?.active);
     if (panel.hidden === visible) {
       panel.hidden = !visible;
+      this.host.shown?.(visible);
       this.host.layoutChanged();
     }
     if (!visible || !state) return;

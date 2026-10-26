@@ -11,6 +11,7 @@ import {
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
+  Float32BufferAttribute,
   Fog,
   Euler,
   Group,
@@ -137,7 +138,23 @@ export interface SceneEvents {
   /** The Circuit Bench's latest engine analysis (every re-evaluation, not only on change). */
   onCircuitAnalysis?: (analysis: CircuitAnalysis) => void;
   onEnvironmentState: (state: EnvironmentState) => void;
+  /** The Snapino bench re-evaluated (placements, switch or pin levels may have changed). */
+  onSnapinoChange?: () => void;
 }
+
+/** A stud the Snapino inspector highlights: tone "a"/"b" for a part's two nets, "fault" for a bypass. */
+export interface StudHighlight {
+  socket: number;
+  tone: "a" | "b" | "fault";
+  /** One of the selected part's own two studs (drawn larger). */
+  terminal: boolean;
+}
+
+export type CameraPreset = "bench" | "top" | "table" | "receiver";
+
+const HIGHLIGHT_COLORS: Record<StudHighlight["tone"], number> = { a: 0xf59e0b, b: 0x06b6d4, fault: 0xef4444 };
+/** Top of the snap base plate (procedural and GLB alike), where stud collars and rings sit. */
+const SNAP_PLATE_TOP = 0.26;
 
 const COLORS = {
   wood: 0x8b6f47,
@@ -298,6 +315,11 @@ export class DesktopWorkbenchScene {
   private readonly previewBeams: Mesh<CylinderGeometry, MeshBasicMaterial>[] = [];
   private readonly flexMotion = new Map<string, { previous: Vector3; sway: number; velocity: number }>();
   private readonly selectionBox = new BoxHelper(new Group(), COLORS.blue);
+  /** Snapino inspector: rings on the selected part's terminals and on every stud of its nets. */
+  private studHighlights: InstancedMesh | null = null;
+  private lastStudHighlights: StudHighlight[] = [];
+  /** Smooth camera moves for the view presets (instant with reduced motion). */
+  private cameraTween: { fromPosition: Vector3; fromTarget: Vector3; toPosition: Vector3; toTarget: Vector3; start: number; duration: number } | null = null;
   private readonly hoverBox = new BoxHelper(new Group(), 0xe2e8f0);
   private readonly proceduralTable: Mesh[] = [];
   private hovered: Group | null = null;
@@ -370,6 +392,10 @@ export class DesktopWorkbenchScene {
     this.orbit.minPolarAngle = MathUtils.degToRad(12);
     this.orbit.maxPolarAngle = MathUtils.degToRad(80);
     this.orbit.screenSpacePanning = false;
+    // A learner's own orbit/zoom always wins over a view preset's glide.
+    this.orbit.addEventListener("start", () => {
+      this.cameraTween = null;
+    });
     this.orbit.update();
 
     this.transform = new TransformControls(this.camera, this.renderer.domElement);
@@ -434,6 +460,10 @@ export class DesktopWorkbenchScene {
     this.camera.position.set(studio === "circuit" ? 6.4 : 7.2, studio === "circuit" ? 6.1 : 5.8, studio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(studio === "circuit" ? 0.1 : 0, studio === "circuit" ? 0.2 : 0.55, studio === "circuit" ? 0 : -0.1);
     this.orbit.update();
+    this.cameraTween = null;
+    if (this.studHighlights) this.studHighlights.visible = false;
+    // The Snapino bench fills the free view (the panels' insets are applied by then).
+    if (studio === "snapino") requestAnimationFrame(() => this.activeStudio === "snapino" && this.viewPreset("bench"));
     this.evaluateCurrentSystem();
     if (announce) {
       this.events.onStatus(
@@ -455,14 +485,167 @@ export class DesktopWorkbenchScene {
     this.select(component);
   }
 
+  /** Frame the selected part: fit its bounds in the free view, keeping the viewing direction. */
   focusSelected(): void {
     if (!this.selected) return;
-    const target = this.selected.getWorldPosition(new Vector3());
-    target.y = Math.max(target.y, BOARD_SURFACE + 0.2);
-    const offset = this.camera.position.clone().sub(this.orbit.target).normalize().multiplyScalar(3.1);
-    this.orbit.target.copy(target);
-    this.camera.position.copy(target).add(offset);
-    this.orbit.update();
+    const box = new Box3().setFromObject(this.selected);
+    // Never closer than a comfortable look at one part, so its studs stay in frame.
+    box.expandByScalar(0.18);
+    const direction = this.camera.position.clone().sub(this.orbit.target).normalize();
+    const fit = this.fitBox(box, direction, 0.7);
+    this.moveCamera(fit.position, fit.target);
+  }
+
+  /**
+   * Camera presets: the bench (snap base and Snapino carrier filling the free view), a top view
+   * (rows A–G top to bottom, columns 1–9 left to right, as the diagram names studs), the whole
+   * table with the parts tray, and the receiver's view of the lamp.
+   */
+  viewPreset(preset: CameraPreset): void {
+    if (preset === "receiver") {
+      const from = { position: this.camera.position.clone(), target: this.orbit.target.clone() };
+      this.viewForReceiver();
+      const to = { position: this.camera.position.clone(), target: this.orbit.target.clone() };
+      this.camera.position.copy(from.position);
+      this.orbit.target.copy(from.target);
+      this.moveCamera(to.position, to.target);
+      return;
+    }
+    const snap = this.activeStudio === "snap" || this.activeStudio === "snapino";
+    if (!snap) {
+      this.resetView();
+      return;
+    }
+    const bench = new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.75, 2.01));
+    if (preset === "table") bench.union(new Box3(new Vector3(2.33, 0, -2.85), new Vector3(4.78, 0.5, 2.85)));
+    const direction = preset === "top"
+      ? new Vector3(0, Math.cos(MathUtils.degToRad(13)), Math.sin(MathUtils.degToRad(13)))
+      : new Vector3(0.52, 0.62, 0.79).normalize();
+    const fit = this.fitBox(bench, direction, preset === "top" ? 0.9 : 0.92);
+    this.moveCamera(fit.position, fit.target);
+  }
+
+  /**
+   * The camera position (along `direction` from the box centre) at which every corner of `box`
+   * projects inside the part of the canvas the panels leave free, with `fill` of that space.
+   */
+  private fitBox(box: Box3, direction: Vector3, fill: number): { position: Vector3; target: Vector3 } {
+    const target = box.getCenter(new Vector3());
+    const savedPosition = this.camera.position.clone();
+    const savedQuaternion = this.camera.quaternion.clone();
+    const width = Math.max(this.host.clientWidth, 1);
+    const xMin = -1 + (2 * this.viewInsets.left) / width;
+    const xMax = 1 - (2 * this.viewInsets.right) / width;
+    const xMid = (xMin + xMax) / 2;
+    const xHalf = ((xMax - xMin) / 2) * fill;
+    const yHalf = fill;
+    const corner = new Vector3();
+    const fits = (distance: number): boolean => {
+      this.camera.position.copy(target).addScaledVector(direction, distance);
+      this.camera.lookAt(target);
+      this.camera.updateMatrixWorld(true);
+      for (let index = 0; index < 8; index += 1) {
+        corner.set(index & 1 ? box.max.x : box.min.x, index & 2 ? box.max.y : box.min.y, index & 4 ? box.max.z : box.min.z).project(this.camera);
+        if (Math.abs(corner.x - xMid) > xHalf || Math.abs(corner.y) > yHalf || corner.z > 1) return false;
+      }
+      return true;
+    };
+    let low = this.orbit.minDistance;
+    let high = this.orbit.maxDistance;
+    if (!fits(high)) low = high;
+    for (let step = 0; step < 22 && high - low > 0.01; step += 1) {
+      const middle = (low + high) / 2;
+      if (fits(middle)) high = middle;
+      else low = middle;
+    }
+    this.camera.position.copy(savedPosition);
+    this.camera.quaternion.copy(savedQuaternion);
+    this.camera.updateMatrixWorld(true);
+    return { position: target.clone().addScaledVector(direction, high), target };
+  }
+
+  private moveCamera(position: Vector3, target: Vector3): void {
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (reduced) {
+      this.cameraTween = null;
+      this.camera.position.copy(position);
+      this.orbit.target.copy(target);
+      this.orbit.update();
+      return;
+    }
+    this.cameraTween = { fromPosition: this.camera.position.clone(), fromTarget: this.orbit.target.clone(), toPosition: position.clone(), toTarget: target.clone(), start: performance.now(), duration: 420 };
+  }
+
+  private stepCameraTween(now: number): void {
+    const tween = this.cameraTween;
+    if (!tween) return;
+    const t = Math.min(1, (now - tween.start) / tween.duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    this.camera.position.lerpVectors(tween.fromPosition, tween.toPosition, eased);
+    this.orbit.target.lerpVectors(tween.fromTarget, tween.toTarget, eased);
+    if (t >= 1) this.cameraTween = null;
+  }
+
+  /**
+   * QA composition metric: where the snap base and carrier appear on screen (client px), and the
+   * free view left between the panels. Corners of the bench box projected with the live camera.
+   */
+  benchScreenRect(): { bench: { x: number; y: number; width: number; height: number }; free: { x: number; width: number; height: number } } {
+    const box = new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.3, 2.01));
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    this.camera.updateMatrixWorld(true);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const corner = new Vector3();
+    for (let index = 0; index < 8; index += 1) {
+      corner.set(index & 1 ? box.max.x : box.min.x, index & 2 ? box.max.y : box.min.y, index & 4 ? box.max.z : box.min.z).project(this.camera);
+      const x = canvas.left + ((corner.x + 1) / 2) * canvas.width;
+      const y = canvas.top + ((1 - corner.y) / 2) * canvas.height;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    return {
+      bench: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+      free: { x: canvas.left + this.viewInsets.left, width: canvas.width - this.viewInsets.left - this.viewInsets.right, height: canvas.height },
+    };
+  }
+
+  /** Where the camera is looking from and at (QA: preset framing checks). */
+  cameraState(): { position: [number, number, number]; target: [number, number, number]; moving: boolean } {
+    const position = this.cameraTween?.toPosition ?? this.camera.position;
+    const target = this.cameraTween?.toTarget ?? this.orbit.target;
+    return { position: [position.x, position.y, position.z], target: [target.x, target.y, target.z], moving: Boolean(this.cameraTween) };
+  }
+
+  /**
+   * Snapino inspector cross-link: rings around the given studs (both nets of the selected part,
+   * its own two studs larger). Plain printed-style rings, depth-tested, no additive glow.
+   */
+  /** QA: the studs highlighted right now. */
+  studHighlightState(): StudHighlight[] {
+    return this.studHighlights?.visible ? this.lastStudHighlights.map((entry) => ({ ...entry })) : [];
+  }
+
+  setStudHighlights(highlights: StudHighlight[]): void {
+    this.lastStudHighlights = highlights.filter((entry) => this.snapSockets[entry.socket]).map((entry) => ({ ...entry }));
+    const mesh = this.studHighlights;
+    if (!mesh) return;
+    const dummy = new Object3D();
+    const color = new Color();
+    let count = 0;
+    for (const highlight of highlights) {
+      const socket = this.snapSockets[highlight.socket];
+      if (!socket) continue;
+      dummy.position.set(socket.x, SNAP_PLATE_TOP + 0.012, socket.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.scale.setScalar(highlight.terminal ? 1.3 : 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(count, dummy.matrix);
+      mesh.setColorAt(count, color.setHex(HIGHLIGHT_COLORS[highlight.tone]));
+      count += 1;
+    }
+    mesh.count = count;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.visible = count > 0 && this.activeStudio === "snapino";
   }
 
   /**
@@ -520,6 +703,11 @@ export class DesktopWorkbenchScene {
   }
 
   resetView(): void {
+    if (this.activeStudio === "snapino") {
+      this.viewPreset("bench");
+      return;
+    }
+    this.cameraTween = null;
     this.camera.position.set(this.activeStudio === "circuit" ? 6.4 : 7.2, this.activeStudio === "circuit" ? 6.1 : 5.8, this.activeStudio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(this.activeStudio === "circuit" ? 0.1 : 0, this.activeStudio === "circuit" ? 0.2 : 0.55, this.activeStudio === "circuit" ? 0 : -0.1);
     this.orbit.update();
@@ -1652,6 +1840,7 @@ export class DesktopWorkbenchScene {
     base.add(studs);
     this.snapBaseGroup.userData.proceduralBase = base;
     this.snapBaseGroup.add(base);
+    this.addStudCollars();
     // Snapino board (procedural stand-in until the Blender model loads): carrier + pads on row B
     const board = new Group();
     board.position.x = BOARD_X;
@@ -1666,6 +1855,78 @@ export class DesktopWorkbenchScene {
     board.add(nano);
     this.snapinoGroup.userData.proceduralBoard = board;
     this.snapinoGroup.add(board);
+  }
+
+  /**
+   * Socket depth: a shaded collar where each stud leaves the plate (dark at the stud, fading to
+   * the plate's tone), so studs read as seated in the base rather than floating on it. One
+   * instanced draw call for all 63. Also creates the (hidden) inspector highlight rings.
+   */
+  private addStudCollars(): void {
+    const collarGeometry = new RingGeometry(0.05, 0.088, 32, 1);
+    const colors: number[] = [];
+    const position = collarGeometry.getAttribute("position");
+    const inner = new Color(0x5d6875);
+    const outer = new Color(0xc9d4dc);
+    for (let index = 0; index < position.count; index += 1) {
+      const radius = Math.hypot(position.getX(index), position.getY(index));
+      const mix = MathUtils.clamp((radius - 0.05) / 0.038, 0, 1);
+      const color = inner.clone().lerp(outer, mix);
+      colors.push(color.r, color.g, color.b);
+    }
+    collarGeometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    const collars = new InstancedMesh(
+      collarGeometry,
+      new MeshStandardMaterial({ name: "stud_collar", vertexColors: true, roughness: 0.55, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      SNAP_COLS * SNAP_ROWS,
+    );
+    collars.name = "stud_collars";
+    const dummy = new Object3D();
+    this.snapSockets.forEach((socket, index) => {
+      dummy.position.set(socket.x, SNAP_PLATE_TOP + 0.0015, socket.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      collars.setMatrixAt(index, dummy.matrix);
+    });
+    collars.instanceMatrix.needsUpdate = true;
+    collars.receiveShadow = true;
+    collars.userData.noPick = true;
+    this.snapBaseGroup.add(collars);
+
+    const rings = new InstancedMesh(
+      new RingGeometry(0.068, 0.104, 32, 1),
+      new MeshBasicMaterial({ name: "stud_highlight", color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+      SNAP_COLS * SNAP_ROWS,
+    );
+    rings.name = "stud_highlights";
+    rings.count = 0;
+    rings.visible = false;
+    rings.renderOrder = 3;
+    rings.userData.noPick = true;
+    rings.setColorAt(0, new Color(0xffffff));
+    this.studHighlights = rings;
+    this.snapBaseGroup.add(rings);
+  }
+
+  /**
+   * The GLB base prints its row letters and column numbers at 0.09 units, too small to read
+   * from the default camera. Enlarge them in their margins and print them darker than the grid
+   * lines, so the stud names the inspector uses (B-4, D-7…) can be found on the board.
+   */
+  private enlargeGridLabels(base: Object3D): void {
+    const label = new MeshStandardMaterial({ name: "grid_label", color: 0x334155, roughness: 0.7, metalness: 0 });
+    base.traverse((child) => {
+      if (!(child instanceof Mesh)) return;
+      if (/^snap_row\d+_text$/.test(child.name)) {
+        child.scale.multiplyScalar(1.9);
+        child.position.x = -2.13;
+        child.material = label;
+      } else if (/^snap_col\d+_text$/.test(child.name)) {
+        child.scale.multiplyScalar(2.0);
+        child.position.z = 1.76;
+        child.material = label;
+      }
+    });
   }
 
   private setupSnapMarkers(): void {
@@ -1922,6 +2183,7 @@ export class DesktopWorkbenchScene {
         });
         procedural.visible = false;
         group.add(detailed);
+        if (name === "snap_base") this.enlargeGridLabels(detailed);
         if (name === "snapino_board") this.addSnapinoSilkscreen(detailed);
         // The base and carrier never move: one draw call per material instead of one per mesh.
         mergeStaticMeshes(detailed);
@@ -2792,6 +3054,7 @@ export class DesktopWorkbenchScene {
             : "Program is running · check that each load's other end reaches GND";
       this.events.onStatus(message, powered ? "valid" : "warning");
     }
+    this.events.onSnapinoChange?.();
     return powered;
   }
 
@@ -2991,6 +3254,7 @@ export class DesktopWorkbenchScene {
 
   private readonly render = (): void => {
     this.beforeFrame?.();
+    if (this.cameraTween) this.stepCameraTween(performance.now());
     this.orbit.update();
     const now = performance.now();
     const frameSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);
