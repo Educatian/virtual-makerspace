@@ -248,13 +248,17 @@ export class RescueEpisode {
 
   /**
    * Whether the live diagram may annotate wiring faults. DI: always. PF: the team explores first,
-   * so notes wait until a round has been compared (a reading given) or closed. The diagram itself
+   * so notes wait until a round has been compared (a reading given, or a lone sender's solo check)
+   * or closed. The diagram itself
    * always shows every connection as built, in both conditions.
    */
   diagramFaultsAllowed(): boolean {
     const state = this.state;
     if (!state?.active || this.host.condition() === "DI") return true;
-    return state.history.length > 0 || Boolean(state.round?.reading);
+    if (state.history.length > 0 || state.round?.reading) return true;
+    // A lone sender gets the solo check once the transmission ends; the notes come with it.
+    const me = this.host.room()?.participant.id ?? "";
+    return Boolean(state.round && !transmitting(state, this.serverNow()) && roleOf(state, me) === "sender" && this.host.humans() < 2);
   }
 
   async open(): Promise<void> {
