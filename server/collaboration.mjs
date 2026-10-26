@@ -69,6 +69,7 @@ server.on("connection", (socket, request) => {
   entry.peers.add(socket);
   rooms.set(room, entry);
   const participant = { id: participantId, name: "Maker" };
+  socket.participantId = participantId;
 
   socket.on("message", (payload, isBinary) => {
     if (isBinary || payload.byteLength > 64 * 1024) return;
@@ -95,6 +96,8 @@ server.on("connection", (socket, request) => {
 
   socket.on("close", () => {
     entry.peers.delete(socket);
+    // The same participant already reconnected on another socket: nothing to release.
+    if ([...entry.peers].some((peer) => peer.readyState === WebSocket.OPEN && peer.participantId === participant.id)) return;
     const released = entry.core.leave(participant);
     for (const peer of entry.peers) {
       if (peer.readyState !== WebSocket.OPEN) continue;

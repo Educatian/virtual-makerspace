@@ -130,6 +130,13 @@ So an open, unpowered or miswired lamp gives no light, whatever the code does.
 - **Replay** is local and drawn in the panel (a lamp and a playhead on the recorded light strip), never on the bench, so it can't be mistaken for a new transmission.
 - **Solo.** With nobody else in the room, the sender can transmit and see a *solo check*: what a receiver following the protocol would read, plus the diagnosis. A real reading needs a second person; Bolt is not involved.
 - **Pedagogical separation.** The receiver's normal panel does not show the intended words before the first reading. The data is in every client's room state, so this is not client-side secrecy.
+- **Rules that protect the first reading** (enforced by the room's reducer, not only the panel):
+  - Only the sender sets the design. With no sender, nobody does: a receiver cannot choose the message they will read.
+  - A round records who transmitted it (`sentBy`). While it is unread, none of them can take the receiver role or record its reading, and roles cannot be swapped.
+  - The round list shows an unread (abandoned) round's message only to whoever transmitted it, since the same message may be sent again.
+  - Exports and autosaves carry the design only when made by the sender.
+  - An import never opens the workshop as a side effect. Its design is applied only into an open workshop, by the sender.
+- **Stale views.** "Transmit" names the round it repeats (or none), so a click from an outdated view cannot open a new round. Reset needs a role (anyone, once nobody holds one) and is refused during a transmission.
 
 ### PF and DI
 
@@ -143,7 +150,7 @@ So an open, unpowered or miswired lamp gives no light, whatever the code does.
 - The bands appear only after the team has compared its first round (consolidation). Learners decide their timing first.
 
 **Diagnoses**
-- In both conditions, diagnoses appear only after the receiver has committed a first reading.
+- In both conditions, diagnoses appear only after the receiver has committed a first reading. The exception is the sender's *solo check* (nobody else in the room); in PF its timing findings give the measured length but not the band, until a round has been compared.
 - They are factual measurements against the circuit and the protocol: wiring, pins, flash and gap lengths, cut-offs and what the light said. They are not suggestions.
 
 ### Outcomes
@@ -184,7 +191,7 @@ The workshop goal is met by a delivered round that the team has also explained.
 | `npm run test:tools` | `WorkbenchTools` exact code: the design is exported, autosaved and applied after the parts edit, refusals are reported, and tampered designs are refused before any edit. |
 | `npm run test:project` | Project-file design validation (hostile values; Snapino only; older files). |
 | `npm run test:snapino` | The raised block cap: 48 blocks accepted, 49 refused (client; the Worker's sanitizer uses the same cap). |
-| `node --experimental-strip-types scripts/e2e-rescue-signal.mjs` | Two real browsers over wrangler dev (Durable Object + WebSocket) clicking the real panel. The full loop, the receiver's own bench lamp checked frame by frame against the timeline (at least three driven frames, at least one lit, none wrong), the ambiguous, open-circuit and recovery rounds, a dropped connection mid-transmission (the room releases the receiver's role, the client reconnects by itself inside the still-running round at the shared elapsed time, must retake the role, and its lamp keeps following the timeline), a full page reload (re-entering from the lobby restores the round, without a role), a teammate's edit and an identical-program import ending a transmission, the sender's Stop (lamp dark on the receiver's bench), a role swap, export, leaving mid-transmission (the leaver's role is freed), and a late joiner on a phone-width viewport who receives the rounds, the current round and the roles. The drop uses a `?qa`-only hook that closes the socket; everything after it is the normal reconnect path. |
+| `node --experimental-strip-types scripts/e2e-rescue-signal.mjs` | Two real browsers over wrangler dev (Durable Object + WebSocket) clicking the real panel. The full loop, the receiver's own bench lamp checked frame by frame against the timeline (every driven frame must agree; software rendering gives only a few frames per transmission, so the run also requires lit and dark frames across rounds 1, 4 and 5), the ambiguous, open-circuit and recovery rounds, a dropped connection mid-transmission (the room releases the receiver's role, the client reconnects by itself inside the still-running round at the shared elapsed time, must retake the role, and its lamp keeps following the timeline), a full page reload (re-entering from the lobby restores the round, without a role), a teammate's edit and an identical-program import ending a transmission, the sender's Stop (lamp dark on the receiver's bench), a role swap, export, leaving mid-transmission (the leaver's role is freed), and a late joiner on a phone-width viewport who receives the rounds, the current round and the roles. The drop uses a `?qa`-only hook that closes the socket; everything after it is the normal reconnect path. |
 | `node scripts/qa-episode.mjs` | Visual capture (solo sender, peer mode): overview, matched lamp close-ups lit/unlit on its snaps, a low angle on the snaps, the receiver's framing, a running transmission, the solo check of a working round, an open circuit and its recovery, a phone viewport; renderer counters per view. Output and SHA: [`docs/images/episodes/rescue-signal/`](images/episodes/rescue-signal/README.md). |
 
 **Panel actions are serialized.** While one room action is in flight, every action button in the panel is disabled (and `aria-busy` is set), so a quick second click is never dropped silently or built on a not-yet-updated design. An earlier e2e run caught exactly that: the second word was added on top of a state that did not yet contain the first.
@@ -198,6 +205,10 @@ The workshop goal is met by a delivered round that the team has also explained.
   - On a slow frame, the lamp shows the state at that frame's time. The test checks exactly that, not a frame rate.
 - **Same-device tabs.** Without a server, tabs converge by Lamport order. Concurrent conflicting actions resolve to one winner, and roles are not arbitrated as strictly as on the server.
 - **Desktop only.** The WebXR path does not include the episode.
+- **Identity is the participant id.** The `sentBy` rule follows the room's participant id, not the person: someone who joins again under a new id is treated as a new participant.
+- **The team explanation is last-writer-wins.** Either role can save it; two people saving at once keep the later text.
+- **Local relay.** `npm run collab` (development) forgets a room when its last socket closes, so the episode history is not kept there. The Durable Object keeps it.
+- **Clock estimate.** Clients keep the least-delayed `serverNow` estimate and never move the lamp's clock back during a transmission. Accuracy is about one network transit.
 
 ---
 

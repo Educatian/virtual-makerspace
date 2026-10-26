@@ -753,7 +753,7 @@ export class WorkbenchTools {
       // The workshop design is room state with its own rules (the sender's, not during a
       // round): applied after the parts and program, and reported if the room refuses it.
       const designed = await this.host.applyEpisodeDesign({ mission: project.episode.mission, intent: project.episode.intent });
-      if (!designed) this.host.status(`${label} · the Rescue Signal design was not applied (only the sender can change it, and not during a round)`, "warning");
+      if (!designed) this.host.status(`${label} · the Rescue Signal design was not applied (only the sender can change it, in an open workshop, and not during a round)`, "warning");
     }
     if (applied && project.draftProgram) {
       this.host.loadDraft(project.draftProgram);

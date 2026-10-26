@@ -803,13 +803,13 @@ function enterWorkspace(): void {
     roomProgram: () => ({ program: roomProgram, running: programRunning || Boolean(room?.episode && episodeTransmitting(room.episode, room.serverTime())) }),
     draftProgram: () => (programDirty ? program : null),
     loadDraft: (next) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
-    episodeDesign: () => (room?.episode?.active ? { mission: room.episode.mission, intent: [...room.episode.intent] } : null),
+    // The design is the sender's: only the sender's exports and autosaves carry it (a receiver's
+    // file must not hold the message they are about to read).
+    episodeDesign: () => (room?.episode?.active && room.episode.roles.sender?.id === room.participant.id ? { mission: room.episode.mission, intent: [...room.episode.intent] } : null),
+    // Applied only into an open workshop, by its sender (the room enforces both); an import never
+    // opens the workshop for everyone as a side effect.
     applyEpisodeDesign: async (design) => {
-      if (!room) return false;
-      if (!room.episode?.active) {
-        const opened = await room.episodeAction({ type: "open" });
-        if (!opened.ok) return false;
-      }
+      if (!room?.episode?.active) return false;
       return (await room.episodeAction({ type: "set-design", mission: design.mission, words: design.intent })).ok;
     },
     status: showSceneStatus,

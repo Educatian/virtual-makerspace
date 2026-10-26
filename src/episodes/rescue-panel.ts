@@ -92,6 +92,7 @@ const REFUSALS: Record<string, string> = {
   "not-ended": "Wait until the transmission has ended.",
   "already-read": "The first reading is already recorded.",
   "no-reading": "The receiver hasn't recorded a reading yet.",
+  "sent-this-round": "You transmitted this round, so you know its message — someone else reads it.",
   inactive: "The workshop isn't open in this room.",
   offline: "Reconnecting to the room — nothing changed.",
   timeout: "The room didn't answer in time — nothing changed here.",
@@ -134,13 +135,14 @@ export class RescueEpisode {
   private draftReading: Reading = [];
   private confidence: "sure" | "unsure" = "sure";
   private replay: { round: number; startedAt: number } | null = null;
+  /** Transmissions (by start time) during which this tab was hidden at some point. */
   private hiddenDuring = new Set<number>();
   private busy = false;
   private lastRenderKey = "";
   private disposed = false;
   private readonly onVisibility = (): void => {
     const round = this.state?.round;
-    if (document.hidden && round && this.state && transmitting(this.state, this.serverNow())) this.hiddenDuring.add(round.n);
+    if (document.hidden && round && this.state && transmitting(this.state, this.serverNow())) this.hiddenDuring.add(round.startedAt);
     this.schedule();
   };
 
@@ -189,6 +191,10 @@ export class RescueEpisode {
       this.confidence = "sure";
     }
     if (state.round && previous?.round?.startedAt !== state.round.startedAt) this.replay = null;
+    // A transmission that starts (or is joined) while this tab is hidden was missed in part too:
+    // animation frames do not run in a hidden tab, so this cannot wait for the next tick.
+    if (document.hidden && state.round && transmitting(state, this.serverNow())) this.hiddenDuring.add(state.round.startedAt);
+    if (!state.round && !state.history.length) this.hiddenDuring.clear();
     this.lastRenderKey = "";
     this.schedule();
   }
@@ -300,7 +306,7 @@ export class RescueEpisode {
     // would be replaced under the pointer) and never while the learner types an explanation.
     const workbench = this.host.workbench();
     const liveBench = workbench ? JSON.stringify(workbench.snapinoBench()) : "";
-    const key = JSON.stringify([state.rev, role, running, this.host.humans(), this.replay?.round ?? null, this.draftReading, this.confidence, this.busy, liveBench, JSON.stringify(this.host.editorProgram()), this.hiddenDuring.has(state.round?.n ?? -1), this.collapsed]);
+    const key = JSON.stringify([state.rev, role, running, this.host.humans(), this.replay?.round ?? null, this.draftReading, this.confidence, this.busy, liveBench, JSON.stringify(this.host.editorProgram()), this.hiddenDuring.has(state.round?.startedAt ?? -1), this.collapsed]);
     const active = document.activeElement;
     const typing = Boolean(active && body.contains(active) && active.matches("textarea"));
     if (key !== this.lastRenderKey && !typing) {
@@ -309,7 +315,7 @@ export class RescueEpisode {
         this.stepsHtml(phase.step),
         this.rolesHtml(state, me, role, running),
         this.mainHtml(state, role, running, now),
-        this.historyHtml(state),
+        this.historyHtml(state, me),
       ].join("");
       // One room action at a time: while one is in flight every action button is visibly off,
       // so a quick second click is never silently dropped or built on a not-yet-updated state.
@@ -472,7 +478,7 @@ export class RescueEpisode {
     const reason = round.stopReason === "bench-changed" ? "a Snapino part was changed" : round.stopReason === "program-changed" ? "the program was changed" : round.stopReason === "room-empty" ? "everyone left" : "it was stopped";
     const head = `<p class="episode-live">Round ${round.n} · transmission ${stopped ? `cut off at ${seconds(transmissionEnd(view.transmission))} (${reason})` : "ended"}${round.transmissions > 1 ? ` · transmission ${round.transmissions}` : ""}</p>`;
     if (role === "receiver") {
-      const missed = this.hiddenDuring.has(round.n)
+      const missed = this.hiddenDuring.has(round.startedAt)
         ? `<p class="episode-note is-warning"><i class="ph ph-eye-slash" aria-hidden="true"></i> This tab was hidden during part of the transmission. Replay the recorded light before you read it.</p>`
         : "";
       const options = [...WORD_LIST, "?"] as (Word | "?")[];
@@ -490,12 +496,22 @@ export class RescueEpisode {
       // Solo check: what a receiver following the protocol would read (no pretend teammate).
       return `<section class="episode-section">${head}${this.replayHtml(round, view)}
         <h3>Solo check</h3>${this.decodedHtml(view.decoded)}
-        <ul class="episode-findings">${diagnose(view.transmission, round.intent, null).map((finding) => `<li>${escape(finding.message)}</li>`).join("") || "<li>No problems found under the protocol.</li>"}</ul>
+        <ul class="episode-findings">${this.soloFindings(state, round, view).map((message) => `<li>${escape(message)}</li>`).join("") || "<li>No problems found under the protocol.</li>"}</ul>
         <div class="episode-row"><button class="secondary-button compact" type="button" data-episode="transmit">Transmit again</button><button class="bare-button compact" type="button" data-episode="close-round">Close round</button></div></section>`;
     }
     return `<section class="episode-section">${head}${this.replayHtml(round, view)}
       <p class="episode-fine">Waiting for the receiver's first reading.</p>
       ${role === "sender" ? `<div class="episode-row"><button class="secondary-button compact" type="button" data-episode="transmit">Transmit again</button><button class="bare-button compact" type="button" data-episode="close-round">Abandon round</button></div>` : ""}</section>`;
+  }
+
+  /** Solo check findings. In PF the timing bands stay hidden until a round has been compared, so a
+   * timing finding states only the measurement, not the band it missed. */
+  private soloFindings(state: RescueState, round: RescueRound, view: RoundView): string[] {
+    const showBands = this.host.condition() === "DI" || state.history.some((round) => round.reading);
+    return diagnose(view.transmission, round.intent, null).map((finding) => {
+      if (showBands || !/^(flash|gap)-/.test(finding.code)) return finding.message;
+      return finding.message.replace(/:[^:]*\.$/, ": it does not fit the protocol.");
+    });
   }
 
   private decodedHtml(decoded: Decoded): string {
@@ -525,12 +541,14 @@ export class RescueEpisode {
       ${this.protocolHtml(state, false)}</section>`;
   }
 
-  private historyHtml(state: RescueState): string {
+  private historyHtml(state: RescueState, me: string): string {
     if (!state.history.length) return "";
     const delivered = deliveredRound(state);
     return `<section class="episode-history" aria-label="Earlier rounds"><h3>Rounds</h3><ol>${state.history.map((round) => {
       const outcome = round.reading ? compare(round.intent, roundView(round).decoded, round.reading.words).outcome : null;
-      return `<li><strong>${round.n}</strong> ${escape(round.intent.join(" · "))} <span class="episode-badge" data-tone="${outcome ? OUTCOME_COPY[outcome].tone : "neutral"}">${outcome ? OUTCOME_COPY[outcome].title : "not read"}</span></li>`;
+      // An unread round's intention stays with whoever transmitted it (it may be sent again).
+      const intent = round.reading || round.sentBy.includes(me) ? escape(round.intent.join(" · ")) : '<span class="episode-fine">message not revealed</span>';
+      return `<li><strong>${round.n}</strong> ${intent} <span class="episode-badge" data-tone="${outcome ? OUTCOME_COPY[outcome].tone : "neutral"}">${outcome ? OUTCOME_COPY[outcome].title : "not read"}</span></li>`;
     }).join("")}</ol>${delivered ? `<p class="episode-outcome" data-tone="valid"><i class="ph ph-seal-check" aria-hidden="true"></i> Workshop goal met in round ${delivered.n}: a clear signal, read as sent, and explained by the team.</p>` : ""}
       <button class="bare-button compact is-danger" type="button" data-episode="reset">Reset workshop…</button></section>`;
   }
@@ -596,7 +614,7 @@ export class RescueEpisode {
         break;
       case "transmit": {
         const program = this.host.editorProgram();
-        if (await this.act({ type: "transmit", program })) {
+        if (await this.act({ type: "transmit", program, round: round?.n ?? null })) {
           const n = this.state?.round?.n ?? 0;
           this.host.trace("test", `Rescue signal · round ${n} transmitted (${program.length} blocks, ${seconds(programDurationMs(program))})`);
         }

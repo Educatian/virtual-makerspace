@@ -43,6 +43,9 @@ export interface RescueRound {
   stopReason: StopReason | null;
   /** How many times this round was transmitted (a retransmission before any reading). */
   transmissions: number;
+  /** Participants who transmitted this round. None of them may give its reading (they know the
+   * intention), so none may take the receiver role while it is unread. Empty in older states. */
+  sentBy: string[];
   /** The receiver's FIRST interpretation; it never changes once given. */
   reading: { words: Reading; confidence: "sure" | "unsure" } | null;
   explanation: string;
@@ -68,7 +71,9 @@ export type RescueAction =
   | { type: "release-role"; role: Role }
   | { type: "swap-roles" }
   | { type: "set-design"; mission: string; words: Word[] }
-  | { type: "transmit"; program: SnapinoStatement[] }
+  /** `round`: the open round this transmission repeats (null for a new round). Optional for older
+   * clients; when given, a transmission from a stale view is refused. */
+  | { type: "transmit"; program: SnapinoStatement[]; round?: number | null }
   | { type: "stop"; round: number }
   | { type: "read"; round: number; words: Reading; confidence: "sure" | "unsure" }
   | { type: "explain"; round: number; text: string }
@@ -77,7 +82,8 @@ export type RescueAction =
 
 export type RescueRefusal =
   | "not-sender" | "not-receiver" | "not-in-role" | "role-taken" | "one-role" | "transmitting" | "round-open"
-  | "no-intent" | "bad-program" | "no-round" | "stale-round" | "not-ended" | "already-read" | "no-reading" | "inactive";
+  | "no-intent" | "bad-program" | "no-round" | "stale-round" | "not-ended" | "already-read" | "no-reading" | "inactive"
+  | "sent-this-round";
 
 export type RescueResult =
   | { ok: true; state: RescueState; program?: { program: SnapinoStatement[]; running: false } }
@@ -146,7 +152,9 @@ export function sanitizeRescueAction(value: unknown): RescueAction | null {
       }
       case "transmit": {
         const program = sanitizeProgram(raw.program);
-        return program ? { type: "transmit", program } : null;
+        if (!program) return null;
+        if (raw.round === undefined) return { type: "transmit", program };
+        return raw.round === null || isRound(raw.round) ? { type: "transmit", program, round: raw.round } : null;
       }
       case "stop":
       case "close-round":
@@ -191,6 +199,9 @@ export function reduceRescue(
   const role = roleOf(state, actor.id);
   const running = transmitting(state, now);
   const round = state.round;
+  // While a round is unread, whoever transmitted it knows the intention: they may not read it.
+  const unread = Boolean(round && !round.reading);
+  const sentIt = Boolean(round && round.sentBy.includes(actor.id));
   if (!state.active && action.type !== "open" && action.type !== "reset") return no("inactive");
   switch (action.type) {
     case "open":
@@ -202,6 +213,7 @@ export function reduceRescue(
       const holder = state.roles[action.role];
       if (holder && holder.id !== actor.id) return no("role-taken");
       if (role && role !== action.role) return no("one-role");
+      if (action.role === "receiver" && unread && sentIt) return no("sent-this-round");
       return ok({ ...state, roles: { ...state.roles, [action.role]: { id: actor.id, name: actor.name } } });
     }
     case "release-role":
@@ -210,15 +222,19 @@ export function reduceRescue(
     case "swap-roles": {
       if (!role) return no("not-in-role");
       if (running) return no("transmitting");
+      if (unread) return no("round-open");
       return ok({ ...state, roles: { sender: state.roles.receiver, receiver: state.roles.sender } });
     }
     case "set-design":
-      if (state.roles.sender && role !== "sender") return no("not-sender");
+      // Only the sender designs the message (with no sender, nobody: a receiver must not choose
+      // the message they will read).
+      if (role !== "sender") return no("not-sender");
       if (round) return no("round-open");
       return ok({ ...state, mission: action.mission, intent: [...action.words] });
     case "transmit": {
       if (role !== "sender") return no("not-sender");
       if (running) return no("transmitting");
+      if (action.round !== undefined && action.round !== (round?.n ?? null)) return no("stale-round");
       if (round?.reading) return no("round-open");
       const intent = round ? round.intent : state.intent;
       if (!intent.length) return no("no-intent");
@@ -236,6 +252,7 @@ export function reduceRescue(
         stoppedAtMs: null,
         stopReason: null,
         transmissions: (round?.transmissions ?? 0) + 1,
+        sentBy: [...new Set([...(round?.sentBy ?? []), actor.id])].slice(-8),
         reading: null,
         explanation: "",
       };
@@ -251,6 +268,7 @@ export function reduceRescue(
       if (round.n !== action.round) return no("stale-round");
       if (running) return no("not-ended");
       if (round.reading) return no("already-read");
+      if (sentIt) return no("sent-this-round");
       return ok({ ...state, round: { ...round, reading: { words: [...action.words], confidence: action.confidence } } });
     case "explain":
       if (!role) return no("not-in-role");
@@ -263,6 +281,9 @@ export function reduceRescue(
       if (running) return no("transmitting");
       return ok({ ...state, round: null, history: [...state.history, round].slice(-MAX_HISTORY) });
     case "reset":
+      // Someone in a role resets (anyone, once nobody holds one); never over a running signal.
+      if (running) return no("transmitting");
+      if ((state.roles.sender || state.roles.receiver) && !role) return no("not-in-role");
       return ok({ ...initialRescueState(), active: state.active, roles: state.roles, mission: state.mission });
   }
 }
@@ -349,9 +370,11 @@ function sanitizeRound(value: unknown): RescueRound | null {
     reading = { words, confidence: item.confidence };
   }
   if (typeof raw.explanation !== "string" || raw.explanation.length > MAX_EXPLANATION) return null;
+  const sentBy = raw.sentBy === undefined ? [] : Array.isArray(raw.sentBy) && raw.sentBy.length <= 8 && raw.sentBy.every((id) => typeof id === "string" && id.length <= 300) ? [...(raw.sentBy as string[])] : null;
+  if (!sentBy) return null;
   return {
     n: raw.n, mission: raw.mission, intent: [...intent], program, bench, startedAt: raw.startedAt, durationMs: raw.durationMs,
-    stoppedAtMs: raw.stoppedAtMs as number | null, stopReason: raw.stopReason as StopReason | null, transmissions: raw.transmissions, reading, explanation: raw.explanation,
+    stoppedAtMs: raw.stoppedAtMs as number | null, stopReason: raw.stopReason as StopReason | null, transmissions: raw.transmissions, sentBy, reading, explanation: raw.explanation,
   };
 }
 

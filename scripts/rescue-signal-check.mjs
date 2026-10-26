@@ -229,4 +229,54 @@ eq([wiredPin(benchFor("D6")), wiredPin({})], ["D6", null], "the helper finds the
   eq(reduceRescue(state, { type: "transmit", program: [{ op: "wait", ms: 5000 }].concat(Array(30).fill({ op: "wait", ms: 5000 })) }, B, end + 9999, bench).reason, "bad-program", "an over-long transmission is refused");
 }
 
+// Review fixes: who may read, design and reset; stale transmissions; older stored states.
+{
+  const { initialRescueState, reduceRescue, sanitizeRescueAction, sanitizeRescueState } = stateMod;
+  const A = { id: "a", name: "Ana" };
+  const B = { id: "b", name: "Ben" };
+  const C = { id: "c", name: "Cy" };
+  const bench = (id) => benchFor("D5")[id] ?? null;
+  let state = initialRescueState();
+  const act = (action, actor, now = 0) => {
+    const clean = sanitizeRescueAction(action);
+    assert.ok(clean, `valid action ${JSON.stringify(action).slice(0, 60)}`);
+    const result = reduceRescue(state, clean, actor, now, bench);
+    if (result.ok) state = result.state;
+    return result;
+  };
+  act({ type: "open" }, A);
+  eq(act({ type: "set-design", mission: "ridge", words: ["HELP"] }, B).reason, "not-sender", "with no sender, nobody else designs the message");
+  act({ type: "claim-role", role: "sender" }, A);
+  act({ type: "claim-role", role: "receiver" }, B);
+  act({ type: "set-design", mission: "ridge", words: ["HELP"] }, A);
+  const program = compileMessage(["HELP"], "D5", 48);
+  const end = 100 + programDurationMs(program);
+  eq(act({ type: "transmit", program, round: 1 }, A, 100).reason, "stale-round", "a transmission for a round that is not open is refused");
+  ok(act({ type: "transmit", program, round: null }, A, 100).ok && state.round.sentBy.join() === "a", "the round records who transmitted it");
+  eq(act({ type: "transmit", program, round: null }, A, end + 1).reason, "stale-round", "'Transmit once' from a stale view does not open another round");
+  eq(act({ type: "reset" }, A, end - 10).reason, "transmitting", "no reset over a running transmission");
+  eq(act({ type: "swap-roles" }, A, end + 2).reason, "round-open", "no role swap while the round is unread (the sender would read their own message)");
+  ok(act({ type: "release-role", role: "receiver" }, B, end + 3).ok && act({ type: "release-role", role: "sender" }, A, end + 3).ok, "both leave their roles");
+  eq(act({ type: "claim-role", role: "receiver" }, A, end + 4).reason, "sent-this-round", "whoever transmitted an unread round cannot become its receiver");
+  ok(act({ type: "claim-role", role: "sender" }, C, end + 5).ok && act({ type: "transmit", program, round: 1 }, C, end + 6).ok && state.round.sentBy.join() === "a,c", "a new sender's retransmission is recorded too");
+  ok(act({ type: "claim-role", role: "receiver" }, B, end + 7).ok, "someone who did not transmit can read it");
+  eq(act({ type: "reset" }, A, end * 3).reason, "not-in-role", "a bystander cannot reset while roles are held");
+  ok(act({ type: "read", round: 1, words: ["HELP"], confidence: "sure" }, B, end * 3).ok, "the receiver reads");
+  ok(act({ type: "claim-role", role: "receiver" }, B, end * 3).ok, "(re-claiming one's own role is a no-op)");
+  ok(act({ type: "swap-roles" }, B, end * 3 + 1).ok, "after the reading, roles may swap");
+  ok(act({ type: "reset" }, C, end * 3 + 2).ok && state.history.length === 0 && state.round === null, "someone in a role resets");
+  // Older stored states without sentBy are accepted (nobody is restricted); hostile sentBy is not.
+  act({ type: "set-design", mission: "storm", words: ["HELP"] }, B, end * 4);
+  ok(act({ type: "transmit", program, round: null }, B, end * 4).ok, "(the new sender transmits)");
+  const legacy = JSON.parse(JSON.stringify(state));
+  delete legacy.round.sentBy;
+  eq(sanitizeRescueState(legacy)?.round.sentBy, [], "a stored round without sentBy loads with no restriction");
+  for (const bad of [{ x: 1 }, [1], Array(9).fill("a"), ["x".repeat(301)]]) {
+    eq(sanitizeRescueState({ ...legacy, round: { ...legacy.round, sentBy: bad } }), null, `hostile sentBy ${JSON.stringify(bad).slice(0, 30)} rejected`);
+  }
+  for (const bad of [{ type: "transmit", program, round: "1" }, { type: "transmit", program, round: 0 }, { type: "transmit", program, round: 1.5 }]) {
+    eq(sanitizeRescueAction(bad), null, `hostile transmit round ${JSON.stringify(bad.round)} rejected`);
+  }
+}
+
 console.log(`rescue signal: ${checks} checks passed`);

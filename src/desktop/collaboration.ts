@@ -16,6 +16,7 @@ import {
   onTransmitterChanged,
   reduceRescue,
   sanitizeRescueState,
+  transmitting,
   type RescueAction,
   type RescueRefusal,
   type RescueState,
@@ -295,6 +296,7 @@ export class DesktopRoom {
   episode: RescueState | null = null;
   /** Server clock minus this tab's clock, from the last message that carried `serverNow`. */
   private serverOffset = 0;
+  private offsetAt = 0;
   /** Peer mode: reads this tab's Snapino parts for a transmission snapshot. */
   episodeBench: (id: string) => { sockets?: unknown; on?: unknown } | null = () => null;
 
@@ -406,8 +408,22 @@ export class DesktopRoom {
     return Date.now() + this.serverOffset;
   }
 
-  private noteServerNow(serverNow: unknown): void {
-    if (typeof serverNow === "number" && Number.isFinite(serverNow)) this.serverOffset = serverNow - Date.now();
+  /**
+   * Each server message gives `serverNow - localNow`, which under-estimates the offset by that
+   * message's one-way latency. Keep the least-delayed (highest) estimate, so an unrelated update
+   * during a transmission can only move the lamp's clock forward by a latency improvement, never
+   * back. A (re)join starts fresh; between transmissions a minute-old estimate may be replaced
+   * (local clock drift).
+   */
+  private noteServerNow(serverNow: unknown, fresh = false): void {
+    if (typeof serverNow !== "number" || !Number.isFinite(serverNow)) return;
+    const now = Date.now();
+    const candidate = serverNow - now;
+    const running = this.episode ? transmitting(this.episode, now + this.serverOffset) : false;
+    if (fresh || this.offsetAt === 0 || candidate > this.serverOffset || (!running && now - this.offsetAt > 60_000)) {
+      this.serverOffset = candidate;
+      this.offsetAt = now;
+    }
   }
 
   /**
@@ -855,7 +871,7 @@ export class DesktopRoom {
       }
       if (kind === "room-state") {
         const raw = message as unknown as Record<string, unknown>;
-        this.noteServerNow(raw.serverNow);
+        this.noteServerNow(raw.serverNow, true);
         this.runEffects(this.sync.receive(raw));
         const episode = sanitizeRescueState(raw.episode);
         if (episode) {

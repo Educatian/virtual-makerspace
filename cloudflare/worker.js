@@ -475,6 +475,10 @@ export class MakerspaceRoom extends DurableObject {
 
   webSocketClose(socket, code, reason) {
     const attachment = socket.deserializeAttachment();
+    // A reconnecting client reuses its participant id. If its old, half-open socket closes only
+    // after the new one said hello, the participant is still here: release nothing.
+    const twin = this.state.getWebSockets().some((peer) => peer !== socket && peer.readyState === WebSocket.OPEN && peer.deserializeAttachment()?.id === attachment.id);
+    if (twin) return;
     this.messageRates.delete(attachment.id);
     const released = this.core.leave({ id: attachment.id, name: attachment.name }).map((message) => JSON.stringify(message));
     const goodbye = JSON.stringify({ kind: "goodbye", participantId: attachment.id });
