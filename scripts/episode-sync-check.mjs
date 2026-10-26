@@ -287,4 +287,23 @@ ok(!transmitting(D.episode, clock), "a later joiner does not see a phantom runni
   eq([echo.sender, echo.others, echo.persist], [[{ kind: "clock", t0: 123.5, serverNow: clock }], [], {}], "a clock ping is answered to the sender only");
 }
 
+// The client's rule for keeping a clock sample (src/desktop/room-clock.ts). A busy page's sample
+// (round trip of seconds) must never replace a good estimate, even a minute-old one: a final
+// developer-environment run caught a sender whose 9-ms-class estimate was "refreshed" after a
+// minute by a 5.3 s sample, leaving it 2.6 s off while the light ran.
+{
+  const { acceptClockSample } = await import("../src/desktop/room-clock.ts");
+  ok(acceptClockSample(null, 4000, 0), "a first sample is always taken, however slow");
+  ok(acceptClockSample({ rtt: 4000, at: 0 }, 300, 1000), "a shorter round trip replaces a longer one");
+  ok(!acceptClockSample({ rtt: 12, at: 0 }, 40, 30_000), "a longer round trip does not replace a recent estimate");
+  ok(!acceptClockSample({ rtt: 12, at: 0 }, 5271, 61_000), "a busy page's 5.3 s sample never replaces a good minute-old estimate");
+  ok(acceptClockSample({ rtt: 12, at: 0 }, 300, 61_000), "a comparable sample may refresh a minute-old estimate (drift)");
+  ok(!acceptClockSample({ rtt: 900, at: 0 }, 1900, 61_000), "a refresh may at most double a poor estimate's round trip");
+  ok(!acceptClockSample({ rtt: 12, at: 0 }, -1, 1) && !acceptClockSample(null, 70_000, 1) && !acceptClockSample(null, Number.NaN, 1), "negative, absurd and non-numeric round trips are ignored");
+  // The failing sequence, replayed: good start, then a busy minute of slow samples every 20 s.
+  let estimate = null;
+  for (const [rtt, at] of [[9, 0], [5271, 20_000], [4800, 40_000], [5271, 61_000], [5100, 81_000]]) if (acceptClockSample(estimate, rtt, at)) estimate = { rtt, at };
+  eq(estimate, { rtt: 9, at: 0 }, "through a busy minute the 9 ms estimate is kept (error bound 4.5 ms, not 2.6 s)");
+}
+
 console.log(`episode sync: ${checks} checks passed`);

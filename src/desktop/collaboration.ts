@@ -1,4 +1,5 @@
 import type { SnapinoStatement } from "./snapino.js";
+import { acceptClockSample, CLOCK_GOOD_RTT } from "./room-clock.ts";
 import {
   SyncReplica,
   type EditChange,
@@ -444,15 +445,16 @@ export class DesktopRoom {
     if (typeof t0 !== "number" || typeof serverNow !== "number" || !Number.isFinite(t0) || !Number.isFinite(serverNow)) return;
     const t1 = Date.now();
     const rtt = t1 - t0;
-    if (rtt < 0 || rtt > 60_000) return;
-    if (rtt <= this.clockRtt || t1 - this.offsetAt > 60_000) {
+    const current = this.clockRtt === Infinity ? null : { rtt: this.clockRtt, at: this.offsetAt };
+    if (acceptClockSample(current, rtt, t1)) {
       this.serverOffset = serverNow - (t0 + t1) / 2;
       this.offsetAt = t1;
       this.clockRtt = rtt;
     }
+    if (this.clockRtt <= CLOCK_GOOD_RTT) this.clockRetries = 0;
     // A busy page (first draws, a slow device) answers late, so its first samples have long round
-    // trips. Keep sampling every 2 s (at most 30 extra pings) until one is under 500 ms.
-    if (this.clockRtt > 500 && this.clockRetries < 30 && this.socket) {
+    // trips. Keep sampling every 2 s (at most 30 extra pings in a row) until one is under 500 ms.
+    if (this.clockRtt > CLOCK_GOOD_RTT && this.clockRetries < 30 && this.socket) {
       this.clockRetries += 1;
       const socket = this.socket;
       this.clockTimers.push(window.setTimeout(() => {
