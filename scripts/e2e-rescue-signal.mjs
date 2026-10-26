@@ -458,6 +458,7 @@ await until(() => episode(member), (state) => state.role === "receiver");
 await tap(member, '[data-episode="swap-roles"]');
 const swapped = await until(() => episode(host), (state) => state.role === "receiver");
 check("roles swap between rounds, on both screens", swapped.role === "receiver" && (await episode(member)).role === "sender");
+await tap(member, "#project-menu-button");
 const [download] = await Promise.all([member.waitForEvent("download"), tap(member, "#export-project")]);
 const exported = JSON.parse(readFileSync(await download.path(), "utf8"));
 const topKeys = Object.keys(exported).sort();
