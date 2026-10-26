@@ -101,16 +101,40 @@ The protocol is explicit, inspectable and small (`src/episodes/rescue-signal.ts`
 
 So an open, unpowered or miswired lamp gives no light, whatever the code does.
 
+**The circuit rule** (educational, not an electrical simulation): snap wires and a closed S1 join studs into nets. A load runs when its two ends are on **different** nets, one driven HIGH (the 5V pad, or a D pin set HIGH) and the other reaching GND. A D pin set LOW is not a current sink here.
+
+**Faults.** The rule has three faults:
+- 5V joined to GND is a short, and nothing runs.
+- A D pin set HIGH whose pad is wired to GND is a **pin short**. That net is ground, never HIGH, so nothing is driven from it. The 3D bench shows its warning, and the round's diagnosis names the pin.
+- A load whose two ends share a net (for example, a snap wire across it) is **bypassed** and never runs.
+
+An earlier version let a HIGH pin wired to GND make the GND net "HIGH". A lamp bridged by a wire across D6–GND then "delivered" HELP. The parent review found this, and it is fixed and tested with an independent oracle.
+
 **Transmit once.** A transmission runs the blocks **once from the top**, unlike Run's endless `loop()`:
 - writes and follows switch pins instantly, and waits advance time;
 - every pin is LOW before and after;
 - `follow` reads D2, which is fixed for the transmission.
 
+**Light that does not end.** After a transmission the transmitter's D pins are LOW. A lamp powered from 5V stays lit, on the bench and in reality.
+- The recording marks its last stretch as **continuing**. The strip shows it with an open right edge.
+- The decoder treats it as a flash with no measurable end, which makes the signal ambiguous.
+- The diagnosis says it was still lit. It never says "switched off".
+- A D-pin light that the blocks left on really does go out when the pins go LOW, and is reported that way.
+
 **Simplifications**
 - The light follows the pin with no filament warm-up.
 - The LED is non-polar here, exactly as the Snapino studio always treated it.
 
-**Authoritative state.** The room's episode state (`src/episodes/rescue-state.ts`) changes only through a validated reducer applied by the room server (`cloudflare/room-core.js`, shared by the Durable Object and the local relay). It holds:
+**Authoritative state.** The room's episode state (`src/episodes/rescue-state.ts`, version 2) changes only through a validated reducer applied by the room server (`cloudflare/room-core.js`, shared by the Durable Object and the local relay).
+
+**Revisions** only grow, and a reset continues them. Connected clients drop only *older* revisions (`supersedes()`), so a reset reaches everyone at once while late duplicates are still dropped.
+
+**Transmission ids.** Every transmission gets a `tx`: the revision that started it. A tx is never reused, not by a retransmission and not after a reset, although round numbers restart at 1. Stop, read, explain, close and "transmit again" all name the tx they were made for, and an action for any other transmission is refused as stale.
+- A reading of a replaced transmission, for example one delayed until after a retransmission ended, is refused.
+- The receiver's draft is discarded when the tx changes.
+- Stored v1 states, which used round numbers as the identity, are not loaded; the room starts a fresh state.
+
+The state holds:
 - roles, the mission and the sender's intended words;
 - the current round: intent fixed at its first transmission, the transmitted program, a **server-side snapshot of the Snapino parts**, `startedAt` (server time), duration and stop;
 - the receiver's **first** reading (never changeable);
@@ -119,8 +143,15 @@ So an open, unpowered or miswired lamp gives no light, whatever the code does.
 **Derived, never stored.** Outcome, diagnosis, completion and traces are derived from that state by pure functions. Every client derives the same result, and there is no cosmetic success.
 
 **Timing and synchronization**
-- **Shared clock.** No client runs its own timer for the signal. Each client renders the transmission from `room server time − startedAt`. The server time comes from the `serverNow` stamp the room adds to every update.
-- **Late joiners and reconnects** land at the right moment. Tolerance is one network transit (tens of milliseconds locally). Nothing is sent per frame.
+- **Shared clock.** No client runs its own timer for the signal. Each client renders the transmission from `room server time − startedAt`. Clients estimate the room clock from **round-trip clock samples**:
+  - the client sends a `clock` ping on connect, then every 20 s;
+  - the room echoes it with its own time;
+  - the offset is `serverNow − (sent + received) / 2`, with an error of at most half the round trip;
+  - the smallest round trip wins;
+  - a page busy with slow frames answers late, so while the estimate's round trip is over 500 ms the client resamples every 2 s;
+  - a minute-old estimate may be refreshed against drift, but only by a sample of comparable quality (at most twice its round trip, or 500 ms). A slow sample never replaces a good estimate (`src/desktop/room-clock.ts`);
+  - before the first sample, the `serverNow` stamp on room messages is used.
+- **Late joiners and reconnects** land at the right moment, with nothing sent per frame. The two-browser test requires two pages' room-clock estimates on the same machine to agree within 250 ms.
 - **Hidden tabs** jump to the correct point when shown again. The receiver is told that part of the signal was not watched, and should use Replay before reading.
 - **The transmitter is fixed while transmitting.** Any accepted change to a Snapino part or to the program ends the transmission at that moment: a teammate's edit, an import (including importing the *identical* running program, which sends an authoritative stop), or Run/Stop. The recorded snapshot therefore always matches the light everyone saw.
 - **Stopping.** Anyone in the room may stop a transmission.
@@ -140,17 +171,21 @@ So an open, unpowered or miswired lamp gives no light, whatever the code does.
 
 ### PF and DI
 
-**Both conditions**
-- Both see the vocabulary (words → flash patterns). It is the shared code both roles need.
+**Both conditions: the protocol, as task rules**
+- Both conditions see the vocabulary (words → flash patterns) **and its timing bands**: short, long, gap within a word, and pause between words.
+- The decoder judges every team against these fixed bands, so they are rules of the task, not hints. Hiding them in PF while telling learners to "choose their own timings" was a contradiction, and the parent review flagged it.
+- Choosing timings that fall inside the bands, and building and coding the transmitter, remain the learners' work in both conditions.
 
-**DI only**
-- The timing bands, a worked recommendation (300/900/300/1500 ms) and a "Write blocks for this message" helper are shown up front.
+**DI only: solution guidance**
+- A worked example of timings that work (300/900/300/1500 ms).
+- The "Write blocks for this message" helper.
 
-**PF**
-- The bands appear only after the team has compared its first round (consolidation). Learners decide their timing first.
+**Unchanged**
+- No hints are added, adaptive or otherwise, and Bolt is not involved.
+- Other studios' PF/DI behavior is unchanged.
 
 **Diagnoses**
-- In both conditions, diagnoses appear only after the receiver has committed a first reading. The exception is the sender's *solo check* (nobody else in the room); in PF its timing findings give the measured length but not the band, until a round has been compared.
+- In both conditions, diagnoses appear only after the receiver has committed a first reading, or to a lone sender in the *solo check*.
 - They are factual measurements against the circuit and the protocol: wiring, pins, flash and gap lengths, cut-offs and what the light said. They are not suggestions.
 
 ### Outcomes
@@ -158,12 +193,14 @@ So an open, unpowered or miswired lamp gives no light, whatever the code does.
 | Outcome | Meaning |
 |---|---|
 | Message delivered | The light was clear under the protocol, said exactly the intended words, and was read as sent. |
-| No light reached the receiver | Open circuit, wrong pin, no lamp, or a short. |
-| The signal was ambiguous | A flash or gap was outside its band, or a group is not a word. |
+| No light reached the receiver | Open circuit, wrong pin, no lamp, a bypassed lamp, a pin short, or a 5V–GND short. |
+| The signal was ambiguous | A flash or gap was outside its band, a light was still on when the transmission ended, or a group is not a word. |
 | The signal said something else | Clear light whose words differ from the intention. A lucky guess on such a signal is **not** delivery. |
 | Read differently | A clear, correct signal whose reading differs. |
 
 The workshop goal is met by a delivered round that the team has also explained.
+
+**Status shown.** The panel's header pill and stepper describe only the **current** round: design, transmitting, reading, or delivered / not delivered. An earlier delivered round is a milestone shown in the round history ("Workshop goal met in round n"). It is never shown as the status of a later round that is running, unread, ambiguous, cut off or without light. The previous version did show it that way, and the parent review saw it in four committed screenshots.
 
 ### Collaboration, files and persistence
 
@@ -187,33 +224,35 @@ The workshop goal is met by a delivered round that the team has also explained.
 
 | Command | What it checks |
 |---|---|
-| `npm run test:episode` | Domain + reducer checks (`scripts/rescue-signal-check.mjs`): protocol band edges; every 1–3-word message round-trips on every pin; delivered, misread, lucky-guess, open, wrong-pin, no-lamp, always-on, short, ambiguous-flash, ambiguous-gap, cut-off, left-on and follow cases; an **independent 1 ms oracle** with its own interpreter and stud search on random programs and layouts; roles, first-reading, stale, round-open, swap, stop and leave rules; hostile actions and states. Room-core checks (`scripts/episode-sync-check.mjs`): two clients and a late joiner on the real room core with a controllable clock — shared elapsed time, bench and program edits ending a transmission, an atomic import, stale program revisions, role swap, stale roles after reconnect, an emptied room. |
-| `npm run test:tools` | `WorkbenchTools` exact code: the design is exported, autosaved and applied after the parts edit, refusals are reported, and tampered designs are refused before any edit. |
+| `npm run test:episode` | **Domain and reducer checks** (`scripts/rescue-signal-check.mjs`):<ul><li>protocol band edges;</li><li>**every** 1-, 2- and 3-word message on every pin (774 messages, 648 of them three-word) compiles within 48 blocks, decodes to itself and is delivered;</li><li>delivered, misread, lucky-guess, open, wrong-pin, no-lamp, always-on, short, ambiguous-flash, ambiguous-gap, cut-off, left-on and follow cases;</li><li>the parent review's counterexamples: the bridged lamp on a shorted D6, and the 5V lamp that keeps shining.</li></ul>**An independent circuit oracle**, written as component potentials (not the product's union-find), checked against:<ul><li>13 hand-made topologies with stated expectations, for both the oracle and the product;</li><li>1 ms sampling of random programs on random layouts that include bridges, pin shorts, 5V wires and S1;</li><li>`lightDrivers` on 3,000 random layouts.</li></ul>Run against the old circuit code, these fail on the counterexample.<br>**Reducer rules:** roles, first reading, stale transmissions (`tx`), retransmission identity, reset (revision continues; pre-reset actions refused), round-open, swap, stop, leave, v1 states refused, and hostile actions and states.<br>**Current-phase sequence:** success and explanation, then running / unread / ambiguous / open / cut-off, never shown as "Delivered".<br>**PF/DI rendering:** bands in both conditions; the worked example and helper in DI only.<br>**Room-core checks** (`scripts/episode-sync-check.mjs`): clients that apply only newer revisions (the client's own `supersedes()`), on the real room core with a controllable clock. Covers shared elapsed time, edits ending a transmission, the atomic import, stale program revisions, swap, stale roles after reconnect, an emptied room, a delayed reading after a retransmission (refused), reset at a high revision reaching both connected clients and a late joiner, pre-reset read/explain/close refused, a late pre-reset duplicate dropped, a storage round trip, and the clock echo. |
+| `npm run test:tools` | `WorkbenchTools` exact code: the design is exported, autosaved and applied after the parts edit; refusals are reported; tampered designs are refused before any edit. |
 | `npm run test:project` | Project-file design validation (hostile values; Snapino only; older files). |
 | `npm run test:snapino` | The raised block cap: 48 blocks accepted, 49 refused (client; the Worker's sanitizer uses the same cap). |
-| `node --experimental-strip-types scripts/e2e-rescue-signal.mjs` | Two real browsers over wrangler dev (Durable Object + WebSocket) clicking the real panel. The full loop, the receiver's own bench lamp checked frame by frame against the timeline (every driven frame must agree; software rendering gives only a few frames per transmission, so the run also requires lit and dark frames across rounds 1, 4 and 5), the ambiguous, open-circuit and recovery rounds, a dropped connection mid-transmission (the room releases the receiver's role, the client reconnects by itself inside the still-running round at the shared elapsed time, must retake the role, and its lamp keeps following the timeline), a full page reload (re-entering from the lobby restores the round, without a role), a teammate's edit and an identical-program import ending a transmission, the sender's Stop (lamp dark on the receiver's bench), a role swap, export, leaving mid-transmission (the leaver's role is freed), and a late joiner on a phone-width viewport who receives the rounds, the current round and the roles. The drop uses a `?qa`-only hook that closes the socket; everything after it is the normal reconnect path. |
-| `node scripts/qa-episode.mjs` | Visual capture (solo sender, peer mode): overview, matched lamp close-ups lit/unlit on its snaps, a low angle on the snaps, the receiver's framing, a running transmission, the solo check of a working round, an open circuit and its recovery, a phone viewport; renderer counters per view. Output and SHA: [`docs/images/episodes/rescue-signal/`](images/episodes/rescue-signal/README.md). |
+| `node --experimental-strip-types scripts/e2e-rescue-signal.mjs` | **Two real browsers** over wrangler dev (Durable Object + WebSocket), clicking the real panel; every click fails fast if its button is absent or disabled:<ul><li>the full loop; the receiver never sees the intent;</li><li>a second reading attempt is refused, and the UI offers none;</li><li>the ambiguous, open-circuit and recovery rounds, each checked to **not** show "Delivered" in the header after an earlier success;</li><li>a retransmission: the receiver's draft is discarded and a delayed reading of the replaced transmission is refused;</li><li>a 108 s recurring light: the sender **and** the receiver each log lit **and** dark render-driven frames that agree with the timeline, and **screenshot crops** of the receiver's lamp are brighter while lit than while dark;</li><li>Stop;</li><li>a socket drop during the recurring light: the role is released, the client reconnects by itself inside the running round, its room-clock estimate is within 250 ms of the sender's, and its frames again include lit and dark;</li><li>a teammate's edit and an identical-program import each end a transmission;</li><li>a reload; a role swap;</li><li>export: allowed keys only, and the design is exactly `{id, v, mission, intent}`;</li><li>**reset** reaches both clients at once with a higher revision, and the next transmission reaches the other client;</li><li>leaving mid-transmission;</li><li>a **late joiner** whose join happens while the recurring light runs, with a clock check;</li><li>a phone-width **layout** check (layout only; no touch interaction).</li></ul>The drop uses a `?qa`-only hook that closes the socket; the normal reconnect path follows. |
+| `node scripts/qa-episode.mjs` | Visual capture (solo sender, peer mode): overview, matched lamp close-ups lit/unlit, the snaps, the receiver's framing, running / working / open / recovered states, phone width, and renderer counters. See [`docs/images/episodes/rescue-signal/`](images/episodes/rescue-signal/README.md). |
+| `scripts/e2e-room-sync.mjs`, `scripts/e2e-cable-end.mjs` | Existing suites, now with measured readiness and diagnostics (`scripts/lib/e2e-readiness.mjs`). The cable test now performs the undo (both screens restore the free end, nothing left to undo) and the redo, checks both makers' studios and the second drop, and keeps a trail of wire values for diagnosis. |
 
 **Panel actions are serialized.** While one room action is in flight, every action button in the panel is disabled (and `aria-busy` is set), so a quick second click is never dropped silently or built on a not-yet-updated design. An earlier e2e run caught exactly that: the second word was added on top of a state that did not yet contain the first.
 
 ### Results of the last developer-environment run
 
-These runs were made in a developer environment: headless Chromium with SwiftShader, wrangler dev and a local proxy, on 2 CPU cores. They are not GitHub CI; the repository's only GitHub check is GitGuardian. Every room was a random QA room, never 7K3M.
+These runs were made in a developer environment: headless Chromium with SwiftShader, wrangler dev and a local proxy, on 2 CPU cores. They are not GitHub CI; the repository's only GitHub check is GitGuardian. Every room was a random QA room, never 7K3M. Logs and diagnosis: [`docs/qa/episode1-review/`](qa/episode1-review/README.md).
 
 | Command | App commit | Result |
 |---|---|---|
-| `npm test` (typecheck, circuit, agent, project, snapino, sync, tools, episode) | `89a238c` | All passed. Rescue signal: 597 checks; episode sync: 31; tools: 36; project: 270; sync: 858; circuit engine: 17,742. |
-| `npm run build` | `89a238c` | OK |
-| `e2e-rescue-signal.mjs` (two browsers, Worker) | `89a238c` | 38/38 |
-| `qa-episode.mjs` (capture) | `89a238c` | No issues ([renders](images/episodes/rescue-signal/README.md)) |
-| `e2e-ai-teammate.mjs` (peer) | `8261420` | 37/37 |
-| `e2e-ai-teammate-worker.mjs` | `8261420` | 10/10 |
-| `e2e-worker-sync.mjs` | `8261420` | 18/18 |
-| `e2e-cable-end.mjs` | `8261420` | 7/7 on rerun. The first run failed its late-joiner check (6/7); the rerun passed unchanged. |
-| `e2e-snapino-history.mjs` | `8261420` | 25/25 on rerun. The first attempt hit a stopped wrangler (the session's background-process limit), so it never ran. |
-| `e2e-room-sync.mjs` | `8261420` | **Fails** at the member's "Snapino code" step: a timeout while two 1440×900 Snapino pages render in software. The unmodified base `3394e4b` fails at the same step in the same environment, so this is not caused by this branch, but it is not a pass. |
+| `npm test` (typecheck, circuit, agent, project, snapino, sync, tools, episode) | `13aa2aa` | All passed. Rescue signal 17,738 checks; episode sync 55; tools 36; project 270; sync 858; circuit engine 17,742. |
+| `npm run build` | `13aa2aa` | OK |
+| `e2e-rescue-signal.mjs` (two browsers, Worker) | `13aa2aa` | **58/58** |
+| `e2e-rescue-signal.mjs` | `040df7c` | 57/58. The late joiner's clock check failed: a real defect, fixed in `13aa2aa` (see the QA README). |
+| `qa-episode.mjs` (capture) | `13aa2aa` | No issues. Bulb pixels 193.2 lit vs 158.2 unlit ([renders](images/episodes/rescue-signal/README.md)). |
+| `e2e-ai-teammate.mjs` (peer) | `13aa2aa` | 37/37 |
+| `e2e-ai-teammate-worker.mjs` | `13aa2aa` | 10/10 |
+| `e2e-worker-sync.mjs` | `13aa2aa` | 18/18 |
+| `e2e-snapino-history.mjs` | `13aa2aa` | 25/25 |
+| `e2e-room-sync.mjs` | `606fa07` app (alternating with base `3394e4b`) | 13/13 in 3 of 3 runs on head and 3 of 3 on base. The earlier timeout was diagnosed as SwiftShader shader-link stalls (50–120 s main-thread tasks), present on the base too; the test now waits for measured readiness. |
+| `e2e-cable-end.mjs` | `606fa07` app | 12/12 in 5 of 5 fresh-room runs, including real undo and redo |
 
-`8261420` and `89a238c` differ only in the recorded-light strip's axis labels.
+Between `606fa07` and `13aa2aa`, only the room client's clock sampling changed (`040df7c`, `13aa2aa`). The room-sync and cable suites do not use the clock.
 
 ### Limits (honest)
 
@@ -227,7 +266,7 @@ These runs were made in a developer environment: headless Chromium with SwiftSha
 - **Identity is the participant id.** The `sentBy` rule follows the room's participant id, not the person: someone who joins again under a new id is treated as a new participant.
 - **The team explanation is last-writer-wins.** Either role can save it; two people saving at once keep the later text.
 - **Local relay.** `npm run collab` (development) forgets a room when its last socket closes, so the episode history is not kept there. The Durable Object keeps it.
-- **Clock estimate.** Clients keep the least-delayed `serverNow` estimate and never move the lamp's clock back during a transmission. Accuracy is about one network transit.
+- **Clock estimate.** The error bound is half the round trip of the sample in use, so a client whose page stays busy for a long time keeps its last good estimate rather than a slow one. Before the first ping returns, the least-delayed `serverNow` stamp is used. That stamp never moves the lamp's clock back during a transmission.
 
 ---
 

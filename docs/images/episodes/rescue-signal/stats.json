@@ -11,14 +11,16 @@
     "triangles": 58866,
     "geometries": 438,
     "textures": 13,
-    "pixelRatio": 1
+    "pixelRatio": 1,
+    "bulbBrightness": 193.2
   },
   "e03-lamp-unlit-close": {
     "calls": 255,
     "triangles": 58866,
     "geometries": 438,
     "textures": 13,
-    "pixelRatio": 1
+    "pixelRatio": 1,
+    "bulbBrightness": 158.2
   },
   "e04-lamp-snaps-low": {
     "calls": 539,
@@ -40,8 +42,8 @@
     "geometries": 561,
     "textures": 13,
     "pixelRatio": 1,
-    "endedBy": "ran to its end before Stop",
-    "capturedAtMs": 100020
+    "endedBy": "Stop at 89439 ms",
+    "capturedAtMs": 52942
   },
   "e07-solo-check-delivered": {
     "calls": 456,
@@ -58,6 +60,20 @@
     "pixelRatio": 0.75
   },
   "e09-recovered-solo-check": {
+    "calls": 456,
+    "triangles": 86990,
+    "geometries": 561,
+    "textures": 13,
+    "pixelRatio": 0.75
+  },
+  "e12-pin-short-bypassed-solo-check": {
+    "calls": 456,
+    "triangles": 86990,
+    "geometries": 561,
+    "textures": 13,
+    "pixelRatio": 0.75
+  },
+  "e13-5v-still-lit-solo-check": {
     "calls": 456,
     "triangles": 86990,
     "geometries": 561,

@@ -1,6 +1,6 @@
 # Episode 1 · Rescue Signal Workshop — renders
 
-**App code:** commit `89a238c` (branch `feat/makerspace-episodes`), built with `npm run build`.
+**App code:** commit `13aa2aa` (branch `feat/makerspace-episodes`), built with `npm run build`. Earlier versions of these files showed `89a238c`.
 **Where:** a developer environment (headless Chromium 1194 with SwiftShader software WebGL, 2 CPU cores). These are not GitHub CI runs; the repository's only GitHub check is GitGuardian.
 **Rooms:** fresh random local QA rooms for every page (`Q…` and `R…` codes). The production room 7K3M was never used.
 
@@ -10,8 +10,8 @@ Software rendering is slow: a Snapino frame takes seconds. The renderer counters
 
 | Set | Script | Mode |
 |---|---|---|
-| `e01`–`e11` | `node scripts/qa-episode.mjs http://localhost:4173 <dir>` (static `vite preview` of `dist/`) | One maker, solo sender, same-device (peer) room. Close-ups use the `?qa` camera hook. The matched lit/unlit pair drives D5 HIGH/LOW through `__vmQa.pins`, the same pin path a transmission uses. |
-| `two-client-*` | `node --experimental-strip-types scripts/e2e-rescue-signal.mjs http://vm.test:8800 <dir>` (wrangler dev + `scripts/access-proxy.mjs`) | Two browsers in one room over the real Worker/Durable Object, clicking the real panel. This run passed 38/38 checks. |
+| `e01`–`e13` | `node scripts/qa-episode.mjs http://localhost:4173 <dir>` (static server over `dist/`) | One maker, solo sender, same-device (peer) room. Close-ups use the `?qa` camera hook. The matched lit/unlit pair drives D5 HIGH/LOW through `__vmQa.pins`, the same pin path a transmission uses. |
+| `two-client-*` | `node --experimental-strip-types scripts/e2e-rescue-signal.mjs http://vm.test:8800 <dir>` (wrangler dev + `scripts/access-proxy.mjs`) | Two browsers in one room over the real Worker/Durable Object, clicking the real panel. This run passed 58/58 checks ([log](../../../qa/episode1-review/rescue-signal/rescue-13aa2aa.log)). |
 
 JPEG (quality 84) conversions of the PNG captures. Counters for `e01`–`e11` are in [`stats.json`](stats.json).
 
@@ -26,6 +26,9 @@ JPEG (quality 84) conversions of the PNG captures. Counters for `e01`–`e11` ar
 | `e06`–`e09` panel states, receiver's framing | 456 | 86,990 |
 | `e10` phone 390×844, panel open | 515 | 85,706 |
 | `e11` phone 390×844, panel folded | 223 | 62,306 |
+| `e12`, `e13` fault rounds, receiver's framing | 456 | 86,990 |
+
+**Pixel check.** In the matched close-ups, separate from the scene's own state, the bulb crop has mean luminance **193.2 lit** and **158.2 unlit** (`stats.json`).
 
 ![Overview](e01-overview-design.jpg)
 
@@ -40,7 +43,7 @@ Lamp L1 seated on its snaps, D5 HIGH (left) and LOW (right), same camera:
 
 ## Running, working, error and recovery states
 
-- **`e06` running.** The transmission is running: progress bar, elapsed time, Stop, and the lamp lit on the bench. This capture round is one deliberately long 110 s flash, which is not a protocol word, so that a seconds-per-frame renderer can catch it. The shot was taken 100 s in, and the flash ran to its end before the script's Stop arrived (recorded in `stats.json`). Stop itself is exercised in the two-client run.
+- **`e06` running.** The transmission is running: progress bar, elapsed time, Stop, and the lamp lit on the bench. This capture round is one deliberately long 110 s flash, which is not a protocol word, so that a seconds-per-frame renderer can catch it. The shot was taken 52.9 s in, and the script's Stop ended it at 89.4 s (recorded in `stats.json`).
 - **`e07` working round.** The solo check after the DI helper's INJURED · NORTH blocks: both words are decoded and no problems are found.
 - **`e08` error.** The return wire `W2a` is off the base, which leaves an open circuit. The code ran, but there was no light at all. The diagnosis says L1 had no end reaching GND.
 - **`e09` recovery.** The loop is rebuilt, the same message is transmitted again, and no problems are found.
@@ -49,6 +52,13 @@ Lamp L1 seated on its snaps, D5 HIGH (left) and LOW (right), same camera:
 ![Working round, solo check](e07-solo-check-delivered.jpg)
 ![Open circuit](e08-open-circuit-solo-check.jpg)
 ![Recovered](e09-recovered-solo-check.jpg)
+
+These two faults come from the parent review, imported through the real project-file path:
+- **`e12` pin short and bypassed lamp.** A snap wire runs from D5 straight to GND. The solo check says there was no light at all. It names both causes: L1's ends on one connected net, and D5 set HIGH with its pad wired straight to GND. The 3D bench shows nothing running.
+- **`e13` the 5V lamp.** The lamp runs from 5V to GND. The solo check says it was still on when the transmission ended; it is not "switched off". The recorded strip marks the light as continuing, and the bench still shows it lit.
+
+![Pin short and bypassed lamp](e12-pin-short-bypassed-solo-check.jpg)
+![5V lamp still lit](e13-5v-still-lit-solo-check.jpg)
 
 ## Phone width (390×844)
 
@@ -64,10 +74,12 @@ Lamp L1 seated on its snaps, D5 HIGH (left) and LOW (right), same camera:
 | `two-client-02-receiver-watching` | The receiver's screen, framed with "Receiver's view", right after the transmission ended. The lamp is dark, as the timeline says. |
 | `two-client-03-receiver-reading` | The receiver builds the first reading. The intended message is not shown. |
 | `two-client-04-sender/receiver-compare-delivered` | Both screens: intended, what the light said under the protocol, what was read, and "Message delivered". |
-| `two-client-05-ambiguous-diagnosis` | A 500 ms flash: the signal is ambiguous even though the reading guessed right, with the measured flash against the bands. |
+| `two-client-05-ambiguous-diagnosis` | A 500 ms flash: the signal is ambiguous even though the reading guessed right. It shows the measured flash against the bands. |
 | `two-client-06-open-circuit-no-light` | The open circuit: no light reached the receiver. |
-| `two-client-07-cut-off-by-bench-change` | A teammate's bench edit cut the transmission off at 10.4 s. The strip's axis is labelled every 2 s. |
-| `two-client-08-phone-panel` | A late joiner on a phone gets the rounds, the current round and the roles from the room. |
+| `two-client-07-cut-off-by-bench-change` | A teammate's bench edit cut the transmission off. The strip's axis is labelled. |
+| `two-client-08-unread-after-success` | After a delivered round, a new unread round. The header pill and stepper show **Reading** for the current round, not the earlier "Delivered". |
+| `two-client-09-phone-late-joiner` | A late joiner on a phone, joined while the 108 s recurring light ran. It gets the rounds, the current round and the roles from the room. |
+| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 201.6 lit vs 164.5 dark. |
 
 ![Sender design](two-client-01-sender-design.jpg)
 ![Receiver after the transmission](two-client-02-receiver-watching.jpg)
@@ -77,4 +89,5 @@ Lamp L1 seated on its snaps, D5 HIGH (left) and LOW (right), same camera:
 ![Ambiguous](two-client-05-ambiguous-diagnosis.jpg)
 ![Open circuit](two-client-06-open-circuit-no-light.jpg)
 ![Cut off](two-client-07-cut-off-by-bench-change.jpg)
-![Phone late joiner](two-client-08-phone-panel.jpg)
+![Unread round after a success](two-client-08-unread-after-success.jpg)
+![Phone late joiner](two-client-09-phone-late-joiner.jpg)

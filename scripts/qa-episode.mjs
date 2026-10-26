@@ -30,8 +30,10 @@ const only = process.env.QA_ONLY ? new Set(process.env.QA_ONLY.split(",")) : nul
 const wanted = (name) => !only || only.has(name);
 
 const tap = async (page, selector) => {
-  await page.waitForFunction((s) => { const element = document.querySelector(s); return element && !element.disabled; }, selector, { timeout: 120_000 }).catch(() => undefined);
-  return page.evaluate((s) => { const element = document.querySelector(s); element?.click(); return Boolean(element); }, selector);
+  // Fail fast: the button must be present and enabled.
+  await page.waitForFunction((s) => { const element = document.querySelector(s); return Boolean(element) && !element.disabled; }, selector, { timeout: 120_000, polling: 250 });
+  const clicked = await page.evaluate((s) => { const element = document.querySelector(s); if (!element || element.disabled) return false; element.click(); return true; }, selector);
+  if (!clicked) throw new Error(`${selector} became unavailable before the click`);
 };
 const episode = (page) => page.evaluate(() => window.__vmQa.episode());
 const panelText = (page) => page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? "");
@@ -44,6 +46,23 @@ async function until(read, test, timeout = 180_000) {
   }
   if (!test(value)) throw new Error(`timed out: ${JSON.stringify(value).slice(0, 200)}`);
   return value;
+}
+
+/** Mean brightness (0–255) of a PNG, measured in a separate lightweight page. */
+const analysis = await (await browser.newContext()).newPage();
+async function brightness(png) {
+  return analysis.evaluate(async (data) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: image.width, height: image.height });
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, image.width, image.height).data;
+    let sum = 0;
+    for (let index = 0; index < pixels.length; index += 4) sum += 0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2];
+    return sum / (pixels.length / 4);
+  }, png.toString("base64"));
 }
 
 async function open(viewport) {
@@ -117,8 +136,19 @@ const low = [[x + 1.45, y + 0.42, z + 0.75], [x, y + 0.14, z]];
 await tap(page, "#episode-toggle");
 await page.evaluate(() => window.__vmQa.pins({ D5: true }));
 await shot(page, "e02-lamp-lit-close", close);
+// Pixel check (separate from the scene's own state): the bulb crop, lit vs unlit, same camera.
+const bulb = async () => {
+  const rect = await page.evaluate(() => window.__vmQa.partScreenRect("sno-l1"));
+  const png = await page.screenshot({ clip: { x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: Math.max(4, Math.min(rect.width, 600)), height: Math.max(4, Math.min(rect.height, 600)) } });
+  return brightness(png);
+};
+const litBrightness = await bulb();
 await page.evaluate(() => window.__vmQa.pins({ D5: false }));
 await shot(page, "e03-lamp-unlit-close", close);
+const darkBrightness = await bulb();
+stats["e02-lamp-lit-close"].bulbBrightness = Number(litBrightness.toFixed(1));
+stats["e03-lamp-unlit-close"].bulbBrightness = Number(darkBrightness.toFixed(1));
+if (!(litBrightness - darkBrightness > 8)) issues.push(`pixels: lit bulb ${litBrightness.toFixed(1)} vs unlit ${darkBrightness.toFixed(1)}`);
 await shot(page, "e04-lamp-snaps-low", low);
 await tap(page, "#episode-toggle");
 await page.evaluate(() => { window.__vmQa.pins({ D5: true }); window.__vmQa.receiverView(); });
@@ -176,6 +206,38 @@ await until(() => page.evaluate(() => window.__vmQa.bench().parts["sno-w2a"]?.so
 await transmitAndWait(page, 4);
 await shot(page, "e09-recovered-solo-check");
 if (!/No problems found/.test(await panelText(page))) issues.push("recovery round still reports problems");
+await closeRound(page);
+
+// Faults from the parent review, through the real import path:
+const importParts = async (name, parts) => {
+  await page.setInputFiles("#project-file-input", { name, mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts })) });
+  await page.waitForFunction(() => document.querySelector("#confirm-dialog")?.open, null, { timeout: 60_000 });
+  await tap(page, "#confirm-ok");
+};
+const pads = { D5: 12, "5V": 14, GND: 15 };
+// (a) a snap wire from D5 straight to GND: the pin is shorted and the lamp is bypassed.
+await importParts("pin-short.json", [
+  { id: "sno-l1", sockets: [pads.D5, 30] }, { id: "sno-w3", sockets: [30, 33] }, { id: "sno-w2a", sockets: [33, pads.GND] }, { id: "sno-w4a", sockets: [pads.D5, pads.GND] },
+]);
+await until(() => page.evaluate(() => window.__vmQa.bench().parts["sno-w4a"]?.sockets), Boolean);
+await transmitAndWait(page, 5);
+await shot(page, "e12-pin-short-bypassed-solo-check");
+const short12 = await panelText(page);
+if (!/No light at all/.test(short12) || !/D5 was set HIGH while its pad was wired straight to GND/.test(short12) || !/same connected net/.test(short12)) issues.push(`pin-short solo check: ${short12.slice(0, 400)}`);
+const lit12 = await page.evaluate(() => window.__vmQa.lights());
+if (lit12.length) issues.push(`pin short: the 3D bench shows ${lit12} running`);
+await closeRound(page);
+// (b) the lamp from 5V to GND: always on, and still on after the transmission.
+await importParts("five-volt.json", [
+  { id: "sno-l1", sockets: [pads["5V"], 30] }, { id: "sno-w3", sockets: [30, 33] }, { id: "sno-w2a", sockets: [33, pads.GND] }, { id: "sno-w4a", sockets: null },
+]);
+await until(() => page.evaluate(() => window.__vmQa.bench().parts["sno-l1"]?.sockets?.[0]), (socket) => socket === pads["5V"]);
+await transmitAndWait(page, 6);
+await shot(page, "e13-5v-still-lit-solo-check");
+const five13 = await panelText(page);
+if (!/still on when the transmission ended/.test(five13) || /switched it off/.test(five13)) issues.push(`5V solo check: ${five13.slice(0, 400)}`);
+if (!(await page.evaluate(() => window.__vmQa.lights())).includes("sno-l1")) issues.push("5V lamp: the 3D bench shows it dark after the transmission");
+if (!(await page.evaluate(() => Boolean(document.querySelector(".strip-flash.is-continuing"))))) issues.push("5V lamp: the strip does not mark the light as continuing");
 await page.context().close();
 
 // ── Phone 390×844 ────────────────────────────────────────────────────────────────────────────

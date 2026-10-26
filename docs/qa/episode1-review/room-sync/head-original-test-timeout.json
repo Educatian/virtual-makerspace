@@ -1,0 +1,72 @@
+{
+ "what": "diagnostics written when the ORIGINAL e2e-room-sync press(\"Snapino code\") timed out (instrumented copy, same steps)",
+ "why": "press-Snapino code",
+ "at": "2026-10-26T15:05:14.506Z",
+ "evaluateMs": 31639,
+ "screenshot": "screenshot timeout 30 s",
+ "dom": {
+  "url": "http://vm.test:8800/?room=TUUV&quality=low&studio=snapino",
+  "title": "Virtual Makerspace \u2014 Desktop 3D Collaboration",
+  "heading": "Snapino",
+  "visibility": "visible",
+  "ready": "complete",
+  "codeButtons": [
+   {
+    "html": "<button class=\"discussion-tab\" data-tab=\"code\" data-tooltip=\"Snapino code\" aria-label=\"Snapino code\" type=\"button\" title=\"Snapino code\"><i class=\"ph ph-code-block\"></i><span class=\"sr-only\">Code</span></button>",
+    "disabled": false,
+    "hidden": false,
+    "connected": true
+   }
+  ],
+  "buttons": 78,
+  "lobby": false
+ },
+ "mainThread": {
+  "heartbeatMaxGapMs": 122214,
+  "heartbeatGapsOver2s": [
+   [
+    95151,
+    92593
+   ],
+   [
+    103092,
+    7941
+   ],
+   [
+    118923,
+    15831
+   ],
+   [
+    241136,
+    122214
+   ]
+  ],
+  "animationFrameMaxGapMs": 89497,
+  "longTasksTop": [
+   [
+    126493,
+    114640
+   ],
+   [
+    5932,
+    89199
+   ],
+   [
+    103173,
+    8147
+   ],
+   [
+    95429,
+    7643
+   ],
+   [
+    111444,
+    7477
+   ],
+   [
+    119029,
+    7335
+   ]
+  ]
+ }
+}

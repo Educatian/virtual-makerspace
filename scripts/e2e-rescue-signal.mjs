@@ -1,38 +1,51 @@
-// Episode 1 · Rescue Signal Workshop — two real browsers over the real Worker (Durable Object
-// + WebSocket), clicking the actual panel:
-//   roles → design → build (demo lamp) → transmit → the RECEIVER's bench lamp follows the
-//   timeline frame by frame → first reading → comparison (delivered) → explanation → close;
-//   an ambiguous-timing round; an open-circuit round and its recovery; a reconnect mid-
-//   transmission (shared elapsed time, role must be retaken); a teammate's bench change and an
-//   identical-program import both ending a running transmission; the sender's Stop; role swap; export carrying
-//   the design; leaving mid-transmission with no errors. Screenshots go to the given folder.
+// Episode 1 · Rescue Signal Workshop — two real browsers over the real Worker (Durable Object +
+// WebSocket), clicking the actual panel. Developer-environment run (headless Chromium with
+// SwiftShader), not a CI workflow. A fresh random room every run (never 7K3M).
 //
 //   npm run build
 //   npx wrangler dev --port 8799 --ip 127.0.0.1 --var ADMIN_EMAILS:host@example.test
 //   node scripts/access-proxy.mjs 8800 8799
-//   node scripts/e2e-rescue-signal.mjs [http://vm.test:8800] [screenshot-dir]
+//   node --experimental-strip-types scripts/e2e-rescue-signal.mjs [http://vm.test:8800] [artifacts-dir]
 //
-// Uses a fresh random room (never 7K3M). Developer-environment run, not a CI workflow.
+// What counts as evidence here, and what does not:
+// - "Driven frames": the panel sets the bench pins in the scene's pre-render hook and the ?qa probe
+//   logs, for that very frame, the elapsed time and the loads the scene shows running. Each client
+//   must log lit AND dark frames that agree with the round's timeline. This is the scene state at
+//   render time, not pixels.
+// - "Pixels": separately, screenshots cropped to the receiver's lamp, taken while its probe says lit
+//   (and still lit afterwards) versus dark, must differ in brightness.
+// - Software rendering takes seconds per frame and minutes per new shader; nothing here is a frame
+//   rate or a real-device timing claim. Clock agreement is measured as the difference between two
+//   pages' estimates of the room clock on the same machine.
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dumpDiagnostics, instrument, settled } from "./lib/e2e-readiness.mjs";
 
 const base = process.argv[2] ?? "http://vm.test:8800";
-const shots = process.argv[3] ?? null;
-if (shots) mkdirSync(shots, { recursive: true });
 const room = `R${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[01IO]/g, "Z")}`;
 assert.notEqual(room, "7K3M");
+const artifacts = process.argv[3] ?? `${tmpdir()}/vm-e2e-rescue-${room}`;
+mkdirSync(artifacts, { recursive: true });
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
 });
 const results = [];
-const check = (name, ok, detail = "") => { results.push({ name, ok: Boolean(ok) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
-const tap = async (page, selector) => {
-  // Like a person: wait until the button is there and enabled (one room action at a time).
-  await page.waitForFunction((s) => { const element = document.querySelector(s); return element && !element.disabled; }, selector, { timeout: 120_000 }).catch(() => undefined);
-  return page.evaluate((s) => { const element = document.querySelector(s); element?.click(); return Boolean(element); }, selector);
-};
+const check = (name, ok, detail = "") => { results.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
+const ready = (page, label) => settled(page, label, { diagnostics: artifacts });
+/** Click a button like a person: it must exist and be enabled; otherwise fail now, with diagnostics. */
+async function tap(page, selector) {
+  try {
+    await page.waitForFunction((s) => { const element = document.querySelector(s); return Boolean(element) && !element.disabled; }, selector, { timeout: 120_000, polling: 250 });
+  } catch (error) {
+    await dumpDiagnostics(page, artifacts, `tap-${selector}`);
+    throw new Error(`${page.e2eLabel}: ${selector} not present/enabled within 120 s (${error.message.split("\n")[0]})`);
+  }
+  const clicked = await page.evaluate((s) => { const element = document.querySelector(s); if (!element || element.disabled) return false; element.click(); return true; }, selector);
+  if (!clicked) throw new Error(`${page.e2eLabel}: ${selector} became unavailable before the click`);
+}
 const until = async (read, test, timeout = 120_000) => {
   const started = Date.now();
   let value = await read();
@@ -44,19 +57,28 @@ const until = async (read, test, timeout = 120_000) => {
 };
 const D5 = (value) => ({ op: "write", pin: "D5", value });
 const flash = (ms, after) => [D5(true), { op: "wait", ms }, D5(false), ...(after ? [{ op: "wait", ms: after }] : [])];
-// Software rendering in two browsers takes seconds per frame, so the frame-by-frame lamp check uses
-// INJURED · NORTH at the slow end of every band (~12 s, still exactly that message under the protocol).
+// INJURED · NORTH at the slow end of every band (~18 s, still exactly that message under the protocol).
 const SLOW_INJURED_NORTH = [...flash(1450, 550), ...flash(1450, 4000), { op: "wait", ms: 4000 }, ...flash(1450, 550), ...flash(420, 550), ...flash(420, 0)];
-// SAFE followed by 60 s of silence: a transmission still running when a teammate acts on it
-// (an import's file dialog and confirmation take tens of seconds under software rendering).
+// SAFE followed by 60 s of silence: still running when a teammate acts on it.
 const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 }))];
-const shot = async (page, name) => { if (shots) await page.screenshot({ path: `${shots}/${name}.png` }); };
+// A recurring light (not a protocol word): 4 s on, 5 s off, 12 times = 108 s (under the 120 s cap).
+// Long phases let seconds-per-frame clients log both states and let a screenshot finish inside one.
+const BEACON = Array.from({ length: 12 }, () => flash(4000, 5000)).flat();
+// One steady 60 s light, then 55 s dark (115 s): a headless screenshot takes ~40 s under SwiftShader,
+// so a pixel sample needs a phase that outlasts the capture.
+const STEADY = [D5(true), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 })), D5(false), ...Array.from({ length: 11 }, () => ({ op: "wait", ms: 5000 }))];
+const shot = async (page, name) => { await page.screenshot({ path: `${artifacts}/${name}.png` }); };
 const panelText = (page) => page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? "");
+const header = (page) => page.evaluate(() => ({ pill: document.querySelector("#episode-pill")?.textContent ?? null, step: document.querySelector('.episode-steps [aria-current="step"]')?.textContent ?? null }));
 const episode = (page) => page.evaluate(() => window.__vmQa?.episode?.() ?? { state: null, role: null, elapsed: null });
+const { lightPulses, decode } = await import("../src/episodes/rescue-signal.ts");
+const pulsesOf = (round, stopped = round.stoppedAtMs) => lightPulses({ program: round.program, bench: round.bench, durationMs: round.durationMs, stoppedAtMs: stopped });
+const litIn = (pulses, ms) => pulses.some((pulse) => ms >= pulse.start && ms < pulse.end);
 
 async function maker(email, viewport = { width: 1000, height: 680 }) {
   const context = await browser.newContext({ viewport, acceptDownloads: true });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
+  await instrument(context);
   await context.addInitScript(() => {
     if (!crypto.randomUUID) {
       crypto.randomUUID = () => "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
@@ -65,11 +87,13 @@ async function maker(email, viewport = { width: 1000, height: 680 }) {
   });
   return context;
 }
-async function open(context, label, host = false) {
+async function lobby(context, label, host = false) {
   const page = await context.newPage();
+  page.e2eLabel = label;
   page.setDefaultTimeout(300_000);
   const errors = [];
   page.on("pageerror", (error) => { errors.push(error.message); console.error(`[${label}] pageerror:`, error.message); });
+  page.on("crash", () => { errors.push("crash"); console.error(`[${label}] page crashed`); });
   page.errors = errors;
   await page.goto(`${base}/?room=${room}&quality=low&qa`);
   await page.waitForSelector("#enter-room", { state: "attached" });
@@ -77,43 +101,120 @@ async function open(context, label, host = false) {
     await page.getByRole("radio", { name: /Snapino Bridge/ }).click();
     await page.evaluate(() => { const box = document.querySelector("#lobby-episode"); if (box && !box.checked) box.click(); });
   }
-  await tap(page, "#enter-room");
-  await page.waitForFunction(() => Boolean(window.__vmQa?.episode), null, { timeout: 300_000 });
-  await page.waitForFunction(() => !document.querySelector("#episode-panel")?.hidden, null, { timeout: 300_000 });
   return page;
 }
-/** Every frame the transmission drove: was the bench lamp lit exactly when the timeline says? */
-async function lampAgreement(page, pulses, end) {
+async function enter(page) {
+  await tap(page, "#enter-room");
+  await page.waitForFunction(() => Boolean(window.__vmQa?.episode), null, { timeout: 300_000, polling: 500 });
+  // The panel must exist AND be shown (an absent panel is not "not hidden").
+  await page.waitForFunction(() => { const panel = document.querySelector("#episode-panel"); return Boolean(panel) && !panel.hidden && panel.getClientRects().length > 0; }, null, { timeout: 300_000, polling: 500 });
+  await ready(page, `${page.e2eLabel} entered`);
+  return page;
+}
+/** Frames the transmission drove since the last call (the probe log is drained). */
+async function drivenFrames(page, round) {
+  const pulses = pulsesOf(round, null);
+  const end = round.stoppedAtMs ?? round.durationMs;
   const log = await page.evaluate(() => window.__vmQa.lightLog());
   const frames = log.filter((frame) => frame.elapsed >= 0 && frame.elapsed < end);
-  const wrong = frames.filter((frame) => frame.lights.includes("sno-l1") !== pulses.some((pulse) => frame.elapsed >= pulse.start && frame.elapsed < pulse.end));
-  return { frames: frames.length, wrong: wrong.length, lit: frames.filter((frame) => frame.lights.includes("sno-l1")).length };
+  const lit = frames.filter((frame) => frame.lights.includes("sno-l1"));
+  const wrong = frames.filter((frame) => frame.lights.includes("sno-l1") !== litIn(pulses, frame.elapsed));
+  return { frames: frames.length, lit: lit.length, dark: frames.length - lit.length, wrong: wrong.length, wrongAt: wrong.slice(0, 3).map((frame) => Math.round(frame.elapsed)) };
+}
+/** Collects driven frames until the page has logged at least one lit and one dark agreeing frame. */
+async function observeLitAndDark(page, label, timeoutMs) {
+  const total = { frames: 0, lit: 0, dark: 0, wrong: 0, wrongAt: [] };
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const { state } = await episode(page);
+    if (!state?.round) break;
+    const part = await drivenFrames(page, state.round);
+    for (const key of ["frames", "lit", "dark", "wrong"]) total[key] += part[key];
+    total.wrongAt.push(...part.wrongAt);
+    if (total.lit > 0 && total.dark > 0) break;
+    if (state.round.stopReason) break;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  console.log(`  [frames] ${label}: ${JSON.stringify(total)}`);
+  return total;
+}
+/** Mean brightness (0–255) of a page area, measured in a separate lightweight page. */
+const analysis = await (await browser.newContext()).newPage();
+async function brightness(png) {
+  return analysis.evaluate(async (data) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: image.width, height: image.height });
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, image.width, image.height).data;
+    let sum = 0;
+    for (let index = 0; index < pixels.length; index += 4) sum += 0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2];
+    return sum / (pixels.length / 4);
+  }, png.toString("base64"));
+}
+/**
+ * A screenshot of the receiver's lamp taken while the probe says it is lit (or dark) before AND after
+ * the capture, inside one phase of the timeline. Returns its brightness, or null if no clean sample.
+ */
+async function lampSample(page, wantLit, deadline) {
+  while (Date.now() < deadline) {
+    const before = await episode(page);
+    const round = before.state?.round;
+    if (!round || before.elapsed >= round.durationMs || round.stopReason) return null;
+    const lights = await page.evaluate(() => window.__vmQa.lights());
+    if (lights.includes("sno-l1") !== wantLit) { await new Promise((resolve) => setTimeout(resolve, 300)); continue; }
+    const rect = await page.evaluate(() => window.__vmQa.partScreenRect("sno-l1"));
+    if (!rect || rect.width < 4 || rect.height < 4) return null;
+    const clip = { x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: Math.min(rect.width, 400), height: Math.min(rect.height, 400) };
+    const png = await page.screenshot({ clip });
+    const after = await episode(page);
+    const lightsAfter = await page.evaluate(() => window.__vmQa.lights());
+    const pulses = pulsesOf(round, null);
+    const samePhase = lightsAfter.includes("sno-l1") === wantLit && litIn(pulses, before.elapsed) === wantLit && litIn(pulses, after.elapsed) === wantLit
+      && pulses.every((pulse) => !(before.elapsed < pulse.start && pulse.start < after.elapsed) && !(before.elapsed < pulse.end && pulse.end < after.elapsed));
+    if (!samePhase) continue;
+    writeFileSync(`${artifacts}/pixel-${wantLit ? "lit" : "dark"}.png`, png);
+    return { brightness: await brightness(png), clip, elapsed: [Math.round(before.elapsed), Math.round(after.elapsed)] };
+  }
+  return null;
 }
 async function waitEnded(page) {
   return until(() => episode(page), (state) => state.state?.round && (state.state.round.stopReason || state.elapsed >= state.state.round.durationMs + 200));
 }
 async function importProject(page, project) {
   await page.setInputFiles("#project-file-input", { name: "project.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(project)) });
-  await page.waitForFunction(() => document.querySelector("#confirm-dialog")?.open, null, { timeout: 60_000 });
+  await page.waitForFunction(() => document.querySelector("#confirm-dialog")?.open, null, { timeout: 120_000, polling: 250 });
   await tap(page, "#confirm-ok");
 }
+async function readAs(page, words) {
+  await until(() => panelText(page), (text) => /Record reading/.test(text));
+  for (const word of words) await tap(page, `[data-episode="reading-add"][data-word="${word}"]`);
+  await tap(page, '[data-episode="read"]');
+}
+const notDelivered = async (page, label) => {
+  const now = await until(() => header(page), (value) => value.pill !== null, 30_000);
+  check(`${label}: the header does not claim delivery`, now.pill !== "Delivered", JSON.stringify(now));
+  return now;
+};
 
 const hostContext = await maker("host@example.test");
 const memberContext = await maker("member@example.test");
-const host = await open(hostContext, "host", true);
-const member = await open(memberContext, "member");
+const host = await enter(await lobby(hostContext, "host", true));
+const member = await enter(await lobby(memberContext, "member"));
 check("the workshop panel opens for both makers (room state, not a local overlay)", (await episode(host)).state?.active && (await episode(member)).state?.active);
 
-// Roles.
+// ── Roles, design, build ──────────────────────────────────────────────────────────────────────
 await tap(host, '[data-episode="claim-role"][data-role="sender"]');
 await until(() => episode(member), (state) => state.state?.roles.sender);
 await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
 const roles = await until(() => episode(host), (state) => state.state?.roles.receiver);
 check("sender and receiver are taken by different makers", roles.role === "sender" && (await episode(member)).role === "receiver");
-
-// Design + build (demo lamp on D5) + DI helper blocks.
 await tap(host, "#load-field-test");
 await until(() => host.evaluate(() => window.__vmQa.bench().parts["sno-l1"]?.sockets), Boolean);
+await ready(host, "host after the lamp was placed");
+await ready(member, "member after the lamp was placed");
 await tap(host, '[data-episode="mission"][data-mission="ridge"]');
 await until(() => episode(host), (state) => state.state?.mission === "ridge");
 await tap(host, '[data-episode="intent-add"][data-word="INJURED"]');
@@ -124,62 +225,48 @@ await tap(host, '[data-episode="write-blocks"]');
 await shot(host, "01-sender-design");
 await host.evaluate((program) => window.__vmQa.editDraft(program), SLOW_INJURED_NORTH);
 const receiverBefore = await panelText(member);
-check("the receiver's panel does not show the intended message", !/Intended message|INJURED ▬ ▬ NORTH/.test(receiverBefore) && !(await member.evaluate(() => document.querySelector("#episode-body .episode-words"))), receiverBefore.slice(0, 120));
+// (The shared vocabulary lists every word with its flashes; the INTENT is the sender's choice.)
+check("the receiver's panel does not show the intended message", !/Intended message|INJURED ▬ ▬ NORTH|INJURED · NORTH/.test(receiverBefore) && !(await member.evaluate(() => document.querySelector('#episode-body [aria-label="Intended words"]'))), receiverBefore.slice(0, 100));
 
-// Round 1: transmit; the receiver's own bench lamp follows the shared timeline.
+// ── Round 1: a working message, read correctly ───────────────────────────────────────────────
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
-const running = await until(() => episode(member), (state) => state.state?.round?.n === 1);
-const round1 = running.state.round;
-check("the transmission reaches the receiver as room state", round1 && round1.intent.join() === "INJURED,NORTH");
+const running1 = await until(() => episode(member), (state) => state.state?.round?.n === 1);
+check("the transmission reaches the receiver as room state", running1.state?.round?.intent.join() === "INJURED,NORTH");
 await tap(member, '[data-episode="receiver-view"]');
 await shot(member, "02-receiver-watching");
 await waitEnded(member);
-const expected1 = await member.evaluate(() => {
-  const round = window.__vmQa.episode().state.round;
-  return round;
-});
-// Recompute the expected light from the round itself (same pure model the test suite checks).
-const { lightPulses, decode } = await import("../src/episodes/rescue-signal.ts");
-const pulses1 = lightPulses({ program: expected1.program, bench: expected1.bench, durationMs: expected1.durationMs, stoppedAtMs: expected1.stoppedAtMs });
-check("the round's light under the protocol is INJURED · NORTH", decode(pulses1).words.join() === "INJURED,NORTH");
-const memberLamp = await lampAgreement(member, pulses1, expected1.durationMs);
-const hostLamp = await lampAgreement(host, pulses1, expected1.durationMs);
-// Software rendering gives only a few frames per transmission; every one of them must agree.
-// Lit and dark frames are both required across the run (dark ones also come from round 5 below).
-const lampFrames = { frames: 0, lit: 0, dark: 0 };
-const tally = (agreement) => { lampFrames.frames += agreement.frames; lampFrames.lit += agreement.lit; lampFrames.dark += agreement.frames - agreement.lit; };
-tally(memberLamp); tally(hostLamp);
-check("every frame the receiver's bench lamp showed matched the timeline", memberLamp.frames >= 1 && memberLamp.wrong === 0, JSON.stringify(memberLamp));
-check("so did the sender's", hostLamp.frames >= 1 && hostLamp.wrong === 0, JSON.stringify(hostLamp));
-
-// First reading: correct.
-await until(() => panelText(member), (text) => /Record reading/.test(text));
+const round1 = (await episode(member)).state.round;
+check("the round's light under the protocol is INJURED · NORTH", decode(pulsesOf(round1)).words.join() === "INJURED,NORTH");
+for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
+  const frames = await drivenFrames(page, round1);
+  check(`round 1: every driven frame of the ${label}'s lamp agrees with the timeline (and there were some)`, frames.frames >= 1 && frames.wrong === 0, JSON.stringify(frames));
+}
+check("unread round: the header shows the reading step", (await until(() => header(member), (value) => value.pill === "Reading", 60_000)).pill === "Reading");
 await shot(member, "03-receiver-reading");
-await tap(member, '[data-episode="reading-add"][data-word="INJURED"]');
-await until(() => panelText(member), (text) => /INJURED/.test(text));
-await tap(member, '[data-episode="reading-add"][data-word="NORTH"]');
-await member.waitForTimeout(300);
-await tap(member, '[data-episode="read"]');
+await readAs(member, ["INJURED", "NORTH"]);
 const compared = await until(() => panelText(host), (text) => /Message delivered/.test(text));
 const comparedMember = await until(() => panelText(member), (text) => /Message delivered/.test(text), 60_000);
 check("the comparison says the message was delivered — on both screens", /Message delivered/.test(compared) && /Message delivered/.test(comparedMember));
 await shot(host, "04-sender-compare-delivered");
 await shot(member, "04-receiver-compare-delivered");
-// The first reading is final.
-const second = await member.evaluate(() => window.__vmQa.episode().state.round.reading);
-check("the receiver's first reading is recorded as given", JSON.stringify(second?.words) === '["INJURED","NORTH"]');
+// The first reading is final: a second attempt (as a raw room action) is refused, and the UI offers none.
+const firstTx = (await episode(member)).state.round.tx;
+const secondTry = await member.evaluate((tx) => window.__vmQa.episodeAction({ type: "read", tx, words: ["HELP"], confidence: "sure" }), firstTx);
+const afterSecond = await episode(host);
+check("a second reading is refused by the room and the first stays", secondTry?.ok === false && secondTry.reason === "already-read" && JSON.stringify(afterSecond.state.round.reading.words) === '["INJURED","NORTH"]', JSON.stringify(secondTry));
+check("and the receiver's panel offers no second 'Record reading'", !(await member.evaluate(() => document.querySelector('[data-episode="read"]'))));
 await member.evaluate(() => { document.querySelector("#episode-explanation").value = "Two long flashes, a long pause, then long-short-short."; });
 await tap(member, '[data-episode="explain"]');
 await until(() => episode(host), (state) => state.state?.round?.explanation?.length > 10);
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 1);
-// (The panel re-renders on the next animation frame, which takes seconds under software rendering.)
 const goal = await until(() => panelText(member), (text) => /Workshop goal met in round 1/.test(text), 60_000);
-check("the explained, delivered round meets the workshop goal", /Workshop goal met in round 1/.test(goal));
+check("the explained, delivered round meets the workshop goal (history milestone)", /Workshop goal met in round 1/.test(goal));
+await notDelivered(member, "after closing the delivered round (next round's design)");
 
-// Round 2: deliberately ambiguous timing (a 500 ms flash).
+// ── Round 2: ambiguous timing (a 500 ms flash) ───────────────────────────────────────────────
 await tap(host, '[data-episode="intent-remove"][data-index="1"]');
 await until(() => episode(host), (state) => state.state?.intent.length === 1);
 await tap(host, '[data-episode="intent-remove"][data-index="0"]');
@@ -193,182 +280,241 @@ await host.evaluate(() => window.__vmQa.editDraft([
 await tap(host, '[data-episode="transmit"]');
 await until(() => episode(member), (state) => state.state?.round?.n === 2);
 await waitEnded(member);
-await until(() => panelText(member), (text) => /Record reading/.test(text));
-await tap(member, '[data-episode="reading-add"][data-word="SAFE"]');
-await member.waitForTimeout(300);
-await tap(member, '[data-episode="read"]');
+await notDelivered(member, "round 2 ended, unread");
+await shot(member, "08-unread-after-success");
+await readAs(member, ["SAFE"]);
 const ambiguous = await until(() => panelText(host), (text) => /ambiguous/.test(text));
 check("a 500 ms flash makes the round ambiguous, even with the 'right' reading", /ambiguous under the protocol/.test(ambiguous) && !/Message delivered/.test(ambiguous.split("Rounds")[0]));
 check("the diagnosis states the measured flash against the bands", /Flash 2 lasted 500 ms: between short/.test(ambiguous));
+await notDelivered(host, "ambiguous round 2");
 await shot(host, "05-ambiguous-diagnosis");
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 2);
 
-// Round 3: an open circuit (the return wire off the base) — the code runs, no light.
+// ── Round 3: an open circuit (the return wire off the base) ──────────────────────────────────
 const benchNow = await host.evaluate(() => window.__vmQa.bench());
 const parts = Object.entries(benchNow.parts).map(([id, part]) => ({ id, sockets: id === "sno-w2a" ? null : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(host, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts });
 await until(() => member.evaluate(() => window.__vmQa.bench().parts["sno-w2a"]?.sockets), (sockets) => !sockets);
-await host.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, { op: "wait", ms: 900 }, { op: "write", pin: "D5", value: false }, { op: "wait", ms: 300 }, { op: "write", pin: "D5", value: true }, { op: "wait", ms: 300 }, { op: "write", pin: "D5", value: false }]));
+// 10 s with D5 HIGH: long enough for software-rendered frames to be driven while it runs.
+await host.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, { op: "wait", ms: 5000 }, { op: "wait", ms: 5000 }, { op: "write", pin: "D5", value: false }]));
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
-const round3 = await until(() => episode(member), (state) => state.state?.round?.n === 3);
+await until(() => episode(member), (state) => state.state?.round?.n === 3);
 await waitEnded(member);
 const openLamp = await member.evaluate(() => window.__vmQa.lightLog());
 check("with the circuit open, the receiver's lamp never lit although the code ran", openLamp.length > 0 && openLamp.every((frame) => !frame.lights.includes("sno-l1")), `${openLamp.length} frames`);
-await until(() => panelText(member), (text) => /Record reading/.test(text));
-await tap(member, '[data-episode="reading-add"][data-word="SAFE"]');
-await member.waitForTimeout(300);
-await tap(member, '[data-episode="read"]');
+await readAs(member, ["SAFE"]);
 const noLight = await until(() => panelText(host), (text) => /No light reached the receiver/.test(text));
-check("an open circuit cannot deliver a message", /No light reached the receiver/.test(noLight) && /no end reaching GND|not on a D pin|No lamp/.test(noLight));
+check("an open circuit cannot deliver a message", /No light reached the receiver/.test(noLight) && /no end reaching GND/.test(noLight));
+await notDelivered(member, "open-circuit round 3");
 await shot(member, "06-open-circuit-no-light");
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 3);
-check("(round 3 recorded the open transmitter)", round3.state.round.n === 3);
 
-// Recovery: rebuild, retransmit the same intention → delivered.
+// ── Round 4: recovery, with a retransmission that replaces the watched signal ────────────────
 await tap(host, "#load-field-test");
 await until(() => member.evaluate(() => window.__vmQa.bench().parts["sno-w2a"]?.sockets), Boolean);
 await tap(host, '[data-episode="write-blocks"]');
-await host.waitForTimeout(300);
-// The helper's SAFE blocks, then 110 s of silence (under the 120 s transmission cap): long enough
-// for a dropped connection to come back inside the running transmission.
-// (The helper's blocks may equal the room's program, in which case there is no separate draft.)
-await host.evaluate(() => { const bench = window.__vmQa.bench(); window.__vmQa.editDraft([...(bench.draft ?? bench.program), ...Array.from({ length: 22 }, () => ({ op: "wait", ms: 5000 }))]); });
 await tap(host, '[data-episode="transmit"]');
-const started4 = await until(() => episode(member), (state) => state.state?.round?.n === 4);
-check("(round 4 is a long transmission, under the 120 s cap)", started4.state?.round?.durationMs > 100_000 && started4.state.round.durationMs <= 120_000, String(started4.state?.round?.durationMs));
-
-// Mid-transmission network drop: the room releases the receiver; the client reconnects by itself,
-// gets the running round and the shared clock from the room, and must retake its role.
-check("(the receiver's socket is dropped mid-transmission)", await member.evaluate(() => window.__vmQa.dropConnection()));
-const released = await until(() => episode(host), (state) => state.state?.roles.receiver === null, 60_000);
-check("the room released the dropped receiver's role", released.state?.roles.receiver === null);
-const back = await until(() => episode(member), (state) => state.online && state.state?.roles.receiver === null, 120_000);
-check("the dropped client reconnected by itself and holds the room's state (no role)", back.online && back.role === null && back.state?.round?.n === 4);
-await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
-const rejoined = await until(() => episode(member), (state) => state.role === "receiver");
-const hostNow = await episode(host);
-check("after reconnecting, the receiver retook its role inside the running transmission", rejoined.role === "receiver" && rejoined.state?.round?.n === 4 && rejoined.elapsed < rejoined.state.round.durationMs && !rejoined.state.round.stopReason, `${Math.round(rejoined.elapsed)} of ${rejoined.state?.round?.durationMs} ms`);
-check("its elapsed time agrees with the sender's (shared room clock)", Math.abs((rejoined.elapsed ?? 1e9) - (hostNow.elapsed ?? 0)) < 15_000, `${Math.round(rejoined.elapsed)} vs ${Math.round(hostNow.elapsed)} ms (sampled at different moments)`);
-await member.evaluate(() => window.__vmQa.lightLog());
-await member.waitForTimeout(8000);
-{
-  const round4 = (await episode(member)).state.round;
-  const pulses4 = lightPulses({ program: round4.program, bench: round4.bench, durationMs: round4.durationMs, stoppedAtMs: null });
-  const after = await lampAgreement(member, pulses4, round4.durationMs);
-  tally(after);
-  check("after reconnecting, every driven frame of the receiver's lamp agrees with the timeline", after.frames >= 1 && after.wrong === 0, JSON.stringify(after));
-}
-
-// A full reload (a new page) lands in the lobby of the same link; entering again restores the
-// round from the room and, again, no role.
-await member.reload();
-await member.waitForSelector("#enter-room", { state: "attached" });
-await tap(member, "#enter-room");
-await member.waitForFunction(() => Boolean(window.__vmQa?.episode?.()?.state), null, { timeout: 300_000 }).catch(() => undefined);
-const reloaded = await until(() => episode(member), (state) => Boolean(state.state));
-check("after a reload the receiver gets round 4 from the room, and no role", reloaded.state?.round?.n === 4 && reloaded.role === null);
-await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
-await until(() => episode(member), (state) => state.role === "receiver");
-// The sender stops the long silence if it is still running; the message itself was complete.
-if (!(await episode(host)).state.round.stopReason && (await episode(host)).elapsed < (await episode(host)).state.round.durationMs) await tap(host, '[data-episode="stop"]');
+await until(() => episode(member), (state) => state.state?.round?.n === 4);
 await waitEnded(member);
 await until(() => panelText(member), (text) => /Record reading/.test(text));
 await tap(member, '[data-episode="reading-add"][data-word="SAFE"]');
-await member.waitForTimeout(300);
-await tap(member, '[data-episode="read"]');
+const drafted = await until(() => member.evaluate(() => [...document.querySelectorAll('[aria-label="Your reading"] .episode-chip')].map((chip) => chip.textContent.trim())), (chips) => chips.length === 1, 60_000);
+const oldTx = (await episode(member)).state.round.tx;
+check("(the receiver has drafted a reading of the first transmission)", drafted.length === 1 && /SAFE/.test(drafted[0]), JSON.stringify(drafted));
+await tap(host, '[data-episode="transmit"]'); // "Transmit again" (same round, new transmission)
+const retransmitted = await until(() => episode(member), (state) => state.state?.round?.tx !== oldTx);
+check("a retransmission keeps round 4 but is a new transmission (new tx) on the receiver too", retransmitted.state.round.n === 4 && retransmitted.state.round.tx > oldTx && retransmitted.state.round.transmissions === 2);
+const draftAfter = await until(() => member.evaluate(() => document.querySelectorAll('[aria-label="Your reading"] .episode-chip').length), (count) => count === 0, 60_000);
+check("the receiver's draft of the replaced transmission is discarded", draftAfter === 0);
+await waitEnded(member);
+const stale = await member.evaluate((tx) => window.__vmQa.episodeAction({ type: "read", tx, words: ["SAFE"], confidence: "sure" }), oldTx);
+check("a delayed reading of the replaced transmission is refused by the room", stale?.ok === false && stale.reason === "stale-round" && (await episode(host)).state.round.reading === null, JSON.stringify(stale));
+await readAs(member, ["SAFE"]);
 const recovered = await until(() => panelText(host), (text) => /Round 4 · Message delivered/.test(text));
 check("after rebuilding, the same message is delivered (recovery)", /Round 4 · Message delivered/.test(recovered));
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 4);
 
-// A teammate's bench change during a transmission ends it for both.
+// ── Round 5: a recurring light. Per-client lit/dark frames, pixels, then the sender's Stop ────
+await host.evaluate((program) => window.__vmQa.editDraft(program), BEACON);
+await host.evaluate(() => window.__vmQa.lightLog());
+await member.evaluate(() => window.__vmQa.lightLog());
+await tap(host, '[data-episode="transmit"]');
+const beacon = await until(() => episode(member), (state) => state.state?.round?.n === 5);
+check("(round 5 is a 108 s recurring light)", beacon.state.round.durationMs === 108_000);
+const deadline5 = Date.now() + 75_000; // leaves time to press Stop while it still runs
+const receiverFrames = await observeLitAndDark(member, "receiver, round 5", 45_000);
+const senderFrames = await observeLitAndDark(host, "sender, round 5", Math.max(5_000, deadline5 - Date.now()));
+check("the receiver's own render-driven frames include lit AND dark, all agreeing with the timeline", receiverFrames.lit > 0 && receiverFrames.dark > 0 && receiverFrames.wrong === 0, JSON.stringify(receiverFrames));
+check("the sender's too", senderFrames.lit > 0 && senderFrames.dark > 0 && senderFrames.wrong === 0, JSON.stringify(senderFrames));
+await notDelivered(member, "running round 5");
+// The sender's Stop ends it for everyone; the receiver's lamp goes dark.
+await tap(host, '[data-episode="stop"]');
+const halted = await until(() => episode(member), (state) => state.state?.round?.stopReason);
+check("the sender's Stop ends the transmission on both screens", halted.state.round.stopReason === "stopped" && (await episode(host)).state.round.stopReason === "stopped", halted.state.round.stopReason);
+const dark = await until(() => member.evaluate(() => window.__vmQa.lights()), (lights) => !lights.includes("sno-l1"), 60_000);
+check("after Stop the receiver's bench lamp is dark", !dark.includes("sno-l1"));
+await notDelivered(member, "stopped, unread round 5");
+await tap(host, '[data-episode="close-round"]'); // abandon the unread beacon round
+await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 5);
+
+// ── Round 6: the same recurring light; a network drop and reconnect while it runs ────────────
+await tap(host, '[data-episode="transmit"]');
+const beacon6 = await until(() => episode(member), (state) => state.state?.round?.n === 6);
+check("(round 6 runs the recurring light again)", beacon6.state.round.durationMs === 108_000 && !beacon6.state.round.stopReason);
+// Network drop mid-transmission: the room frees the role; the client reconnects on its own.
+check("(the receiver's socket is dropped mid-transmission)", await member.evaluate(() => window.__vmQa.dropConnection()));
+const released = await until(() => episode(host), (state) => state.state?.roles.receiver === null, 60_000);
+check("the room released the dropped receiver's role", released.state?.roles.receiver === null);
+const back = await until(() => episode(member), (state) => state.online && state.state?.roles.receiver === null && state.clockRtt !== null && state.clockRtt <= 1000, 120_000);
+check("the dropped client reconnected by itself and holds the room's state (no role)", back.online && back.role === null && back.state?.round?.n === 6);
+await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
+const rejoined = await until(() => episode(member), (state) => state.role === "receiver");
+const hostClock = await episode(host);
+const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
+check("after reconnecting, the receiver is back in the running transmission", rejoined.state.round.n === 6 && !rejoined.state.round.stopReason && rejoined.elapsed < rejoined.state.round.durationMs, `${Math.round(rejoined.elapsed)} of ${rejoined.state.round.durationMs} ms`);
+check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
+const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (rejoined.state.round.durationMs - rejoined.elapsed) - 15_000));
+check("after reconnecting, the receiver's driven frames again include lit AND dark, all agreeing", afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
+const r6 = await episode(host);
+if (r6.state.round && !r6.state.round.stopReason && r6.elapsed < r6.state.round.durationMs) await tap(host, '[data-episode="stop"]');
+await waitEnded(member);
+await tap(host, '[data-episode="close-round"]');
+await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 6);
+
+// ── Round 7: pixels. The receiver's lamp crop while the steady light is on vs off ────────────
+await host.evaluate((program) => window.__vmQa.editDraft(program), STEADY);
+await tap(host, '[data-episode="transmit"]');
+await until(() => episode(member), (state) => state.state?.round?.n === 7);
+const deadline7 = Date.now() + 118_000;
+const litPixels = await lampSample(member, true, deadline7);
+const darkPixels = await lampSample(member, false, deadline7);
+check("pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera)", litPixels && darkPixels && litPixels.brightness - darkPixels.brightness > 8, JSON.stringify({ lit: litPixels?.brightness?.toFixed(1), dark: darkPixels?.brightness?.toFixed(1), litAt: litPixels?.elapsed, darkAt: darkPixels?.elapsed, clip: litPixels?.clip }));
+const r7 = await episode(host);
+if (r7.state.round && !r7.state.round.stopReason && r7.elapsed < r7.state.round.durationMs) await tap(host, '[data-episode="stop"]');
+await waitEnded(member);
+await tap(host, '[data-episode="close-round"]');
+await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 7);
+
+// ── Round 8: a teammate's bench change during a transmission ends it for both ────────────────
 await host.evaluate((program) => window.__vmQa.editDraft(program), LONG_SAFE);
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
-await until(() => episode(member), (state) => state.state?.round?.n === 5);
+await until(() => episode(member), (state) => state.state?.round?.n === 8);
 const memberBench = await member.evaluate(() => window.__vmQa.bench());
 const moved = Object.entries(memberBench.parts).map(([id, part]) => ({ id, sockets: id === "sno-w3" ? [30, 31] : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(member, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: moved });
 const cut = await until(() => episode(host), (state) => state.state?.round?.stopReason);
 check("a teammate's bench edit ends the running transmission for everyone", cut.state.round.stopReason === "bench-changed" && (await episode(member)).state.round.stopReason === "bench-changed");
-await shot(host, "07-cut-off-by-bench-change");
-{
-  const round5 = cut.state.round;
-  const pulses5 = lightPulses({ program: round5.program, bench: round5.bench, durationMs: round5.durationMs, stoppedAtMs: round5.stoppedAtMs });
-  const end5 = round5.stoppedAtMs ?? round5.durationMs;
-  const lamp5 = [await lampAgreement(member, pulses5, end5), await lampAgreement(host, pulses5, end5)];
-  lamp5.forEach(tally);
-  check("frames driven before the cut-off agree with that round's timeline too", lamp5.every((agreement) => agreement.wrong === 0), JSON.stringify(lamp5));
-  check("across the run the lamp was seen lit and dark exactly when the timeline said", lampFrames.lit > 0 && lampFrames.dark > 0 && lampFrames.frames >= 4, JSON.stringify(lampFrames));
+for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
+  const frames = await drivenFrames(page, cut.state.round);
+  check(`round 8: the ${label}'s driven frames before the cut-off agree with the timeline (and there were some)`, frames.frames >= 1 && frames.wrong === 0, JSON.stringify(frames));
 }
+await notDelivered(host, "cut-off round 8");
+await shot(host, "07-cut-off-by-bench-change");
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null);
 await tap(host, "#load-field-test");
 await until(() => member.evaluate(() => window.__vmQa.bench().parts["sno-w3"]?.sockets?.[1]), (socket) => socket === 33);
 
-// Importing the identical program (same parts) while it transmits stops it.
+// ── Round 9: importing the identical program (same parts) while it transmits stops it ─────────
 await host.evaluate((program) => window.__vmQa.editDraft(program), LONG_SAFE);
 await tap(host, '[data-episode="transmit"]');
-await until(() => episode(member), (state) => state.state?.round?.n === 6);
+await until(() => episode(member), (state) => state.state?.round?.n === 9);
 const same = await host.evaluate(() => ({ bench: window.__vmQa.bench(), program: window.__vmQa.bench().program }));
 const sameParts = Object.entries(same.bench.parts).map(([id, part]) => ({ id, sockets: part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(host, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: sameParts, program: same.program });
 const stopped = await until(() => episode(member), (state) => state.state?.round?.stopReason);
 check("importing the identical program while transmitting stops it (program-changed)", stopped.state.round.stopReason === "program-changed", `stopReason ${stopped.state?.round?.stopReason} at ${Math.round(stopped.elapsed)} of ${stopped.state?.round?.durationMs} ms`);
 await tap(host, '[data-episode="close-round"]');
-await until(() => episode(member), (state) => state.state?.round === null);
+await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 9);
 
-// The sender's Stop ends the transmission for everyone, and the receiver's lamp goes dark.
-await host.evaluate((program) => window.__vmQa.editDraft(program), LONG_SAFE);
-await tap(host, '[data-episode="transmit"]');
-await until(() => episode(member), (state) => state.state?.round?.n === 7);
-await tap(host, '[data-episode="stop"]');
-const halted = await until(() => episode(member), (state) => state.state?.round?.stopReason);
-check("the sender's Stop ends the transmission on both screens", halted.state.round.stopReason === "stopped" && (await episode(host)).state.round.stopReason === "stopped");
-const dark = await until(() => member.evaluate(() => window.__vmQa.lights()), (lights) => !lights.includes("sno-l1"), 60_000);
-check("after Stop the receiver's bench lamp is dark", !dark.includes("sno-l1"));
-await tap(host, '[data-episode="close-round"]');
-await until(() => episode(member), (state) => state.state?.round === null);
+// ── A full reload: re-entering restores the room's episode, without a role ───────────────────
+await member.reload();
+await member.waitForSelector("#enter-room", { state: "attached" });
+await enter(member);
+const reloaded = await until(() => episode(member), (state) => Boolean(state.state));
+check("after a reload the receiver gets the room's rounds, and no role", reloaded.state?.history.length === 9 && reloaded.role === null);
+await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
+await until(() => episode(member), (state) => state.role === "receiver");
 
-// Role swap between rounds.
+// ── Swap roles; export by the new sender (allowed keys only) ────────────────────────────────
 await tap(member, '[data-episode="swap-roles"]');
 const swapped = await until(() => episode(host), (state) => state.role === "receiver");
 check("roles swap between rounds, on both screens", swapped.role === "receiver" && (await episode(member)).role === "sender");
-
-// Export carries the design (never rounds, readings or explanations).
 const [download] = await Promise.all([member.waitForEvent("download"), tap(member, "#export-project")]);
 const exported = JSON.parse(readFileSync(await download.path(), "utf8"));
-check("export carries the episode design and no session activity", exported.episode?.id === "rescue-signal" && Array.isArray(exported.episode.intent) && !JSON.stringify(exported).includes("Two long flashes") && !("history" in exported.episode));
+const topKeys = Object.keys(exported).sort();
+const allowedTop = ["draftProgram", "episode", "format", "parts", "program", "savedAt", "solver", "studio", "version"];
+const partKeys = [...new Set(exported.parts.flatMap((part) => Object.keys(part)))];
+check("export schema: only project keys, the design is exactly {id, v, mission, intent}, parts carry only id/sockets/props/on",
+  topKeys.every((key) => allowedTop.includes(key)) && JSON.stringify(Object.keys(exported.episode ?? {}).sort()) === '["id","intent","mission","v"]'
+  && exported.episode.id === "rescue-signal" && partKeys.every((key) => ["id", "sockets", "props", "on"].includes(key)),
+  JSON.stringify({ topKeys, episode: exported.episode, partKeys }));
+check("export contains no session activity (no reading, explanation, round or role)", !/Two long flashes|reading|explanation|"round"|"roles"|"history"|"tx"/.test(JSON.stringify(exported)));
 
-// Leaving mid-transmission: no errors, no running loop left behind.
-await member.evaluate((program) => window.__vmQa.editDraft(program), LONG_SAFE);
+// ── Reset: every connected client applies it at once; the next transmission reaches both ─────
+const beforeReset = await episode(host);
+await tap(member, '[data-episode="reset"]');
+await member.waitForFunction(() => document.querySelector("#confirm-dialog")?.open, null, { timeout: 60_000, polling: 250 });
+await tap(member, "#confirm-ok");
+const resetMember = await until(() => episode(member), (state) => state.state?.history.length === 0, 60_000);
+const resetHost = await until(() => episode(host), (state) => state.state?.history.length === 0, 60_000);
+check("reset reaches both connected clients immediately, with a higher revision", resetMember.state.history.length === 0 && resetHost.state.history.length === 0 && resetHost.state.rev === resetMember.state.rev && resetHost.state.rev > beforeReset.state.rev, JSON.stringify({ before: beforeReset.state.rev, host: resetHost.state.rev, member: resetMember.state.rev }));
+await tap(member, '[data-episode="intent-add"][data-word="SAFE"]');
+await until(() => episode(host), (state) => state.state?.intent.join() === "SAFE");
+await member.evaluate((program) => window.__vmQa.editDraft(program), BEACON);
+
+// The late joiner waits in the lobby (page loaded) so its join happens while the light runs.
+await host.evaluate(() => window.__vmQa.lightLog());
 await tap(member, '[data-episode="transmit"]');
-const leaving = await until(() => episode(host), (state) => state.state?.round?.n === 8);
-check("(the new sender's transmission is running when the receiver leaves)", leaving.state?.round?.n === 8 && leaving.elapsed < leaving.state.round.durationMs);
+const afterReset = await until(() => episode(host), (state) => state.state?.round?.n === 1);
+check("after the reset, the next transmission reaches the other client (round 1 again, a new tx)", afterReset.state.round.tx > beforeReset.state.rev, `tx ${afterReset.state.round.tx}`);
+
+// ── Leaving mid-transmission ─────────────────────────────────────────────────────────────────
 const exitButton = await host.evaluate(() => { const button = [...document.querySelectorAll("button")].find((b) => /leave|exit/i.test(b.getAttribute("aria-label") ?? "")); button?.click(); return button?.getAttribute("aria-label") ?? null; });
 await host.waitForSelector("#enter-room", { state: "attached", timeout: 120_000 });
-await host.waitForTimeout(2500);
-check("leaving during a transmission returns to the lobby without errors", exitButton && host.errors.length === 0 && !(await host.evaluate(() => document.querySelector("#episode-panel"))), `${exitButton} · ${host.errors.join(" | ")}`);
+check("leaving during a transmission returns to the lobby without page errors", exitButton && host.errors.length === 0 && !(await host.evaluate(() => document.querySelector("#episode-panel"))), `${exitButton} · ${host.errors.join(" | ")}`);
 const afterLeave = await until(() => episode(member), (state) => state.state?.roles.receiver === null, 60_000);
 check("the leaver's receiver role is freed; the sender keeps theirs", afterLeave.state.roles.receiver === null && afterLeave.role === "sender");
-check("no page errors on the page that stayed", member.errors.length === 0, member.errors.join(" | "));
-
-// A late joiner on a phone-width viewport (after the receiver left; fewer software-rendered pages).
 await hostContext.close();
+
+// ── Late join during the running recurring light (phone-width page) ──────────────────────────
 const phoneContext = await maker("phone@example.test", { width: 390, height: 844 });
-const phone = await open(phoneContext, "phone");
-await shot(phone, "08-phone-panel");
-const late = await episode(phone);
-check("a late joiner gets the room's rounds, the running round and the roles", late.state?.history.length === 7 && late.state.round?.n === 8 && late.state.roles.sender && late.role === null, JSON.stringify({ history: late.state?.history.length, round: late.state?.round?.n, sender: late.state?.roles.sender?.name }));
-check("the panel renders on a phone-width viewport", await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return panel.width <= 390 && panel.left >= 0; }));
+const phoneLobby = await lobby(phoneContext, "phone");
+await tap(phoneLobby, "#enter-room");
+const joined = await until(() => episode(phoneLobby), (state) => Boolean(state.state?.round), 300_000);
+const senderNow = await episode(member);
+check("the late joiner joined while the transmission was running (state at join)", joined.state.round.n === 1 && !joined.state.round.stopReason && joined.elapsed < joined.state.round.durationMs, `${Math.round(joined.elapsed)} of ${joined.state.round.durationMs} ms`);
+// The first clock samples of a page busy with its first draws have long round trips; the client
+// keeps sampling until one is short. The bound applies to that estimate (error ≤ rtt / 2).
+const joinClock = await until(() => episode(phoneLobby), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
+const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
+const joinSkew = Math.abs(joinClock.clockOffset - senderClock.clockOffset);
+check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", joinSkew <= 250, `Δ ${Math.round(joinSkew)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms`);
+const phone = phoneLobby;
+await phone.waitForFunction(() => { const panel = document.querySelector("#episode-panel"); return Boolean(panel) && !panel.hidden; }, null, { timeout: 300_000, polling: 500 });
+await ready(phone, "late joiner entered");
+const lateFrames = await observeLitAndDark(phone, "late joiner", 60_000);
+const stillRunning = await episode(phone);
+if (stillRunning.state.round && !stillRunning.state.round.stopReason && stillRunning.elapsed < stillRunning.state.round.durationMs || lateFrames.frames > 0) {
+  check("the late joiner's driven frames agree with the timeline", lateFrames.frames >= 1 && lateFrames.wrong === 0, JSON.stringify(lateFrames));
+} else {
+  console.log(`  [note] the late joiner finished rendering after the light ended (${JSON.stringify(lateFrames)}); its join itself happened mid-transmission (checked above)`);
+}
+await shot(phone, "09-phone-late-joiner");
+const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
+check("phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)", layout.left >= 0 && layout.right <= layout.width && layout.overflow <= 0, JSON.stringify(layout));
+check("no page errors on the pages that stayed", member.errors.length === 0 && phone.errors.length === 0, [...member.errors, ...phone.errors].join(" | "));
 await phoneContext.close();
 
 await browser.close();
+writeFileSync(`${artifacts}/results.json`, JSON.stringify({ room, results }, null, 1));
 const failed = results.filter((result) => !result.ok);
-console.log(`\n${results.length - failed.length}/${results.length} passed · room ${room}`);
+console.log(`\n${results.length - failed.length}/${results.length} passed · room ${room} · artifacts ${artifacts}`);
 assert.equal(failed.length, 0);
