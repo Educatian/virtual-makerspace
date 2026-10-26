@@ -2339,3 +2339,4 @@ textarea:focus-visible {
 .si-net h3 span { color: var(--muted); font-weight: 500; }
 .si-net p, .si-net ul { margin: 0; }
 .si-net ul { padding-left: 16px; }
+.si-edit[data-tone="neutral"] { color: #dbe5f3; background: rgba(255, 255, 255, 0.06); }

@@ -2562,8 +2562,9 @@ function createInspector(): void {
     faultsWithheldNote: () => (episode?.diagramFaultsAllowed() ?? true ? null : "Fault notes appear after your team's first compared round. The diagram already shows every connection exactly as built."),
     flipSwitch: async (on) => {
       const transform = workbench?.getSharedTransforms()["sno-s1"];
-      if (!transform || !tools) return false;
-      return tools.applyBulk([{ id: "sno-s1", transform: { ...transform, on } }], `S1 switched ${on ? "on" : "off"}`);
+      if (!transform || !tools) return "refused";
+      const accepted = await tools.applyBulk([{ id: "sno-s1", transform: { ...transform, on } }], `S1 switched ${on ? "on" : "off"}`);
+      return accepted ? "accepted" : tools.lastRefusal === "timeout" ? "unconfirmed" : "refused";
     },
     holderOf: (id) => {
       for (const resourceId of [id, `${id}::endpoint-0`, `${id}::endpoint-1`]) {

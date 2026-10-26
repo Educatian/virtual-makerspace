@@ -56,6 +56,13 @@ async function maker(email, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: "reduce" });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
   await instrument(context);
+  // http://vm.test is not a secure origin, where Chromium has no crypto.randomUUID (as in the other e2e tests).
+  await context.addInitScript(() => {
+    if (!crypto.randomUUID) {
+      crypto.randomUUID = () => "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+        (Number(c) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))).toString(16));
+    }
+  });
   return context;
 }
 async function join(context, label, host) {
@@ -162,9 +169,9 @@ try {
     leds: document.querySelector("#pin-leds")?.textContent.replace(/\s+/g, " ") ?? "",
     draft: window.__vmQa.bench().draft,
   }));
-  const hostView = await until(() => view(host), (value) => value.s1 === true && /D2\s*HIGH/.test(value.leds));
+  const hostView = await until(() => view(host), (value) => value.s1 === true && /D2\s*HIGH/.test(value.leds) && /room accepted it/.test(value.note ?? ""));
   const memberView = await until(() => view(member), (value) => value.s1 === true && /D2\s*HIGH/.test(value.leds));
-  check("host: inspector reports the room accepted it", /room accepted it: S1 is on/.test(hostView.note ?? ""), hostView.note ?? "");
+  check("host: inspector reports the room accepted it (immediately, or when a late answer lands)", /room accepted it.*S1 is on/.test(hostView.note ?? ""), hostView.note ?? "");
   check("diagram on both: S1 closed, D2's net at 5 V", hostView.s1 && memberView.s1 && hostView.d2 === "is-supply" && memberView.d2 === "is-supply", `${hostView.d2}/${memberView.d2}`);
   check("code panel on both: D2 input reads HIGH", /D2\s*HIGH/.test(hostView.leds) && /D2\s*HIGH/.test(memberView.leds), `${hostView.leds} | ${memberView.leds}`);
   check("both clients' diagrams list the same connections", hostView.connections.length > 0 && hostView.connections === memberView.connections, hostView.connections);
@@ -210,7 +217,10 @@ try {
     const notes = await until(() => Promise.all([host, member].map((page) => page.evaluate(() => document.querySelector("#si-part .si-edit")?.textContent ?? null))), (list) => list.every(Boolean));
     const states = await until(async () => [await bench(host), await bench(member)], ([a, b]) => a.parts["sno-s1"]?.on === b.parts["sno-s1"]?.on, 60_000);
     const refused = notes.map((note) => /^Not changed/.test(note ?? ""));
+    // A page stalled past the 8 s edit deadline reports "Not confirmed in time" (it may still land):
+    // that attempt is recorded, never counted as a stale refusal.
     attempts.push({ attempt, before, notes, after: states.map((snapshot) => snapshot.parts["sno-s1"]?.on) });
+    check(`flip attempt ${attempt}: a refused flip's client holds the room's state; no note claims a change that did not happen`, notes.every((note, index) => !/room accepted it: S1 is (on|off)/.test(note ?? "") || states[index].parts["sno-s1"]?.on === /S1 is on/.test(note)), JSON.stringify(notes));
     if (refused.filter(Boolean).length === 1) staleSeen = { attempt, refusedBy: refused[0] ? "host" : "member", notes, states: states.map((snapshot) => snapshot.parts["sno-s1"]?.on) };
     // Clear the notes for the next attempt by reselecting.
     for (const page of [host, member]) await page.evaluate(() => document.querySelector('#si-diagram [data-part="sno-s1"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true })));

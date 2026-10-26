@@ -28,8 +28,11 @@ export interface InspectorHost {
   showFaults(): boolean;
   /** Why fault notes are withheld right now (shown instead of them), or null. */
   faultsWithheldNote(): string | null;
-  /** Submits S1's flip as one room edit; resolves with whether the room accepted it. */
-  flipSwitch(on: boolean): Promise<boolean>;
+  /**
+   * Submits S1's flip as one room edit. "unconfirmed": no answer in time — nothing changed here,
+   * but the room may still have accepted it (it then arrives like any accepted edit).
+   */
+  flipSwitch(on: boolean): Promise<"accepted" | "refused" | "unconfirmed">;
   holderOf(id: string): string | null;
   focusPart(): void;
 }
@@ -49,7 +52,10 @@ export class SnapinoInspector {
   private lastDiagramKey = "";
   private lastPartKey = "";
   private lastHighlightKey = "";
-  private editNote: { part: string; text: string; tone: "valid" | "warning" } | null = null;
+  private editNote: { part: string; text: string; tone: "valid" | "warning" | "neutral"; awaiting?: boolean } | null = null;
+  /** The S1 state an unconfirmed flip asked for (its note updates if the room's answer lands late). */
+  private awaitingOn: boolean | null = null;
+  private awaitingUntil = 0;
   private pending = false;
   private disposed = false;
 
@@ -126,6 +132,13 @@ export class SnapinoInspector {
     if (diagramKey !== this.lastDiagramKey) {
       this.lastDiagramKey = diagramKey;
       this.renderDiagram(diagram, selected, showFaults);
+    }
+    // An unconfirmed flip that the room did accept arrives later like any accepted edit.
+    if (this.awaitingOn !== null && Date.now() > this.awaitingUntil) this.awaitingOn = null;
+    if (this.awaitingOn !== null && (workbench.snapinoBench()[SNAPINO_SWITCH]?.on === true) === this.awaitingOn) {
+      this.editNote = { part: SNAPINO_SWITCH, text: `The room accepted it (its answer came late): S1 is ${this.awaitingOn ? "on" : "off"} for everyone.`, tone: "valid" };
+      this.awaitingOn = null;
+      this.lastPartKey = "";
     }
     this.renderPart(diagram, selected);
     this.updateHighlights(diagram, selected);
@@ -289,17 +302,24 @@ export class SnapinoInspector {
     const on = this.host.workbench()?.snapinoBench()[SNAPINO_SWITCH]?.on === true;
     this.pending = true;
     this.editNote = null;
+    this.awaitingOn = null;
     this.render();
-    let accepted = false;
+    let outcome: "accepted" | "refused" | "unconfirmed" = "refused";
     try {
-      accepted = await this.host.flipSwitch(!on);
+      outcome = await this.host.flipSwitch(!on);
     } finally {
       this.pending = false;
     }
     const now = this.host.workbench()?.snapinoBench()[SNAPINO_SWITCH]?.on === true;
-    this.editNote = accepted
+    if (outcome === "unconfirmed" && now !== !on) {
+      this.awaitingOn = !on;
+      this.awaitingUntil = Date.now() + 60_000;
+    }
+    this.editNote = outcome === "accepted" || (outcome === "unconfirmed" && now === !on)
       ? { part: SNAPINO_SWITCH, text: `The room accepted it: S1 is ${now ? "on" : "off"} for everyone.`, tone: "valid" }
-      : { part: SNAPINO_SWITCH, text: `Not changed: the room did not accept the flip, so S1 is still ${now ? "on" : "off"} here and for everyone.`, tone: "warning" };
+      : outcome === "unconfirmed"
+        ? { part: SNAPINO_SWITCH, text: `Not confirmed in time: nothing changed here yet. If the room accepted the flip, S1 switches ${!on ? "on" : "off"} here and for everyone when its answer arrives.`, tone: "neutral" }
+        : { part: SNAPINO_SWITCH, text: `Not changed: the room did not accept the flip, so S1 is still ${now ? "on" : "off"} here and for everyone.`, tone: "warning" };
     this.lastPartKey = "";
     this.render();
   }

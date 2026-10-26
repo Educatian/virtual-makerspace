@@ -81,6 +81,8 @@ const LED_STATE_COPY: Record<string, string> = {
 
 export class WorkbenchTools {
   readonly history = new EditHistory();
+  /** Why the last submitted edit was not accepted ("timeout": not confirmed in time — it may still land), or null. */
+  lastRefusal: string | null = null;
   private readonly host: ToolsHost;
   private readonly pending = new Map<string, SharedTransform>();
   private analysis: CircuitAnalysis | null = null;
@@ -472,6 +474,7 @@ export class WorkbenchTools {
       return false;
     }
     const result = await room.submitEdit(real, load.send);
+    this.lastRefusal = result.ok ? null : result.reason;
     if (!result.ok) {
       this.host.status(refusalCopy(label, result), "warning");
       this.lastEditorKey = "";
