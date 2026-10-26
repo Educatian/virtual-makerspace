@@ -12,11 +12,12 @@
  * told part of the signal was not watched). Replay is local and drawn in the panel, never on
  * the bench, so it can't be mistaken for a new transmission.
  *
- * Condition boundaries: the vocabulary (which flashes make which word) is always visible — it
- * is the shared code both roles need. The timing bands and the "write blocks for me" helper are
- * shown up front only in the DI condition; in PF the timing bands appear after the team has
- * compared its first round (consolidation). Diagnoses are factual measurements, shown only in
- * the comparison after the receiver has committed a first reading.
+ * Condition boundaries: the protocol — the vocabulary (which flashes make which word) AND its
+ * timing bands — is a task rule, shown to both roles in both conditions: the decoder judges every
+ * team against these bands, so a PF team must be able to see them. The worked example (one set
+ * of timings that works) and the "write blocks for this message" helper are solution guidance and
+ * are shown only in DI. Diagnoses are factual measurements, shown in the comparison after the
+ * receiver has committed a first reading (and to a lone sender in the solo check).
  */
 import type { DesktopRoom } from "../desktop/collaboration.js";
 import type { DesktopWorkbenchScene } from "../desktop/scene.js";
@@ -120,6 +121,30 @@ export function roundView(round: RescueRound): RoundView {
   return { transmission, pulses, decoded: decode(pulses) };
 }
 
+export interface Phase {
+  /** Index into the stepper (Roles, Design & build, Transmit, Read, Compare & explain). */
+  step: number;
+  label: string;
+  tone: "neutral" | "valid" | "warning";
+}
+
+/**
+ * The header pill and the stepper describe the CURRENT round only. An earlier delivered round
+ * is a milestone shown in the round history ("Workshop goal met in round n"), never as the
+ * state of a later round that is running, unread, ambiguous, cut off or without light.
+ */
+export function currentPhase(state: RescueState, running: boolean): Phase {
+  const round = state.round;
+  if (round) {
+    if (running) return { step: 2, label: "Transmitting", tone: "warning" };
+    if (!round.reading) return { step: 3, label: "Reading", tone: "neutral" };
+    const result = compare(round.intent, roundView(round).decoded, round.reading.words);
+    return result.delivered ? { step: 4, label: "Delivered", tone: "valid" } : { step: 4, label: "Not delivered", tone: "warning" };
+  }
+  if (!state.roles.sender) return { step: 0, label: "Choose roles", tone: "neutral" };
+  return { step: 1, label: state.history.length ? `Round ${state.history.length + 1} · design` : "Design", tone: "neutral" };
+}
+
 /** Completed = a round whose message was delivered and that the team explained. */
 export function deliveredRound(state: RescueState): RescueRound | null {
   return [...state.history, ...(state.round ? [state.round] : [])].find((round) =>
@@ -134,15 +159,16 @@ export class RescueEpisode {
   private collapsed = false;
   private draftReading: Reading = [];
   private confidence: "sure" | "unsure" = "sure";
-  private replay: { round: number; startedAt: number } | null = null;
-  /** Transmissions (by start time) during which this tab was hidden at some point. */
+  /** Local replay of one transmission's recorded light (keyed by its tx). */
+  private replay: { tx: number; startedAt: number } | null = null;
+  /** Transmissions (by tx) during which this tab was hidden at some point. */
   private hiddenDuring = new Set<number>();
   private busy = false;
   private lastRenderKey = "";
   private disposed = false;
   private readonly onVisibility = (): void => {
     const round = this.state?.round;
-    if (document.hidden && round && this.state && transmitting(this.state, this.serverNow())) this.hiddenDuring.add(round.startedAt);
+    if (document.hidden && round && this.state && transmitting(this.state, this.serverNow())) this.hiddenDuring.add(round.tx);
     this.schedule();
   };
 
@@ -186,14 +212,16 @@ export class RescueEpisode {
   setState(state: RescueState): void {
     const previous = this.state;
     this.state = state;
-    if (previous?.round?.n !== state.round?.n || (previous?.round?.reading === null) !== (state.round?.reading === null)) {
+    // A draft reading belongs to the transmission it was made for: a retransmission (new tx),
+    // another round, a reset or a recorded reading discards it.
+    if (previous?.round?.tx !== state.round?.tx || (previous?.round?.reading === null) !== (state.round?.reading === null)) {
       this.draftReading = [];
       this.confidence = "sure";
     }
-    if (state.round && previous?.round?.startedAt !== state.round.startedAt) this.replay = null;
+    if (this.replay && this.replay.tx !== state.round?.tx) this.replay = null;
     // A transmission that starts (or is joined) while this tab is hidden was missed in part too:
     // animation frames do not run in a hidden tab, so this cannot wait for the next tick.
-    if (document.hidden && state.round && transmitting(state, this.serverNow())) this.hiddenDuring.add(state.round.startedAt);
+    if (document.hidden && state.round && transmitting(state, this.serverNow())) this.hiddenDuring.add(state.round.tx);
     if (!state.round && !state.history.length) this.hiddenDuring.clear();
     this.lastRenderKey = "";
     this.schedule();
@@ -317,7 +345,7 @@ export class RescueEpisode {
     // would be replaced under the pointer) and never while the learner types an explanation.
     const workbench = this.host.workbench();
     const liveBench = workbench ? JSON.stringify(workbench.snapinoBench()) : "";
-    const key = JSON.stringify([state.rev, role, running, this.host.humans(), this.replay?.round ?? null, this.draftReading, this.confidence, this.busy, liveBench, JSON.stringify(this.host.editorProgram()), this.hiddenDuring.has(state.round?.startedAt ?? -1), this.collapsed]);
+    const key = JSON.stringify([state.rev, role, running, this.host.humans(), this.replay?.tx ?? null, this.draftReading, this.confidence, this.busy, liveBench, JSON.stringify(this.host.editorProgram()), this.hiddenDuring.has(state.round?.tx ?? -1), this.collapsed]);
     const active = document.activeElement;
     const typing = Boolean(active && body.contains(active) && active.matches("textarea"));
     if (key !== this.lastRenderKey && !typing) {
@@ -345,7 +373,7 @@ export class RescueEpisode {
     if (bar) bar.style.width = `${(elapsed / round.durationMs) * 100}%`;
     const time = body.querySelector<HTMLElement>("[data-elapsed]");
     if (time) time.textContent = seconds(elapsed);
-    if (this.replay?.round === round.n) {
+    if (this.replay?.tx === round.tx) {
       const view = roundView(round);
       const end = transmissionEnd(view.transmission);
       const at = performance.now() - this.replay.startedAt;
@@ -362,14 +390,8 @@ export class RescueEpisode {
     }
   }
 
-  private phase(state: RescueState, running: boolean): { step: number; label: string; tone: "neutral" | "valid" | "warning" } {
-    if (deliveredRound(state)) return { step: 6, label: "Delivered", tone: "valid" };
-    if (!state.roles.sender) return { step: 0, label: "Choose roles", tone: "neutral" };
-    const round = state.round;
-    if (!round) return { step: 1, label: state.history.length ? `Round ${state.history.length + 1}` : "Design", tone: "neutral" };
-    if (running) return { step: 2, label: "Transmitting", tone: "warning" };
-    if (!round.reading) return { step: 3, label: "Reading", tone: "neutral" };
-    return { step: 4, label: "Compare", tone: "neutral" };
+  private phase(state: RescueState, running: boolean): Phase {
+    return currentPhase(state, running);
   }
 
   private stepsHtml(step: number): string {
@@ -405,12 +427,14 @@ export class RescueEpisode {
     return this.compareHtml(state, round, role);
   }
 
-  private protocolHtml(state: RescueState, open: boolean): string {
-    const showTiming = this.host.condition() === "DI" || state.history.some((round) => round.reading);
-    const timing = showTiming
-      ? `<dl class="episode-timing"><div><dt>● short</dt><dd>${TIMING.shortMin}–${TIMING.shortMax} ms of light</dd></div><div><dt>▬ long</dt><dd>${TIMING.longMin}–${TIMING.longMax} ms</dd></div><div><dt>gap in a word</dt><dd>${TIMING.gapMin}–${TIMING.gapMax} ms dark</dd></div><div><dt>pause between words</dt><dd>${TIMING.pauseMin} ms or more dark</dd></div></dl>
-         <p class="episode-fine">Anything outside these bands is ambiguous. A flash is light from a lamp or LED the circuit actually powers.</p>`
-      : `<p class="episode-fine">Decide with your team how long a short and a long flash should be, and how you will mark the end of a word.</p>`;
+  private protocolHtml(_state: RescueState, open: boolean): string {
+    // The bands are task rules (both conditions). Choosing timings inside them is the team's job;
+    // only DI also gets a worked example of timings that work.
+    const worked = this.host.condition() === "DI"
+      ? `<p class="episode-fine episode-worked">Worked example: short ${RECOMMENDED.short} ms, long ${RECOMMENDED.long} ms, gap ${RECOMMENDED.gap} ms, pause ${RECOMMENDED.pause} ms (the timings "Write blocks" uses).</p>`
+      : "";
+    const timing = `<dl class="episode-timing"><div><dt>● short</dt><dd>${TIMING.shortMin}–${TIMING.shortMax} ms of light</dd></div><div><dt>▬ long</dt><dd>${TIMING.longMin}–${TIMING.longMax} ms</dd></div><div><dt>gap in a word</dt><dd>${TIMING.gapMin}–${TIMING.gapMax} ms dark</dd></div><div><dt>pause between words</dt><dd>${TIMING.pauseMin} ms or more dark</dd></div></dl>
+         <p class="episode-fine">Anything outside these bands is ambiguous. A flash is light from a lamp or LED the circuit actually powers.</p>${worked}`;
     return `<details class="episode-protocol"${open ? " open" : ""}><summary><i class="ph ph-book-open" aria-hidden="true"></i> Rescue Flash Code v1</summary>
       <ul class="episode-vocab">${WORD_LIST.map((word) => `<li><strong>${word}</strong><span aria-label="${WORDS[word].map((flash) => (flash === "S" ? "short" : "long")).join(" ")}">${pattern(word)}</span></li>`).join("")}</ul>
       ${timing}</details>`;
@@ -421,7 +445,7 @@ export class RescueEpisode {
     const workbench = this.host.workbench();
     const bench = workbench?.snapinoBench() ?? {};
     const drivers = lightDrivers(bench);
-    const lights = drivers.lights.filter((light) => light.seated).map((light) => `${light.id === "sno-l1" ? "Lamp L1" : "LED D1"}: ${!light.grounded ? "no end on GND" : light.always ? "5V → GND (always on)" : light.pins.length ? `${light.pins.join("/")} → GND` : "GND, other end on no D pin"}`);
+    const lights = drivers.lights.filter((light) => light.seated).map((light) => `${light.id === "sno-l1" ? "Lamp L1" : "LED D1"}: ${light.bypassed ? "both ends on one net (bridged)" : !light.grounded ? "no end on GND" : light.always ? "5V → GND (always on)" : light.pins.length ? `${light.pins.join("/")} → GND` : "GND, other end on no D pin"}`);
     const program = this.host.editorProgram();
     const duration = programDurationMs(program);
     const helper = this.host.condition() === "DI"
@@ -468,7 +492,9 @@ export class RescueEpisode {
     const bars = view.pulses.map((pulse, index) => {
       const flash = view.decoded.flashes[index];
       const label = labelled ? `<b>${flashGlyph(flash.kind)}</b>` : "";
-      return `<span class="strip-flash${labelled && flash.kind === "?" ? " is-ambiguous" : ""}" style="left:${(pulse.start / end) * 100}%;width:${Math.max(0.6, ((pulse.end - pulse.start) / end) * 100)}%" title="${pulse.end - pulse.start} ms">${label}</span>`;
+      // A light still on when the recording ended has an open right edge (no falling edge).
+      const title = pulse.continues ? `${pulse.end - pulse.start} ms recorded; still lit after the transmission ended` : `${pulse.end - pulse.start} ms`;
+      return `<span class="strip-flash${labelled && flash.kind === "?" ? " is-ambiguous" : ""}${pulse.continues ? " is-continuing" : ""}" style="left:${(pulse.start / end) * 100}%;width:${Math.max(0.6, ((pulse.end - pulse.start) / end) * 100)}%" title="${title}">${label}</span>`;
     }).join("");
     // At most about eight labels, whatever the length (1, 2, 5, 10, 20, 30 or 60 s apart).
     const step = [1, 2, 5, 10, 20, 30, 60].find((candidate) => end / (candidate * 1000) <= 8) ?? 60;
@@ -478,7 +504,7 @@ export class RescueEpisode {
   }
 
   private replayHtml(round: RescueRound, view: RoundView): string {
-    const playing = this.replay?.round === round.n;
+    const playing = this.replay?.tx === round.tx;
     return `<div class="episode-replay"><span class="replay-lamp" aria-hidden="true"></span>
       <button class="secondary-button compact" type="button" data-episode="replay"><i class="ph ${playing ? "ph-stop" : "ph-play"}" aria-hidden="true"></i> ${playing ? "Stop replay" : "Replay the recorded light"}</button>
       <span class="episode-fine">Replay shows the recorded light here, not on the bench.</span></div>
@@ -491,7 +517,7 @@ export class RescueEpisode {
     const reason = round.stopReason === "bench-changed" ? "a Snapino part was changed" : round.stopReason === "program-changed" ? "the program was changed" : round.stopReason === "room-empty" ? "everyone left" : "it was stopped";
     const head = `<p class="episode-live">Round ${round.n} · transmission ${stopped ? `cut off at ${seconds(transmissionEnd(view.transmission))} (${reason})` : "ended"}${round.transmissions > 1 ? ` · transmission ${round.transmissions}` : ""}</p>`;
     if (role === "receiver") {
-      const missed = this.hiddenDuring.has(round.startedAt)
+      const missed = this.hiddenDuring.has(round.tx)
         ? `<p class="episode-note is-warning"><i class="ph ph-eye-slash" aria-hidden="true"></i> This tab was hidden during part of the transmission. Replay the recorded light before you read it.</p>`
         : "";
       const options = [...WORD_LIST, "?"] as (Word | "?")[];
@@ -517,14 +543,9 @@ export class RescueEpisode {
       ${role === "sender" ? `<div class="episode-row"><button class="secondary-button compact" type="button" data-episode="transmit">Transmit again</button><button class="bare-button compact" type="button" data-episode="close-round">Abandon round</button></div>` : ""}</section>`;
   }
 
-  /** Solo check findings. In PF the timing bands stay hidden until a round has been compared, so a
-   * timing finding states only the measurement, not the band it missed. */
-  private soloFindings(state: RescueState, round: RescueRound, view: RoundView): string[] {
-    const showBands = this.host.condition() === "DI" || state.history.some((round) => round.reading);
-    return diagnose(view.transmission, round.intent, null).map((finding) => {
-      if (showBands || !/^(flash|gap)-/.test(finding.code)) return finding.message;
-      return finding.message.replace(/:[^:]*\.$/, ": it does not fit the protocol.");
-    });
+  /** Solo check findings: the same factual measurements against the published protocol. */
+  private soloFindings(_state: RescueState, round: RescueRound, view: RoundView): string[] {
+    return diagnose(view.transmission, round.intent, null).map((finding) => finding.message);
   }
 
   private decodedHtml(decoded: Decoded): string {
@@ -627,20 +648,20 @@ export class RescueEpisode {
         break;
       case "transmit": {
         const program = this.host.editorProgram();
-        if (await this.act({ type: "transmit", program, round: round?.n ?? null })) {
+        if (await this.act({ type: "transmit", program, tx: round?.tx ?? null })) {
           const n = this.state?.round?.n ?? 0;
           this.host.trace("test", `Rescue signal · round ${n} transmitted (${program.length} blocks, ${seconds(programDurationMs(program))})`);
         }
         break;
       }
       case "stop":
-        if (round) await this.act({ type: "stop", round: round.n }, "Transmission stopped");
+        if (round) await this.act({ type: "stop", tx: round.tx }, "Transmission stopped");
         break;
       case "receiver-view":
         this.host.workbench()?.viewForReceiver();
         break;
       case "replay":
-        this.replay = this.replay?.round === round?.n || !round ? null : { round: round.n, startedAt: performance.now() };
+        this.replay = !round || this.replay?.tx === round.tx ? null : { tx: round.tx, startedAt: performance.now() };
         this.refresh();
         break;
       case "reading-add":
@@ -652,19 +673,19 @@ export class RescueEpisode {
         this.refresh();
         break;
       case "read":
-        if (round && this.draftReading.length && (await this.act({ type: "read", round: round.n, words: this.draftReading, confidence: this.confidence }, "Reading recorded"))) {
+        if (round && this.draftReading.length && (await this.act({ type: "read", tx: round.tx, words: this.draftReading, confidence: this.confidence }, "Reading recorded"))) {
           this.host.trace("test", `Rescue signal · round ${round.n} reading recorded (${this.state?.round?.reading?.words.length ?? 0} words, ${this.confidence})`);
         }
         break;
       case "explain": {
         const text = document.querySelector<HTMLTextAreaElement>("#episode-explanation")?.value ?? "";
-        if (round && (await this.act({ type: "explain", round: round.n, text }, "Explanation saved"))) this.host.trace("reflect", `Rescue signal · round ${round.n} explanation saved`);
+        if (round && (await this.act({ type: "explain", tx: round.tx, text }, "Explanation saved"))) this.host.trace("reflect", `Rescue signal · round ${round.n} explanation saved`);
         break;
       }
       case "close-round": {
         if (!round) break;
         const outcome = round.reading ? compare(round.intent, roundView(round).decoded, round.reading.words).outcome : "not read";
-        if (await this.act({ type: "close-round", round: round.n })) this.host.trace("test", `Rescue signal · round ${round.n} closed (${outcome})`);
+        if (await this.act({ type: "close-round", tx: round.tx })) this.host.trace("test", `Rescue signal · round ${round.n} closed (${outcome})`);
         break;
       }
       case "reset":

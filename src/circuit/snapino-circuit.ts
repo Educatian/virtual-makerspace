@@ -5,10 +5,14 @@
  * receiver sees and the signal the episode scores can never disagree.
  *
  * Model (educational, not electrical simulation): conductors (snap wires, a closed slide
- * switch) join stud nets; a load (lamp, LED, motor) runs when one end sits on a net driven
- * HIGH (the 5V pad, or a D pin set HIGH) and the other end reaches GND. The LED is treated as
- * non-polar here, exactly as the scene always has. 5V joined straight to GND is a short (nothing
- * runs); a D pin set HIGH while its net is GND is reported as a pin short.
+ * switch) join stud nets; a load (lamp, LED, motor) runs when its two ends are on DIFFERENT
+ * nets, one driven HIGH (the 5V pad, or a D pin set HIGH) and the other reaching GND. The LED
+ * is treated as non-polar here, exactly as the scene always has. A D pin set LOW is not a
+ * current sink in this model (it drives nothing).
+ *
+ * Faults: 5V joined straight to GND is a short (nothing runs). A D pin set HIGH whose net is GND
+ * is a pin short: that net is ground, never HIGH, so nothing is driven from it. A load whose two
+ * ends are on the same net (for example bridged by a snap wire) is bypassed and never runs.
  */
 import { OUTPUT_PINS, type PinStates, type SnapinoPin } from "../desktop/snapino.ts";
 
@@ -71,7 +75,8 @@ export function analyzeSnapino(bench: SnapinoBench, pins: PinStates): SnapinoSta
   const nets = snapinoNets(bench);
   const inputHigh = !nets.short && nets.net(SNAPINO_PADS.D2) === nets.vcc;
   const pinShort = OUTPUT_PINS.find((pin) => pins[pin] && nets.net(SNAPINO_PADS[pin]) === nets.gnd) ?? null;
-  const high = (net: number): boolean => net === nets.vcc || OUTPUT_PINS.some((pin) => pins[pin] && nets.net(SNAPINO_PADS[pin]) === net);
+  // The GND net is never HIGH: a HIGH pin wired to it is a pin short, not a source.
+  const high = (net: number): boolean => net !== nets.gnd && (net === nets.vcc || OUTPUT_PINS.some((pin) => pins[pin] && nets.net(SNAPINO_PADS[pin]) === net));
   const running = new Set<string>();
   if (!nets.short) {
     for (const id of SNAPINO_LOADS) {
@@ -79,6 +84,7 @@ export function analyzeSnapino(bench: SnapinoBench, pins: PinStates): SnapinoSta
       if (!seated(sockets)) continue;
       const a = nets.net(sockets[0]);
       const b = nets.net(sockets[1]);
+      if (a === b) continue; // bypassed: both ends on one net, no difference to drive it
       if ((high(a) && b === nets.gnd) || (high(b) && a === nets.gnd)) running.add(id);
     }
   }
@@ -91,6 +97,8 @@ export interface LightDriver {
   seated: boolean;
   /** One end reaches GND. */
   grounded: boolean;
+  /** Both ends on the same net (bridged), so it can never run. */
+  bypassed: boolean;
   always: boolean;
   pins: SnapinoPin[];
 }
@@ -99,14 +107,16 @@ export function lightDrivers(bench: SnapinoBench): { short: boolean; inputHigh: 
   const nets = snapinoNets(bench);
   const lights = SNAPINO_LIGHTS.map((id): LightDriver => {
     const sockets = bench[id]?.sockets;
-    if (!seated(sockets)) return { id, seated: false, grounded: false, always: false, pins: [] };
+    if (!seated(sockets)) return { id, seated: false, grounded: false, bypassed: false, always: false, pins: [] };
     const ends = [nets.net(sockets[0]), nets.net(sockets[1])];
     const grounded = ends.includes(nets.gnd);
-    // A net can drive the load when the load's OTHER end is GND (as in analyzeSnapino).
-    const driven = ends.filter((_, index) => ends[1 - index] === nets.gnd);
+    const bypassed = ends[0] === ends[1];
+    // A net can drive the load when it is not GND and the load's OTHER end is GND (as in
+    // analyzeSnapino). A D pin on the GND net drives nothing (pin short).
+    const driven = bypassed ? [] : ends.filter((net, index) => net !== nets.gnd && ends[1 - index] === nets.gnd);
     const always = !nets.short && driven.includes(nets.vcc);
     const pins = nets.short ? [] : OUTPUT_PINS.filter((pin) => driven.includes(nets.net(SNAPINO_PADS[pin])));
-    return { id, seated: true, grounded, always, pins };
+    return { id, seated: true, grounded, bypassed, always, pins };
   });
   return { short: nets.short, inputHigh: !nets.short && nets.net(SNAPINO_PADS.D2) === nets.vcc, lights };
 }

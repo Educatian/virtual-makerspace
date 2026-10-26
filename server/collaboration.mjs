@@ -24,7 +24,7 @@ function roomFor(request) {
  * rev-ack, claim-granted/denied, transform-rejected — come only from the room, never relayed. */
 const CLIENT_KINDS = new Set([
   "hello", "presence", "goodbye", "chat", "transform", "claim", "release", "voice-state", "phase", "trace",
-  "attention", "state-request", "state-response", "signal", "studio", "program", "edit", "room-state-request", "episode",
+  "attention", "state-request", "state-response", "signal", "studio", "program", "edit", "room-state-request", "episode", "clock",
 ]);
 
 /** Validates the bench messages the room core acts on; other client kinds pass through. */
@@ -46,6 +46,8 @@ function sanitize(message, participant) {
       const edit = sanitizeEdit(message);
       return edit ? { kind: "edit", participantId: participant.id, ...edit } : null;
     }
+    case "clock":
+      return typeof message.t0 === "number" && Number.isFinite(message.t0) ? { kind: "clock", t0: message.t0 } : null;
     case "episode": {
       const action = sanitizeRescueAction(message.action);
       return action && typeof message.opId === "string" && /^[\w-]{1,80}$/.test(message.opId) ? { kind: "episode", participantId: participant.id, opId: message.opId, action } : null;

@@ -218,6 +218,11 @@ export class RoomCore {
         this.transmitterChanged(applied.map((change) => change.componentId), Boolean(program), out);
         return out;
       }
+      case "clock":
+        // Clock sample for the shared transmission epoch: the client computes its offset from
+        // the round trip (t0 is the client's send time, echoed back untouched).
+        out.sender.push({ kind: "clock", t0: message.t0, serverNow: this.now() });
+        return out;
       case "room-state-request":
         // A client whose seed was refused (or that lost track) asks for the room's state again.
         out.sender.push(...this.join());

@@ -2154,6 +2154,7 @@ textarea:focus-visible {
 .strip-flash { position: absolute; top: 10px; height: 18px; display: grid; place-items: center; background: linear-gradient(180deg, #fff3c4, #ffc94d); border-radius: 3px; box-shadow: 0 0 8px rgba(255, 209, 102, 0.45); }
 .strip-flash b { color: #3a2a00; font-size: 0.6rem; }
 .strip-flash.is-ambiguous { background: repeating-linear-gradient(45deg, #ffcf70 0 4px, #f59e0b 4px 8px); }
+.strip-flash.is-continuing { border-top-right-radius: 0; border-bottom-right-radius: 0; box-shadow: 6px 0 0 -2px rgba(255, 207, 112, 0.55), 12px 0 0 -4px rgba(255, 207, 112, 0.3); }
 .strip-head { position: absolute; top: 2px; bottom: 2px; width: 2px; background: #9cc3ff; box-shadow: 0 0 6px #9cc3ff; }
 .strip-ticks { position: absolute; left: 0; right: 0; bottom: -14px; height: 12px; }
 .strip-ticks i { position: absolute; color: #7e8ba3; font-size: 0.56rem; font-style: normal; transform: translateX(-50%); }

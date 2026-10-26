@@ -116,6 +116,11 @@ export interface LightPulse {
   end: number;
   /** Which light loads were on. */
   sources: string[];
+  /**
+   * The light was still on when the transmission ended and stayed on afterwards (a lamp powered
+   * from 5V, not by a D pin): `end` is where the recording stops, not a falling edge.
+   */
+  continues?: boolean;
 }
 
 export interface Transmission {
@@ -158,7 +163,29 @@ export function lightPulses(transmission: Transmission): LightPulse[] {
       last.sources = [...new Set([...last.sources, ...pulse.sources])];
     } else merged.push({ ...pulse, sources: [...pulse.sources] });
   }
+  // After the end the transmitter's D pins are LOW. A light that is still lit with every pin LOW
+  // (5V-powered) does not switch off there: mark its last stretch as continuing.
+  const last = merged[merged.length - 1];
+  if (last && last.end === end) {
+    const after = analyzeSnapino(transmission.bench, LOW_PINS).running;
+    if (SNAPINO_LIGHTS.some((id) => after.has(id))) last.continues = true;
+  }
   return merged;
+}
+
+/** D pins that were set HIGH while wired straight to GND at some point of the transmission. */
+export function pinShorts(transmission: Transmission): SnapinoPin[] {
+  const end = transmissionEnd(transmission);
+  const input = analyzeSnapino(transmission.bench, LOW_PINS).inputHigh;
+  const found = new Set<SnapinoPin>();
+  for (const segment of pinTimeline(transmission.program, input)) {
+    if (segment.start >= end) break;
+    if (segment.end <= segment.start) continue;
+    for (const pin of OUTPUT_PINS) {
+      if (segment.pins[pin] && analyzeSnapino(transmission.bench, { ...LOW_PINS, [pin]: true }).pinShort === pin) found.add(pin);
+    }
+  }
+  return OUTPUT_PINS.filter((pin) => found.has(pin));
 }
 
 /** Pin levels at `ms` into the transmission (all LOW outside it). */
@@ -177,7 +204,8 @@ export interface DecodedFlash {
   start: number;
   duration: number;
   kind: FlashClass;
-  reason?: "too-short" | "between" | "too-long";
+  /** `unended`: still lit when the recording ended (it has no measurable length). */
+  reason?: "too-short" | "between" | "too-long" | "unended";
 }
 export interface DecodedGap {
   after: number;
@@ -225,7 +253,11 @@ const patternWord = (pattern: readonly FlashClass[]): Word | null =>
  * group (so the group reads as ambiguous rather than silently splitting or merging words).
  */
 export function decode(pulses: readonly LightPulse[]): Decoded {
-  const flashes: DecodedFlash[] = pulses.map((pulse) => ({ start: pulse.start, duration: pulse.end - pulse.start, ...classifyFlash(pulse.end - pulse.start) }));
+  const flashes: DecodedFlash[] = pulses.map((pulse) => ({
+    start: pulse.start,
+    duration: pulse.end - pulse.start,
+    ...(pulse.continues ? { kind: "?" as const, reason: "unended" as const } : classifyFlash(pulse.end - pulse.start)),
+  }));
   const gaps: DecodedGap[] = [];
   for (let index = 1; index < pulses.length; index += 1) {
     const duration = pulses[index].start - pulses[index - 1].end;
@@ -310,7 +342,8 @@ export function diagnose(transmission: Transmission, intent: readonly Word[], re
   if (!seatedLights.length) findings.push({ code: "no-light-part", message: "No lamp or LED was seated on the base during this transmission." });
   for (const light of seatedLights) {
     const name = LIGHT_NAMES[light.id] ?? light.id;
-    if (!light.grounded) findings.push({ code: "not-grounded", message: `${name} had no end reaching GND, so no current could flow through it.` });
+    if (light.bypassed) findings.push({ code: "bypassed", message: `Both ends of ${name} were on the same connected net (a snap wire joins them), so there was no difference across it and it could not light.` });
+    else if (!light.grounded) findings.push({ code: "not-grounded", message: `${name} had no end reaching GND, so no current could flow through it.` });
     else if (light.always) findings.push({ code: "always-on", message: `${name} was wired to 5V and GND, so it stayed lit whatever the program did.` });
     else if (!light.pins.length) findings.push({ code: "not-driven", message: `${name} reached GND, but its other end was not on a D pin.` });
     else {
@@ -318,16 +351,22 @@ export function diagnose(transmission: Transmission, intent: readonly Word[], re
       if (unused.length === light.pins.length) findings.push({ code: "wrong-pin", message: `${name} was wired to ${light.pins.join("/")}, but the program never set ${light.pins.length > 1 ? "those pins" : "that pin"} HIGH (it switched ${[...usedPins].join(", ") || "no pin"}).` });
     }
   }
+  for (const pin of pinShorts(transmission)) {
+    findings.push({ code: "pin-short", message: `${pin} was set HIGH while its pad was wired straight to GND (a short at the pin), so nothing could be driven from ${pin}.` });
+  }
   if (transmission.stoppedAtMs !== null && transmission.stoppedAtMs < transmission.durationMs) {
     findings.push({ code: "stopped", message: `The transmission was cut off at ${seconds(transmissionEnd(transmission))} of ${seconds(transmission.durationMs)}.` });
   }
   const input = analyzeSnapino(transmission.bench, LOW_PINS).inputHigh;
+  const continuing = pulses.some((pulse) => pulse.continues);
   const litAtEnd = SNAPINO_LIGHTS.some((id) => analyzeSnapino(transmission.bench, finalPins(transmission.program, input)).running.has(id));
-  if (litAtEnd && pulses.length && transmission.stoppedAtMs === null) {
-    findings.push({ code: "on-at-end", message: "The blocks left the light on when they finished; the transmitter switched it off at the end of the transmission, which is where the last flash ended." });
+  if (continuing) {
+    findings.push({ code: "still-lit", message: "The light was still on when the transmission ended and stays on afterwards (it is powered from 5V, not switched by a D pin), so its last flash has no end to measure." });
+  } else if (litAtEnd && pulses.length && transmission.stoppedAtMs === null) {
+    findings.push({ code: "on-at-end", message: "The blocks left a D pin HIGH when they finished; the transmitter set its pins LOW at the end of the transmission, which is where the last flash ended." });
   }
   decoded.flashes.forEach((flash, index) => {
-    if (flash.kind !== "?") return;
+    if (flash.kind !== "?" || flash.reason === "unended") return;
     const band = flash.reason === "between" ? `between short (≤${TIMING.shortMax} ms) and long (≥${TIMING.longMin} ms)` : flash.reason === "too-short" ? `shorter than a short flash (${TIMING.shortMin} ms)` : `longer than a long flash (${TIMING.longMax} ms)`;
     findings.push({ code: `flash-${flash.reason}`, message: `Flash ${index + 1} lasted ${flash.duration} ms: ${band}.` });
   });

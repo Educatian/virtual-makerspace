@@ -848,6 +848,10 @@ function enterWorkspace(): void {
       receiverView: () => workbench?.viewForReceiver(),
       /** Drop the realtime socket like a network failure (server rooms; reconnects by itself). */
       dropConnection: () => room?.dropConnectionForQa() ?? false,
+      /** On-screen rectangle of a part's glowing surfaces (screenshot crops for pixel checks). */
+      partScreenRect: (id: string) => workbench?.partScreenRect(id) ?? null,
+      /** Send one raw episode action as this participant (tests of stale/duplicate requests). */
+      episodeAction: (action: Parameters<DesktopRoom["episodeAction"]>[0]) => room?.episodeAction(action) ?? null,
       /** World position of a part (close-up framing). */
       partPosition: (id: string) => workbench?.partWorldPosition(id) ?? null,
       /** Snapino loads the 3D bench shows running (lit lamp/LED) right now. */
@@ -856,7 +860,7 @@ function enterWorkspace(): void {
       episode: () => {
         const state = room?.episode ?? null;
         const round = state?.round ?? null;
-        return { state, role: state ? (state.roles.sender?.id === room?.participant.id ? "sender" : state.roles.receiver?.id === room?.participant.id ? "receiver" : null) : null, elapsed: round && room ? room.serverTime() - round.startedAt : null, online: room?.online ?? false };
+        return { state, role: state ? (state.roles.sender?.id === room?.participant.id ? "sender" : state.roles.receiver?.id === room?.participant.id ? "receiver" : null) : null, elapsed: round && room ? room.serverTime() - round.startedAt : null, online: room?.online ?? false, clockOffset: room ? room.serverTime() - Date.now() : null, clockRtt: room?.clockSampleRtt ?? null };
       },
       /** Drop a cable end into a socket through the real drag path (claim → move → release). */
       dropEnd: (componentId: string, index: 0 | 1, socket: number) => workbench?.qaDropEndpoint(componentId, index, socket) ?? false,

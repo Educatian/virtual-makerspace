@@ -29,6 +29,7 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "edit",
   "room-state-request",
   "episode",
+  "clock",
 ]);
 
 
@@ -601,6 +602,9 @@ export class MakerspaceRoom extends DurableObject {
       const sequence = incoming.sequence;
       if (!componentId || !transform || !Number.isSafeInteger(sequence) || sequence < 0) return null;
       return { kind: "transform", participantId: participant.id, componentId, transform, sequence };
+    }
+    if (incoming.kind === "clock") {
+      return typeof incoming.t0 === "number" && Number.isFinite(incoming.t0) ? { kind: "clock", t0: incoming.t0 } : null;
     }
     if (incoming.kind === "episode") {
       const action = sanitizeRescueAction(incoming.action);

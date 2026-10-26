@@ -16,6 +16,7 @@ import {
   onTransmitterChanged,
   reduceRescue,
   sanitizeRescueState,
+  supersedes,
   transmitting,
   type RescueAction,
   type RescueRefusal,
@@ -258,6 +259,7 @@ const SERVER_REPLY_KINDS = new Set([
   "program-ack",
   "episode-state",
   "episode-result",
+  "clock",
 ]);
 
 export class DesktopRoom {
@@ -297,6 +299,9 @@ export class DesktopRoom {
   /** Server clock minus this tab's clock, from the last message that carried `serverNow`. */
   private serverOffset = 0;
   private offsetAt = 0;
+  /** Round trip of the clock sample the offset currently comes from (Infinity: none yet). */
+  private clockRtt = Infinity;
+  private clockTimers: number[] = [];
   /** Peer mode: reads this tab's Snapino parts for a transmission snapshot. */
   episodeBench: (id: string) => { sockets?: unknown; on?: unknown } | null = () => null;
 
@@ -417,6 +422,8 @@ export class DesktopRoom {
    */
   private noteServerNow(serverNow: unknown, fresh = false): void {
     if (typeof serverNow !== "number" || !Number.isFinite(serverNow)) return;
+    // Once a round-trip clock sample exists it is the better estimate (see noteClockSample).
+    if (this.clockRtt !== Infinity && !fresh) return;
     const now = Date.now();
     const candidate = serverNow - now;
     const running = this.episode ? transmitting(this.episode, now + this.serverOffset) : false;
@@ -424,6 +431,47 @@ export class DesktopRoom {
       this.serverOffset = candidate;
       this.offsetAt = now;
     }
+  }
+
+  /**
+   * Round-trip clock sample (`clock` ping, echoed by the room with its time): the room stamped
+   * `serverNow` somewhere inside [t0, t1], so offset = serverNow − (t0 + t1) / 2 with an error of at
+   * most rtt / 2. The smallest round trip seen wins (a sample delayed by a busy page has a long
+   * round trip and is ignored); a minute-old estimate may be replaced (clock drift).
+   */
+  private noteClockSample(t0: unknown, serverNow: unknown): void {
+    if (typeof t0 !== "number" || typeof serverNow !== "number" || !Number.isFinite(t0) || !Number.isFinite(serverNow)) return;
+    const t1 = Date.now();
+    const rtt = t1 - t0;
+    if (rtt < 0 || rtt > 60_000) return;
+    if (rtt <= this.clockRtt || t1 - this.offsetAt > 60_000) {
+      this.serverOffset = serverNow - (t0 + t1) / 2;
+      this.offsetAt = t1;
+      this.clockRtt = rtt;
+    }
+  }
+
+  /** The current clock estimate's round trip (error bound: half of it); null if none yet. */
+  get clockSampleRtt(): number | null {
+    return this.clockRtt === Infinity ? null : this.clockRtt;
+  }
+
+  private startClockSync(socket: WebSocket): void {
+    this.stopClockSync();
+    const ping = (): void => {
+      if (this.socket === socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "clock", t0: Date.now() }));
+    };
+    // A few samples soon after connecting, then one every 20 s (a tiny message).
+    for (const delay of [0, 1000, 3000, 7000]) this.clockTimers.push(window.setTimeout(ping, delay));
+    this.clockTimers.push(window.setInterval(ping, 20_000));
+  }
+
+  private stopClockSync(): void {
+    for (const timer of this.clockTimers) {
+      window.clearTimeout(timer);
+      window.clearInterval(timer);
+    }
+    this.clockTimers = [];
   }
 
   /**
@@ -469,8 +517,8 @@ export class DesktopRoom {
   }
 
   private applyEpisode(state: RescueState): void {
-    // Never go back in time (a late duplicate of an older state).
-    if (this.episode && this.sync.mode === "server" && state.rev < this.episode.rev && this.episode.rev - state.rev < 1_000_000) return;
+    // Never go back in time (a late duplicate of an older state); revisions survive resets.
+    if (this.sync.mode === "server" && !supersedes(this.episode, state)) return;
     this.episode = state;
     this.events.onEpisode(state);
   }
@@ -818,6 +866,7 @@ export class DesktopRoom {
   }
 
   close(): void {
+    this.stopClockSync();
     for (const waiter of this.editWaiters.values()) {
       window.clearTimeout(waiter.timer);
       waiter.resolve({ ok: false, reason: "disconnected" });
@@ -867,6 +916,11 @@ export class DesktopRoom {
       if (kind === "edit" && (message as { participantId?: unknown }).participantId === this.participant.id) return;
       if (kind === "episode-state" || kind === "episode-result") {
         this.receiveEpisode(message as unknown as Record<string, unknown>);
+        return;
+      }
+      if (kind === "clock") {
+        const raw = message as unknown as Record<string, unknown>;
+        this.noteClockSample(raw.t0, raw.serverNow);
         return;
       }
       if (kind === "room-state") {
@@ -1090,6 +1144,7 @@ export class DesktopRoom {
       this.awaitingState = true;
       socket.send(JSON.stringify({ kind: "hello", participant: this.participant } satisfies RoomMessage));
       this.flushSocketOutbox(socket);
+      this.startClockSync(socket);
       // The room answers hello with its authoritative state (room-state): no peer copy needed.
       this.events.onVoiceStatus("Realtime room connected");
     });
@@ -1097,6 +1152,8 @@ export class DesktopRoom {
     socket.addEventListener("close", () => {
       if (this.socket !== socket) return;
       this.socket = null;
+      this.stopClockSync();
+      this.clockRtt = Infinity;
       if (this.closed) return;
       // Pending edits and drags fail; the room-state on reconnect is authoritative again.
       this.sync.resetForReconnect();

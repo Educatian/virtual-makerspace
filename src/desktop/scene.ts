@@ -493,6 +493,32 @@ export class DesktopWorkbenchScene {
     return [position.x, position.y, position.z];
   }
 
+  /**
+   * Visual QA: where a part's glowing surfaces (the lamp's bulb, the LED's dome) — or the whole
+   * part — appear on screen, in client CSS pixels. Used to crop screenshots for pixel checks.
+   */
+  partScreenRect(id: string): { x: number; y: number; width: number; height: number } | null {
+    const component = this.components.get(id);
+    if (!component) return null;
+    const glowing = new Set((component.userData.glowMaterials ?? []) as MeshStandardMaterial[]);
+    const box = new Box3();
+    component.updateMatrixWorld(true);
+    component.traverse((child) => {
+      if (child instanceof Mesh && (!glowing.size || glowing.has(child.material as MeshStandardMaterial))) box.expandByObject(child);
+    });
+    if (box.isEmpty()) box.setFromObject(component);
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const corner = new Vector3();
+    for (let index = 0; index < 8; index += 1) {
+      corner.set(index & 1 ? box.max.x : box.min.x, index & 2 ? box.max.y : box.min.y, index & 4 ? box.max.z : box.min.z).project(this.camera);
+      const x = canvas.left + ((corner.x + 1) / 2) * canvas.width;
+      const y = canvas.top + ((1 - corner.y) / 2) * canvas.height;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+
   resetView(): void {
     this.camera.position.set(this.activeStudio === "circuit" ? 6.4 : 7.2, this.activeStudio === "circuit" ? 6.1 : 5.8, this.activeStudio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(this.activeStudio === "circuit" ? 0.1 : 0, this.activeStudio === "circuit" ? 0.2 : 0.55, this.activeStudio === "circuit" ? 0 : -0.1);
