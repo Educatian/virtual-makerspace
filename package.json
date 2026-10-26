@@ -13,7 +13,7 @@
     "test:agent": "node --experimental-strip-types scripts/teachable-agent-check.mjs",
     "test:project": "node --experimental-strip-types scripts/project-state-check.mjs",
     "test:snapino": "node --experimental-strip-types scripts/snapino-check.mjs && node --experimental-strip-types scripts/snapino-sketch-check.mjs",
-    "test": "npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync && npm run test:tools && npm run test:episode",
+    "test": "npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync && npm run test:tools && npm run test:episode && npm run test:diagram",
     "test:e2e": "node scripts/e2e-ai-teammate.mjs",
     "test:e2e:worker": "node scripts/e2e-ai-teammate-worker.mjs",
     "test:e2e:room": "node scripts/e2e-room-sync.mjs",
@@ -24,6 +24,7 @@
     "test:sync": "node --experimental-strip-types scripts/sync-check.mjs",
     "test:tools": "node --experimental-strip-types scripts/tools-check.mjs",
     "test:episode": "node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs",
+    "test:diagram": "node --experimental-strip-types scripts/snapino-diagram-check.mjs",
     "test:e2e:rescue": "node --experimental-strip-types scripts/e2e-rescue-signal.mjs"
   },
   "dependencies": {
