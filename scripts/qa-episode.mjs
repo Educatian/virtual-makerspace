@@ -179,7 +179,8 @@ const live = await episode(page);
 if (!(live.elapsed < live.state.round.durationMs) || !/Stop/.test(await panelText(page))) issues.push(`e06 was not captured during the transmission (${Math.round(live.elapsed)} of ${live.state.round.durationMs} ms)`);
 // Under software rendering the steps above can take a minute or more; if the 110 s flash has
 // already ended, there is nothing left to stop (recorded in stats.json either way).
-await tap(page, '[data-episode="stop"]');
+const stillRunning = await episode(page);
+if (stillRunning.state.round && !stillRunning.state.round.stopReason && stillRunning.elapsed < stillRunning.state.round.durationMs - 3000) await tap(page, '[data-episode="stop"]');
 const halted = await until(() => episode(page), (state) => state.state?.round?.stopReason === "stopped" || state.elapsed >= state.state.round.durationMs);
 stats["e06-transmitting"].endedBy = halted.state.round.stopReason === "stopped" ? `Stop at ${Math.round(halted.state.round.stoppedAtMs)} ms` : "ran to its end before Stop";
 stats["e06-transmitting"].capturedAtMs = Math.round(live.elapsed);
