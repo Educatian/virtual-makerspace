@@ -196,6 +196,25 @@ The workshop goal is met by a delivered round that the team has also explained.
 
 **Panel actions are serialized.** While one room action is in flight, every action button in the panel is disabled (and `aria-busy` is set), so a quick second click is never dropped silently or built on a not-yet-updated design. An earlier e2e run caught exactly that: the second word was added on top of a state that did not yet contain the first.
 
+### Results of the last developer-environment run
+
+These runs were made in a developer environment: headless Chromium with SwiftShader, wrangler dev and a local proxy, on 2 CPU cores. They are not GitHub CI; the repository's only GitHub check is GitGuardian. Every room was a random QA room, never 7K3M.
+
+| Command | App commit | Result |
+|---|---|---|
+| `npm test` (typecheck, circuit, agent, project, snapino, sync, tools, episode) | `89a238c` | All passed. Rescue signal: 597 checks; episode sync: 31; tools: 36; project: 270; sync: 858; circuit engine: 17,742. |
+| `npm run build` | `89a238c` | OK |
+| `e2e-rescue-signal.mjs` (two browsers, Worker) | `89a238c` | 38/38 |
+| `qa-episode.mjs` (capture) | `89a238c` | No issues ([renders](images/episodes/rescue-signal/README.md)) |
+| `e2e-ai-teammate.mjs` (peer) | `8261420` | 37/37 |
+| `e2e-ai-teammate-worker.mjs` | `8261420` | 10/10 |
+| `e2e-worker-sync.mjs` | `8261420` | 18/18 |
+| `e2e-cable-end.mjs` | `8261420` | 7/7 on rerun. The first run failed its late-joiner check (6/7); the rerun passed unchanged. |
+| `e2e-snapino-history.mjs` | `8261420` | 25/25 on rerun. The first attempt hit a stopped wrangler (the session's background-process limit), so it never ran. |
+| `e2e-room-sync.mjs` | `8261420` | **Fails** at the member's "Snapino code" step: a timeout while two 1440×900 Snapino pages render in software. The unmodified base `3394e4b` fails at the same step in the same environment, so this is not caused by this branch, but it is not a pass. |
+
+`8261420` and `89a238c` differ only in the recorded-light strip's axis labels.
+
 ### Limits (honest)
 
 - **Not a radio or optics model.** Light reaches the receiver if the lamp is lit; there is no distance, glare or brightness threshold.
