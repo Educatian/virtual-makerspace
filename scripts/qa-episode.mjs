@@ -126,20 +126,27 @@ await shot(page, "e05-receiver-view-lit");
 await page.evaluate(() => window.__vmQa.pins({ D5: false }));
 
 // A running transmission (panel + live lamp). Software rendering takes seconds per frame, so this
-// round uses the slow end of every band (still INJURED · NORTH under the protocol) to stay on
-// screen long enough to capture; the shot is taken on the first frame that shows the lamp lit.
+// round is a deliberately long single flash (110 s, under the 120 s cap; not a protocol word):
+// the shot is taken while it is running and lit, then the sender stops it (the Stop path).
 await page.evaluate(() => window.__vmQa.receiverView());
-const slow = [];
-const flash = (ms, gapAfter) => { slow.push({ op: "write", pin: "D5", value: true }, { op: "wait", ms }, { op: "write", pin: "D5", value: false }); if (gapAfter) slow.push({ op: "wait", ms: gapAfter }); };
-flash(1450, 550); flash(1450, 4000); flash(1450, 550); flash(420, 550); flash(420, 0);
-await page.evaluate((program) => window.__vmQa.editDraft(program), slow);
-await transmitAndWait(page, 1, async () => {
-  await until(() => page.evaluate(() => window.__vmQa.lights()), (lights) => lights.includes("sno-l1"), 20_000).catch(() => undefined);
-  stats["e06-transmitting"] = await page.evaluate(() => window.__vmQa.stats());
-  if (wanted("e06-transmitting")) await page.screenshot({ path: `${out}/e06-transmitting.png` });
-});
-await shot(page, "e07-solo-check-delivered");
+await page.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, ...Array.from({ length: 22 }, () => ({ op: "wait", ms: 5000 })), { op: "write", pin: "D5", value: false }]));
+await tap(page, '[data-episode="transmit"]');
+await until(() => episode(page), (state) => state.state?.round?.n === 1);
+await until(() => page.evaluate(() => window.__vmQa.lights()), (lights) => lights.includes("sno-l1"), 60_000);
+stats["e06-transmitting"] = await page.evaluate(() => window.__vmQa.stats());
+await page.screenshot({ path: `${out}/e06-transmitting.png` });
+const live = await episode(page);
+if (!(live.elapsed < live.state.round.durationMs) || !/Stop/.test(await panelText(page))) issues.push(`e06 was not captured during the transmission (${Math.round(live.elapsed)} of ${live.state.round.durationMs} ms)`);
+await tap(page, '[data-episode="stop"]');
+await until(() => episode(page), (state) => state.state?.round?.stopReason === "stopped");
+await until(() => page.evaluate(() => window.__vmQa.lights()), (lights) => !lights.includes("sno-l1"), 60_000);
+await closeRound(page);
+
+// A working round: the DI helper's blocks for INJURED · NORTH, then the solo check.
 await tap(page, '[data-episode="write-blocks"]');
+await page.waitForTimeout(400);
+await transmitAndWait(page, 2);
+await shot(page, "e07-solo-check-delivered");
 const delivered = await panelText(page);
 if (!/INJURED/.test(delivered) || !/NORTH/.test(delivered) || !/No problems found/.test(delivered)) issues.push(`solo check after a working round: ${delivered.slice(0, 300)}`);
 await closeRound(page);
@@ -153,7 +160,7 @@ await tap(page, "#confirm-ok");
 await until(() => page.evaluate(() => window.__vmQa.bench().parts["sno-w2a"]?.sockets), (sockets) => !sockets);
 await tap(page, '[data-episode="write-blocks"]');
 await page.waitForTimeout(400);
-await transmitAndWait(page, 2);
+await transmitAndWait(page, 3);
 await shot(page, "e08-open-circuit-solo-check");
 const open8 = await panelText(page);
 if (!/No light at all/.test(open8)) issues.push(`open circuit solo check: ${open8.slice(0, 300)}`);
@@ -162,7 +169,7 @@ await closeRound(page);
 // Recovery: rebuild the loop, same message, transmit again.
 await tap(page, "#load-field-test");
 await until(() => page.evaluate(() => window.__vmQa.bench().parts["sno-w2a"]?.sockets), Boolean);
-await transmitAndWait(page, 3);
+await transmitAndWait(page, 4);
 await shot(page, "e09-recovered-solo-check");
 if (!/No problems found/.test(await panelText(page))) issues.push("recovery round still reports problems");
 await page.context().close();

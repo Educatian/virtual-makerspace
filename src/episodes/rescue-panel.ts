@@ -470,7 +470,9 @@ export class RescueEpisode {
       const label = labelled ? `<b>${flashGlyph(flash.kind)}</b>` : "";
       return `<span class="strip-flash${labelled && flash.kind === "?" ? " is-ambiguous" : ""}" style="left:${(pulse.start / end) * 100}%;width:${Math.max(0.6, ((pulse.end - pulse.start) / end) * 100)}%" title="${pulse.end - pulse.start} ms">${label}</span>`;
     }).join("");
-    const ticks = Array.from({ length: Math.floor(end / 1000) + 1 }, (_, second) => `<i style="left:${((second * 1000) / end) * 100}%">${second}s</i>`).join("");
+    // At most about eight labels, whatever the length (1, 2, 5, 10, 20, 30 or 60 s apart).
+    const step = [1, 2, 5, 10, 20, 30, 60].find((candidate) => end / (candidate * 1000) <= 8) ?? 60;
+    const ticks = Array.from({ length: Math.floor(end / (step * 1000)) + 1 }, (_, index) => `<i style="left:${((index * step * 1000) / end) * 100}%">${index * step}s</i>`).join("");
     const head = playhead === null ? "" : `<span class="strip-head" style="left:${Math.min(100, (playhead / end) * 100)}%"></span>`;
     return `<div class="episode-strip" role="img" aria-label="Recorded light: ${view.pulses.length} flash${view.pulses.length === 1 ? "" : "es"} over ${seconds(end)}">${bars}${head}<div class="strip-ticks">${ticks}</div></div>`;
   }
