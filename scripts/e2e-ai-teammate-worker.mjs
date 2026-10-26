@@ -102,7 +102,7 @@ const member = await maker("member@example.test");
 await member.waitForTimeout(8000);
 const memberRoster = await roster(member);
 check("a late joiner sees Bolt as an agent", memberRoster.some((row) => row.agent && /Bolt/.test(row.name)), JSON.stringify(memberRoster));
-check("the late joiner gets Bolt's circuit from the human host", await powered(member));
+check("the late joiner gets Bolt's circuit from the room's authoritative state", await powered(member));
 check("the late joiner is not offered a second Bolt", await member.evaluate(() => !document.querySelector("#invite-ai")));
 
 // Electrical values cross the Worker: a live transform, then a late-join state-response.
@@ -121,7 +121,7 @@ check("a resistor value edit relays through the Durable Object", await waitForMe
 await member.close();
 const late = await maker("late@example.test");
 await late.waitForTimeout(8000);
-check("a later joiner's state-response carries the edited value", await waitForMeter(late, /Safe · 14/), await meter(late));
+check("a later joiner's room-state carries the edited value", await waitForMeter(late, /Safe · 14/), await meter(late));
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

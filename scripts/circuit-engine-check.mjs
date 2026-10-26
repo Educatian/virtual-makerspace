@@ -97,11 +97,24 @@ const ledLoop = (ohms, reversed = false, volts = 9) => solveCircuit({ elements: 
   near(r.elements.D.amps, (5 - 1.9) / 236, 1e-6, "5 V / 220 Ω current");
 }
 {
-  const r = ledLoop(1000, true);
+  // Backwards at 3 V: blocked (open), and within the LED's 5 V reverse maximum.
+  const r = ledLoop(1000, true, 3);
   is(r.elements.D.led.state, "reverse", "reversed LED is detected");
   assert.ok(Math.abs(r.elements.D.amps) < 1e-6, "reversed LED blocks current");
   assert.ok(codes(r).includes("reverse-led"));
+  assert.ok(!codes(r).includes("led-reverse-overvoltage"), "3 V reverse is within the 5 V maximum");
   is(r.status, "open-circuit", "no current flows with the LED backwards");
+  checks += 3;
+}
+{
+  // Backwards at 9 V: the whole ~9 V sits across the LED in reverse — beyond a typical 5 V
+  // maximum, so it is unsafe (never "ok", never a success), not merely open.
+  const r = ledLoop(1000, true, 9);
+  is(r.elements.D.led.state, "reverse", "reversed LED at 9 V is detected");
+  near(r.elements.D.volts, -9, 0.01, "nearly the full 9 V is across the reversed LED");
+  assert.ok(codes(r).includes("led-reverse-overvoltage"));
+  is(r.diagnostics.find((d) => d.code === "led-reverse-overvoltage").severity, "error", "reverse overvoltage is an error");
+  is(r.status, "unsafe", "9 V in reverse is unsafe");
   checks += 2;
 }
 {
@@ -358,6 +371,167 @@ for (const bad of [-1, 192, 3.5, Number.NaN, "7", null]) is(socketNet(bad), null
   is(lowVolt.success, true, "220 Ω at an edited 5 V supply is safe");
 }
 
+// ── Regressions from the PR #3 acceptance review (exact reported cases) ──────────────────────
+{
+  // A forward red LED lit safely, plus a green LED wired backwards across the 9 V supply
+  // (through the red jumper): the green LED sees ~9 V in reverse. Previously a "success".
+  const board = analyzeBoard(desktopBoardParts({
+    "battery-9v": [21, 23], "resistor-1k": [36, 39], "led-red": [53, 52], "led-green": [71, 70], "wire-red": [86, 85],
+  }));
+  is(board.result.elements["led-red"].led.state, "lit", "the red LED itself is lit");
+  is(board.result.elements["led-green"].led.state, "reverse", "the green LED is reversed");
+  assert.ok(board.result.elements["led-green"].volts < -5, "with more than 5 V in reverse");
+  assert.ok(codes(board.result).includes("led-reverse-overvoltage"), "reverse overvoltage is diagnosed");
+  is(board.result.status, "unsafe", "the board is unsafe");
+  is(board.success, false, "and is never a success");
+  checks += 2;
+}
+{
+  // The 330 Ω preset at 9 V: (9 − 1.9) / (330 + 15 + 1) = 20.52 mA, above the 20 mA rating.
+  const expected = (9 - 1.9) / (330 + 15 + 1);
+  const board = analyzeBoard(desktopBoardParts({ "battery-9v": [21, 23], "resistor-220": [36, 39], "led-red": [53, 52] }, { "resistor-220": { ohms: 330 } }));
+  near(board.result.elements["led-red"].amps, expected, 1e-9, "330 Ω at 9 V = 20.52 mA");
+  is(board.result.elements["led-red"].led.state, "overcurrent", "20.52 mA is over the 20 mA rating (no 5% grace)");
+  is([board.result.status, board.success], ["unsafe", false], "so it is unsafe, not a success");
+}
+{
+  // A direct jumper short at 1 V: 1 V / (1 Ω internal + 0.05 Ω) ≈ 0.95 A, under the 1 A
+  // current threshold — still a short (jumpers alone between the terminals).
+  const board = analyzeBoard(desktopBoardParts({ "battery-9v": [21, 23], "wire-red": [37, 39] }, { "battery-9v": { volts: 1 } }));
+  near(board.result.elements["battery-9v"].amps, 1 / 1.05, 1e-6, "≈ 0.95 A");
+  is(board.result.status, "short-circuit", "a 1 V jumper short is a short circuit");
+  is(board.short, true, "reported as short");
+  is(board.success, false, "never a success");
+}
+{
+  // Cells in series: each cell's loop runs through the other one. Previously "open-circuit".
+  const r = solveCircuit({ elements: [
+    { kind: "source", id: "A", pos: "x", neg: "g", volts: 1.5 },
+    { kind: "source", id: "B", pos: "p", neg: "x", volts: 1.5 },
+    { kind: "resistor", id: "R", a: "p", b: "m", ohms: 47 },
+    { kind: "led", id: "D", anode: "m", cathode: "g", color: "red" },
+  ] });
+  const expected = (3 - 1.9) / (47 + 15 + 2);
+  near(r.elements.D.amps, expected, 1e-9, "two 1.5 V cells in series drive (3 − 1.9) / 64 Ω");
+  is(r.status, "ok", "series cells form a closed loop");
+  is(r.elements.D.led.state, "lit", "and light the LED");
+  // Opposing cells: the net 0 V cannot push the LED on — open, as expected.
+  const opposed = solveCircuit({ elements: [
+    { kind: "source", id: "A", pos: "x", neg: "g", volts: 1.5 },
+    { kind: "source", id: "B", pos: "x", neg: "p", volts: 1.5 },
+    { kind: "resistor", id: "R", a: "p", b: "m", ohms: 47 },
+    { kind: "led", id: "D", anode: "m", cathode: "g", color: "red" },
+  ] });
+  is(opposed.status, "open-circuit", "opposing cells leave the LED off: open");
+}
+{
+  // Invalid input is the most severe status, whatever else is wrong.
+  const unsafe = solveCircuit({ elements: [
+    { kind: "source", id: "B", pos: "p", neg: "g", volts: 9 },
+    { kind: "resistor", id: "R", a: "p", b: "m", ohms: Number.NaN },
+    { kind: "led", id: "D", anode: "p", cathode: "g", color: "red" },
+  ] });
+  is(unsafe.elements.D.led.state, "burnout", "the remaining LED burns out");
+  is(unsafe.status, "invalid", "but a NaN resistor makes the status invalid (not unsafe)");
+  const shorted = solveCircuit({ elements: [
+    { kind: "source", id: "B", pos: "p", neg: "g", volts: 9 },
+    { kind: "resistor", id: "R", a: "p", b: "m", ohms: -5 },
+    { kind: "wire", id: "W", a: "p", b: "g" },
+  ] });
+  is(shorted.status, "invalid", "invalid outranks a short circuit");
+  const board = analyzeBoard(desktopBoardParts({ "battery-9v": [21, 23], "resistor-1k": [36, 39], "led-red": [53, 52] }, { "resistor-1k": { ohms: Number.NaN } }));
+  is(board.result.status, "invalid", "a NaN resistance on the board is invalid");
+  is(board.success, false, "and never a success");
+}
+{
+  // Exact rating boundary: I = (9 − 1.9) / (R + 16). R = 339 Ω gives 20 mA; just above the
+  // resistance is within rating, just below is over it.
+  const at = (ohms) => ledLoop(ohms, false, 9);
+  const below = at(339.5);
+  assert.ok(below.elements.D.amps < 0.02, "339.5 Ω is just under 20 mA");
+  is([below.elements.D.led.state, below.status], ["lit", "ok"], "just under the rating: lit and ok");
+  const above = at(338.5);
+  assert.ok(above.elements.D.amps > 0.02, "338.5 Ω is just over 20 mA");
+  is([above.elements.D.led.state, above.status], ["overcurrent", "unsafe"], "just over the rating: overcurrent and unsafe");
+  near(at(339).elements.D.amps, 0.02, 1e-9, "339 Ω sits on the 20 mA boundary");
+  // Reverse-voltage boundary: 4.9 V backwards is tolerated, 5.1 V is not.
+  is(codes(ledLoop(1000, true, 4.9)).includes("led-reverse-overvoltage"), false, "4.9 V reverse is within the maximum");
+  is(codes(ledLoop(1000, true, 5.1)).includes("led-reverse-overvoltage"), true, "5.1 V reverse exceeds it");
+  checks += 2;
+}
+
+// ── Generated loops vs an independent closed-form expectation ─────────────────────────────
+// Battery + → resistor → LED → battery − at random columns, halves, orientations, colors and
+// values. Expected current from the documented model alone (not the engine):
+//   I = max(0, V − Vf) / (R + 15 Ω LED series + 1 Ω battery);  safe success ⇔ 2 mA < I ≤ 20 mA.
+// Each safe base also gets unsafe variants that must never succeed.
+const generatedLoops = [];
+{
+  let seed = 2026;
+  const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+  const pick = (list) => list[Math.floor(random() * list.length)];
+  const VF = { red: 1.9, green: 2.1 };
+  let successes = 0;
+  let unsafeCount = 0;
+  let variants = 0;
+  for (let trial = 0; trial < 2000; trial += 1) {
+    const cols = [];
+    while (cols.length < 3) {
+      const col = Math.floor(random() * 16);
+      if (!cols.includes(col)) cols.push(col);
+    }
+    const [pCol, nCol, mCol] = cols;
+    const half = random() < 0.5 ? 1 : 6; // first row of the top or bottom half
+    const hole = (rowOffset, col) => (half + rowOffset) * 16 + col;
+    const volts = Math.round((1 + random() * 11) * 10) / 10;
+    const ohms = random() < 0.5 ? pick([100, 220, 330, 470, 1000, 2200, 4700, 10000]) : roundOhms(10 + random() * 4990);
+    const ledId = random() < 0.5 ? "led-red" : "led-green";
+    const color = ledId === "led-red" ? "red" : "green";
+    const resistorId = random() < 0.5 ? "resistor-220" : "resistor-1k";
+    const flipResistor = random() < 0.5;
+    const placements = {
+      "battery-9v": [hole(0, pCol), hole(0, nCol)],
+      [resistorId]: flipResistor ? [hole(1, mCol), hole(1, pCol)] : [hole(1, pCol), hole(1, mCol)],
+      [ledId]: [hole(2, mCol), hole(2, nCol)],
+    };
+    const props = { "battery-9v": { volts }, [resistorId]: { ohms } };
+    const expected = Math.max(0, volts - VF[color]) / (ohms + 16);
+    if (Math.abs(expected - 0.02) < 1e-7 || Math.abs(expected - 0.002) < 1e-7) continue;
+    const expectSuccess = expected > 0.002 && expected <= 0.02;
+    const board = analyzeBoard(desktopBoardParts(placements, props));
+    near(board.result.elements[ledId].amps, expected, 1e-7, `generated ${trial}: LED current matches the closed form`);
+    is(board.success, expectSuccess, `generated ${trial}: success iff 2 mA < I ≤ 20 mA (I = ${(expected * 1000).toFixed(2)} mA)`);
+    if (expectSuccess) {
+      successes += 1;
+      generatedLoops.push({ placements, props });
+      is(board.result.status, "ok", `generated ${trial}: a safe loop is ok`);
+      // Unsafe variants of a safe loop never succeed.
+      const reversed = analyzeBoard(desktopBoardParts({ ...placements, [ledId]: [hole(2, nCol), hole(2, mCol)] }, props));
+      is(reversed.success, false, `generated ${trial}: reversed LED is not a success`);
+      is(reversed.result.status, volts > 5 + 1e-9 ? "unsafe" : "open-circuit", `generated ${trial}: reversed LED is ${volts > 5 ? "unsafe (over 5 V reverse)" : "open"}`);
+      const otherResistor = resistorId === "resistor-220" ? "resistor-1k" : "resistor-220";
+      const bypassed = analyzeBoard(desktopBoardParts({ ...placements, [resistorId]: null, "wire-red": placements[resistorId] }, props));
+      // Without the resistor only the LED's 15 Ω, the 1 Ω cell and the 0.05 Ω jumper limit it.
+      const bypassAmps = Math.max(0, volts - VF[color]) / 16.05;
+      if (Math.abs(bypassAmps - 0.02) > 1e-7) {
+        is(bypassed.success, bypassAmps > 0.002 && bypassAmps <= 0.02, `generated ${trial}: a jumper instead of the resistor succeeds only if ${(bypassAmps * 1000).toFixed(1)} mA is safe`);
+        if (bypassAmps > 0.02) is(bypassed.result.status, "unsafe", `generated ${trial}: bypassed resistor overdrives the LED`);
+      }
+      const shorted = analyzeBoard(desktopBoardParts({ ...placements, "wire-blue": [hole(3, pCol), hole(3, nCol)] }, props));
+      is([shorted.result.status, shorted.success], ["short-circuit", false], `generated ${trial}: a jumper across the battery is a short`);
+      const tooSmall = analyzeBoard(desktopBoardParts({ ...placements, [resistorId]: null, [otherResistor]: placements[resistorId] }, { ...props, [otherResistor]: { ohms: 10 } }));
+      if ((volts - VF[color]) / 26 > 0.02) is(tooSmall.success, false, `generated ${trial}: 10 Ω overdrives the LED`);
+      variants += 4;
+    } else if (expected > 0.02) {
+      unsafeCount += 1;
+      is(board.result.status, "unsafe", `generated ${trial}: an overdriven loop is unsafe`);
+    }
+  }
+  assert.ok(successes > 100, `generated loops include safe successes (${successes})`);
+  assert.ok(unsafeCount > 100, `and overdriven ones (${unsafeCount})`);
+  console.log(`generated: ${successes} safe loops succeeded, ${unsafeCount} overdriven loops refused, ${variants} variants checked (reversed, bypassed, shorted, 10 Ω)`);
+}
+
 // ── Fuzz: random breadboard layouts never fail to solve, and success always means a safe LED ──
 {
   let seed = 11;
@@ -365,9 +539,12 @@ for (const bad of [-1, 192, 3.5, Number.NaN, "7", null]) is(socketNet(bad), null
   const ids = ["battery-9v", "led-red", "led-green", "resistor-220", "resistor-1k", "wire-red", "wire-blue", "wire-yellow"];
   let successes = 0;
   for (let trial = 0; trial < 3000; trial += 1) {
-    const placements = {};
-    const used = new Set();
+    // Some trials start from a known safe loop and scatter the remaining parts around it.
+    const base = random() < 0.4 ? generatedLoops[Math.floor(random() * generatedLoops.length)] : null;
+    const placements = base ? { ...base.placements } : {};
+    const used = new Set(Object.values(placements).flat());
     for (const id of ids) {
+      if (placements[id]) continue;
       if (random() < 0.25) continue;
       const a = Math.floor(random() * 192);
       // Most parts land near their own column so loops actually form.
@@ -377,14 +554,21 @@ for (const bad of [-1, 192, 3.5, Number.NaN, "7", null]) is(socketNet(bad), null
       used.add(b);
       placements[id] = [a, b];
     }
-    const props = { "resistor-220": { ohms: [10, 100, 220, 1000, 1e6][Math.floor(random() * 5)] }, "battery-9v": { volts: [1, 1.5, 5, 9, 12][Math.floor(random() * 5)] } };
+    const props = base ? base.props : { "resistor-220": { ohms: [10, 100, 220, 1000, 1e6][Math.floor(random() * 5)] }, "battery-9v": { volts: [1, 1.5, 5, 9, 12][Math.floor(random() * 5)] } };
     const result = analyzeBoard(desktopBoardParts(placements, props));
     assert.ok(!["singular", "non-convergence", "invalid"].includes(result.result.status), `trial ${trial}: ${result.result.status} ${JSON.stringify(placements)}`);
     if (result.success) {
       successes += 1;
-      assert.ok(result.safeLitLeds.every((id) => result.result.elements[id].amps <= 0.021), `trial ${trial}: success means ≤ 20 mA`);
+      assert.ok(result.safeLitLeds.length > 0 && result.safeLitLeds.every((id) => result.result.elements[id].amps <= 0.02), `trial ${trial}: success means a lit LED at ≤ 20 mA`);
+      assert.ok(result.result.status === "ok", `trial ${trial}: success means status ok`);
+      assert.ok(!result.diagnostics.some((d) => d.severity === "error"), `trial ${trial}: success means no error anywhere`);
+      for (const reading of Object.values(result.result.elements)) {
+        if (reading.led) assert.ok(!["overcurrent", "burnout"].includes(reading.led.state) && !(reading.led.state === "reverse" && reading.volts < -5), `trial ${trial}: no LED is unsafe in a success`);
+      }
+      checks += 4;
     }
   }
+  assert.ok(successes > 0, "the fuzz exercises the success path");
   checks += 3000;
   console.log(`fuzz: 3000 random layouts solved (${successes} safe successes)`);
 }

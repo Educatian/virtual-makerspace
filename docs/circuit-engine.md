@@ -56,23 +56,27 @@ carries no current. A numerically zero pivot returns `singular`.
 | `invalid-input` | error | A rejected part, such as a NaN/∞/out-of-range value, an unknown kind, a duplicate id or a socket that does not exist. The part is left out, and the status is `invalid`, never `ok`. |
 | `no-source` | info | No battery is placed. |
 | `open-circuit` | info | A battery is placed but delivers less than 1 µA. |
-| `short-circuit` | error | The battery's terminals are joined, or a source or wire carries more than 1 A. A short is never treated as success, and LEDs show dark. |
-| `reverse-led` | warning | An LED is reverse-biased by more than 0.5 V. Above 5 V the message also warns about LED damage. |
-| `led-overcurrent` | warning | The LED is above its 20 mA rating but below 100 mA. It glows, but the circuit is not a success. |
+| `short-circuit` | error | The battery's terminals are joined, they are joined by jumper wires alone (at any voltage — a 1 V cell through a jumper is a short even at 0.95 A), or a source or wire carries more than 1 A. A short is never treated as success, and LEDs show dark. |
+| `reverse-led` | warning | An LED is reverse-biased by more than 0.5 V. |
+| `led-reverse-overvoltage` | error | A reversed LED has more than 5 V (a typical datasheet maximum) across it. The circuit is `unsafe` and never a success, even if another LED is lit. |
+| `led-overcurrent` | warning | The LED is **above** its 20 mA rating (strictly: 20.0 mA is within it, 20.5 mA is not — there is no tolerance band) but below 100 mA. It glows, but the circuit is `unsafe` and not a success. |
 | `led-burnout` | error | 100 mA or more, for example an LED with no resistor on 9 V (about 440 mA). The LED briefly flashes, then shows dark and scorched. |
 | `floating` | info | A part is not connected to the battery's circuit. |
 | `singular` / `non-convergence` | error | The circuit could not be solved, so nothing is shown as working. |
 
-The overall `status`, most severe first, is `invalid`, `singular`/`non-convergence`,
-`short-circuit`, `unsafe` (an LED overdriven or burning out), `open-circuit`, `no-source`, then
-`ok`. *Open* is topological: it means no conducting path (resistors, wires and LEDs that are on)
-runs from the battery's + back to its −. A closed 2 MΩ loop carrying 0.75 µA is therefore `ok`,
+The overall `status`, most severe first, is `invalid` (always: any rejected part means the
+readings describe a different circuit, so it outranks even `singular`, `short-circuit` and
+`unsafe`), `singular`/`non-convergence`, `short-circuit`, `unsafe` (an LED over its rating,
+burning out, or more than 5 V in reverse), `open-circuit`, `no-source`, then `ok`. *Open* is
+topological: it means no conducting path (resistors, wires, LEDs that are on, and any *other*
+source — cells in series) runs from a battery's + back to its −. A closed 2 MΩ loop carrying 0.75 µA is therefore `ok`,
 not open, while a loop blocked only by a backwards LED is open. Pivots are judged against their
 own row, and every solution is checked by its residual. A stiff 1 mΩ source next to floating
 parts still solves, and a near-singular system is refused rather than trusted.
 
 A circuit is a **success** only when all of these hold: it solved, it has no error-severity
-diagnostic, at least one LED is `lit` (from 10 % up to its rating), and no LED is overdriven.
+diagnostic, at least one LED is `lit` (above 10 % of its rating, up to and including it), and no
+LED is overdriven or reverse-overvolted.
 
 ### Worked example: why the safe plan uses 1 kΩ
 
@@ -97,21 +101,53 @@ the cathode, lead B). The XR spawner already used this convention (`posTerm` at 
 Bolt's plans place the battery with + toward the chain, so every planned LED is forward-biased.
 The old demo layout had the LED backwards; it now uses `led-red: [53, 52]`.
 
-## Synchronized electrical values
+## Shared bench protocol (one state for every participant)
 
-`SharedTransform` gained an optional `props: { ohms?, volts? }`.
+The room — the Durable Object in production, `server/collaboration.mjs` locally, both using
+`cloudflare/room-core.js` — is **authoritative**. The client rules are in
+`src/desktop/sync-replica.ts`; `scripts/sync-check.mjs` drives several replicas against the real
+room core with adversarial message delays, and `scripts/e2e-worker-sync.mjs` repeats the key
+races against `wrangler dev`.
 
-- Every snapshot (`getSharedTransforms`, attempts, late-join `state-response`) includes `props`
-  explicitly for the resistors and the battery.
-- **Absent `props` means "unchanged"**, so older clients that never send it do not reset values.
-- The Cloudflare Worker validates `props` in `sanitizeTransform`
-  (`cloudflare/sanitize.js`, shared by `transform` and `state-response`). It uses the same bounds
-  and rounding as `src/circuit/part-props.ts`, and `scripts/project-state-check.mjs` asserts the
-  two agree. Invalid values are dropped, never relayed. The local relay
-  (`server/collaboration.mjs`) passes messages through; every client sanitizes on apply.
-- A value edit is claim → transform → release, with no `claim`/`move` trace. It is recorded as
-  the new trace action **`edit`**. The Worker refuses a transform for a part someone else holds,
-  and the inspector disables editing while a teammate or Bolt holds the part.
+- **Revisions.** Every accepted change to a part bumps its revision; the room stores the last
+  accepted whole-part state. The program has its own revision.
+- **Edits** (value changes, undo/redo, project import, reset, return to tray, demo layouts, slide
+  switch, restoring an attempt, rotation reset, program upload/stop) are one atomic message: the
+  changed parts with the revision each was based on (`expectRev`), optionally a program. The room
+  accepts the whole batch or refuses it — `held` (someone else holds a part or one of its cable
+  ends) or `stale` (a part or the program changed since). **Nothing is applied optimistically:**
+  the sender applies an edit when the room accepts it, everyone else when the room relays it, in
+  the room's order. So two concurrent edits (470 Ω vs 220 Ω) can no longer leave the two clients
+  with each other's value: one is accepted everywhere, the other is refused and changes nothing.
+- **Live drags** need a claim, and the room accepts a move only from the claim's holder (or the
+  holder of the whole cable, for a cable end). A refused claim or move comes back with the room's
+  authoritative state (`claim-denied` / `transform-rejected`), which replaces the sender's local
+  guess even if the holder disconnects without sending a final move. A newer own move still in
+  flight takes precedence over an older refusal.
+- **Claims:** holding a whole part conflicts with either cable end, and an end conflicts with the
+  whole part — both ways, for humans and Bolt alike. Edits touching a held end are refused whole.
+  Two people may each hold one end of the same cable; the room merges cable-end moves per end.
+- **Joining / reconnecting:** the room answers `hello` with `room-state` (authoritative parts,
+  revisions, current claims, the program). Parts it does not list are at their defaults. A room
+  with no bench state (new, or everyone left) is seeded by the first returning bench as one edit;
+  a refused seed re-requests the room's state. Moves are paused while reconnecting.
+- **Timeouts:** an edit unanswered after 8 s stops blocking the learner ("not confirmed in
+  time", not added to undo), but stays pending: if the room did accept it, the late answer still
+  applies it here exactly as everyone else applied it.
+- **Claims survive Durable Object hibernation** (they ride on each holder's socket attachment).
+  The local relay never forwards room-only replies (`room-state`, `edit-result`, …) from clients.
+- **History and traces follow acceptance.** An undo step, an `edit` trace, a `claim` trace (on
+  `claim-granted`) or a `move` trace (all of the drag's moves acknowledged) is written only after
+  the room accepted it. Refusals show a status message and change nothing.
+- **Same-device tabs** without a server (localhost, BroadcastChannel) have no arbiter: edits and
+  moves apply at once and carry Lamport stamps, and every tab keeps the highest stamp per part,
+  so concurrent changes converge on one winner. A joining tab adopts the clock (and the Snapino
+  program) of the tab that hands it the bench. Claims there are advisory.
+- `SharedTransform.props` (`{ ohms?, volts? }`) is validated by the Worker with the same bounds
+  and rounding as `src/circuit/part-props.ts`. Live moves never carry values; the room keeps the
+  accepted ones; the same holds for the slide-switch state (`on`), which only edits change.
+  Every validator is strict (no coercion: `"36"`, `true` or `{valueOf}` are not
+  numbers) and never throws.
 
 ## Inspector (circuit meter)
 
@@ -134,29 +170,37 @@ engine result:
 ## Undo/redo, project files, recovery, reset
 
 **Undo/redo** (toolbar buttons, Ctrl/Cmd+Z, Ctrl+Shift+Z or Ctrl+Y) covers only *your own*
-completed edits: moves, value edits, return-to-tray, import and reset.
+edits that the room accepted: moves, value edits, return-to-tray, demo layouts, imports
+(including program-only imports) and reset.
 
-- An undo applies only if every affected part still matches its post-edit state. If a teammate
-  or Bolt changed it since, the step is refused as stale ("their work is kept") and discarded.
-- A part currently held by someone else blocks the step without discarding it.
-- Undo is itself a shared edit, so every bench converges.
+- An undo is checked locally first: every affected part (and, for an import, the room program)
+  must still match its post-edit state. If a teammate or Bolt changed it since, the step is
+  refused as stale ("their work is kept") and discarded. The room checks again by revision, so a
+  change that has not reached this client yet also refuses it.
+- A part currently held by someone else blocks the step without discarding it; so does being
+  offline or an unanswered request.
+- **Program policy:** an import, undo or redo that restores a program leaves it **stopped** —
+  press Run to start it. Run/Stop are not undo steps, and programs are compared by statements.
+  A stale undo can never overwrite a teammate's newer program.
 - History is cleared on a studio change.
 
 **Project files** (toolbar folder menu → Export / Import):
 
 - The format is `virtual-makerspace.project`, version 1. It holds sockets per part, electrical
-  values, slide-switch state and, on Snapino, the sanitized block program.
-- It holds no participant ids, names, chat, traces, recordings or tokens.
-- It does not store positions: import recomputes them from sockets.
-- Import is capped at 64 KB, uses a strict schema and accepts only catalog ids, in-range unique
-  sockets and validated values. Unknown fields are dropped, and nothing from the file is rendered
-  as HTML.
-- Import asks for confirmation and refuses while Bolt is building or while anyone holds a part.
-  It applies as shared edits and one undo step.
+  values, slide-switch state and, on Snapino, the **room's** program (`program`) and — only if
+  the exporter's editor has unsaved edits — that draft separately (`draftProgram`). Importing a
+  draft puts it in the importer's own editor; it is shared only when they press Run.
+- It holds no participant ids, names, chat, traces, recordings or tokens, and no positions.
+- Import is capped at 64 KB and uses a strict, type-checked schema (`parseProject` never throws,
+  even on `{"version": {"toString": 0}}`). Unknown fields are dropped; nothing is rendered as HTML.
+- Import asks for confirmation, refuses while Bolt is building, and is one atomic room edit and
+  one undo step.
 
-**Local recovery:** after changes, this browser keeps the latest project for the room and studio
-(`localStorage`, same content as an export). On re-entry, if the room's bench differs, a banner
-offers to restore it. Restoring is never automatic.
+**Local recovery:** this browser keeps the latest bench for the room and studio
+(`localStorage`): parts, values, the room program and any draft. It saves after every change —
+local or a teammate's, edits, imports, undo, program-only changes — and an empty bench (nothing
+seated, no program) clears it. On re-entry, if the saved parts, values or program differ from
+the room's, a banner offers to restore them (as one undoable edit). Never automatic.
 
 **Reset bench** (with a confirmation dialog) returns every part of the studio to the tray with
 default values, as one undoable shared edit.
@@ -240,23 +284,33 @@ unchanged, and **no Quest performance claim is made**: this was not measured on 
 
 ### BEFORE / AFTER (same placements and camera, `scripts/qa-3d.mjs`)
 
-![Overview](images/circuit-upgrade-2-overview-collapsed.jpg)
-![LED powered (red, 7 mA)](images/circuit-upgrade-11-led-powered.jpg)
-![LED unpowered (green, not connected)](images/circuit-upgrade-12-led-unpowered.jpg)
-![Occupied sockets](images/circuit-upgrade-13-occupied-sockets.jpg)
-![Cable tip](images/circuit-upgrade-14-cable-tip-macro.jpg)
-![Snapino PCB](images/circuit-upgrade-9-pcb-close.jpg)
-![Circuit meter with the 1 kΩ resistor set to 220 Ω](images/circuit-upgrade-15-meter-editor.jpg)
+Matched side-by-side sheets (base 8e1378f on the left, this branch on the right; identical
+camera, placements, viewport and default quality) are in [`images/qa/`](images/qa/README.md),
+with the raw renderer counters in [`images/qa/stats.json`](images/qa/stats.json):
 
-The renderer counters below are steady-state frames (SwiftShader, 1440×900, medium quality,
-pixel ratio 1). The shadow map is cached between changes.
+![BEFORE (left) and AFTER (right): overview](images/qa/compare-2-overview-collapsed.jpg)
+![BEFORE (left) and AFTER (right): red LED powered at about 7 mA](images/qa/compare-11-led-powered.jpg)
+![BEFORE (left) and AFTER (right): green LED unpowered](images/qa/compare-12-led-unpowered.jpg)
+![BEFORE (left) and AFTER (right): occupied sockets close-up](images/qa/compare-13-occupied-sockets.jpg)
+![BEFORE (left) and AFTER (right): jumper cable tip in a socket](images/qa/compare-14-cable-tip-macro.jpg)
+![BEFORE (left) and AFTER (right): laptop viewport](images/qa/compare-10-laptop.jpg)
+![BEFORE (left) and AFTER (right): phone viewport](images/qa/compare-16-phone.jpg)
+
+AFTER-only detail: ![Circuit meter with the 1 kΩ resistor set to 220 Ω](images/circuit-upgrade-15-meter-editor.jpg)
+
+Renderer counters (SwiftShader in headless Chromium, pixel ratio 1, default quality; steady-state
+frames, shadow map cached between changes):
 
 | View | Draw calls before → after | Triangles before → after |
 |---|---|---|
-| Circuit overview (panel open) | 508 → 270 | 79k → 41k |
-| Circuit overview (panel collapsed) | 364 → 163 | 72k → 36k |
+| Circuit overview (panel open, 1440×900) | 508 → 271 | 79k → 41k |
+| Circuit overview (panel collapsed) | 364 → 164 | 72k → 36k |
 | Laptop 1180×760 | 534 → 266 | 77k → 38k |
+| Phone 390×844 | 293 → 131 | 59k → 29k |
 | Snapino overview (unchanged GLB) | 1220 → 1229 | 96k → 97k |
+
+These are software-rendered captures; they say nothing about frame rate on a real GPU, phone or
+Quest headset, none of which were tested.
 
 ## Research migration notes
 
@@ -283,14 +337,25 @@ pixel ratio 1). The shadow map is cached between changes.
   - XR resistors carry nominal values (gold body = 220 Ω, brown body = 1 kΩ) in
     `CircuitNode.ohms`.
 - **Protocol:** `SharedTransform.props` is optional and backward compatible (absent = unchanged).
+  New message kinds: `edit`, `edit-result`, `rev-ack`, `transform-rejected`, `claim-granted`,
+  `claim-denied`, `room-state`, `room-state-request`. Clients from before this branch are not
+  compatible with a room running it (their optimistic moves without a granted claim are refused).
+- **Traces now follow the room:** `claim` is recorded when the claim is granted and `move` when
+  all of a drag's moves were accepted; refused drags and edits leave no trace. Counts from older
+  sessions included refused attempts.
 
 ## Tests
 
 ```bash
-npm test              # typecheck + engine + agent + project-state + Snapino (incl. g++ syntax check)
+npm test              # typecheck + engine + agent + project-state + Snapino (g++ syntax) + sync races
 npm run build
 node scripts/e2e-ai-teammate.mjs http://localhost:4173          # BroadcastChannel, one browser
-node scripts/e2e-ai-teammate-worker.mjs                        # Worker + Durable Object (wrangler dev)
+# With wrangler dev on :8799 and scripts/access-proxy.mjs on :8800 (fresh random rooms):
+node scripts/e2e-ai-teammate-worker.mjs                        # Bolt over the Durable Object
+node scripts/e2e-room-sync.mjs                                 # studio lock, program sync, late joiner
+node --experimental-strip-types scripts/e2e-worker-sync.mjs    # edit races, claims, disconnects, hostile messages
+node scripts/e2e-snapino-history.mjs                           # P/S → import Q/T → undo → redo, export, recovery
+node scripts/e2e-cable-end.mjs                                 # cable ends through the real drag path, two holders
 node scripts/qa-3d.mjs http://localhost:4173 ./qa-3d [quality]  # renders + renderer counters
 ```
 
@@ -303,9 +368,10 @@ node scripts/qa-3d.mjs http://localhost:4173 ./qa-3d [quality]  # renders + rend
 - The catalog is fixed. No duplication or new parts are possible (see above).
 - Undo history is per browser tab and is lost on reload. Local recovery covers the bench state,
   not the history.
-- A value edit made while a teammate is just starting a grab of the same part can lose the race.
-  The Worker drops the transform, and the holder's next release re-synchronizes everyone to their
-  state.
+- Edits wait for the room (one round trip) before they show; with no connection they are refused
+  rather than queued, and moves pause while reconnecting.
+- Same-device tabs without a server converge by Lamport order, but their claims are advisory
+  (there is no arbiter), so two tabs can grab the same part at once there.
 - Arduino sketches are generated and syntax-checked only. There is no AVR compile, upload or
   emulation.
 - The renders were checked with software WebGL (SwiftShader) in headless Chromium. They were not

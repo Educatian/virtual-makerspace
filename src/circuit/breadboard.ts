@@ -125,6 +125,8 @@ export interface BoardAnalysis {
   /** LEDs that would burn out (no current limiting). */
   burntLeds: string[];
   reversedLeds: string[];
+  /** Reversed LEDs with more than their maximum reverse voltage (about 5 V) across them. */
+  reverseStressedLeds: string[];
   short: boolean;
   /** The task succeeds only with a safely lit LED and no error anywhere. */
   success: boolean;
@@ -143,6 +145,7 @@ export function analyzeBoard(parts: readonly BoardPart[], geometry: BoardGeometr
   const overdrivenLeds = leds.filter((id) => ledState(id) === "overcurrent");
   const burntLeds = leds.filter((id) => ledState(id) === "burnout");
   const reversedLeds = leds.filter((id) => ledState(id) === "reverse");
+  const reverseStressedLeds = result.diagnostics.filter((d) => d.code === "led-reverse-overvoltage" && d.elementId).map((d) => d.elementId as string);
   const short = result.status === "short-circuit";
   const hasError = diagnostics.some((diagnostic) => diagnostic.severity === "error");
   const netVolts = new Map<number, number | null>();
@@ -160,6 +163,7 @@ export function analyzeBoard(parts: readonly BoardPart[], geometry: BoardGeometr
     overdrivenLeds,
     burntLeds,
     reversedLeds,
+    reverseStressedLeds,
     short,
     success: result.solved && !hasError && safeLitLeds.length > 0 && overdrivenLeds.length === 0,
     netVolts,

@@ -2,11 +2,12 @@
  * Workbench tools around the shared scene: the circuit inspector/meter, conflict-safe
  * undo/redo, project export/import, local recovery, reset and "return to tray".
  *
- * Every change these tools make is an ordinary shared edit: the part is claimed, its new
- * transform is applied locally and sent to the room, then released — so the Worker's claim
- * rules apply, peers (and Bolt) converge on the same state, and nothing bypasses the room.
- * Edits are traced as "edit", never as "claim"/"move", so existing research metrics that
- * count claims and moves are unchanged.
+ * Every change these tools make is ONE atomic room edit (`DesktopRoom.submitEdit`): in server
+ * mode nothing changes locally until the room accepts the whole batch, refusals (a part held
+ * by someone — human or Bolt — or changed since this client last saw it) change nothing, and
+ * every client applies accepted edits in the room's order, so all converge. History entries
+ * and "edit" traces are written only after acceptance. Edits are traced as "edit", never as
+ * "claim"/"move", so existing research metrics that count claims and moves are unchanged.
  */
 import { formatAmps, formatOhms, formatVolts, SOLVER_VERSION, type ElementReading } from "../circuit/dc-engine.ts";
 import { socketNet } from "../circuit/breadboard.ts";
@@ -21,8 +22,8 @@ import {
   type PartProps,
 } from "../circuit/part-props.ts";
 import type { CircuitAnalysis } from "./circuit-topology.js";
-import type { CollaborationPhase, DesktopRoom, SharedTransform } from "./collaboration.js";
-import { EditHistory, sameTransform, type HistoryChange } from "./edit-history.ts";
+import type { CollaborationPhase, DesktopRoom, EditResult, SharedTransform } from "./collaboration.js";
+import { EditHistory, sameProgram, sameTransform, type HistoryChange } from "./edit-history.ts";
 import { buildProject, parseProject, projectFileName, type ProjectFile } from "./project-file.ts";
 import type { ComponentSpec, DesktopWorkbenchScene, StudioKind } from "./scene.js";
 import type { SnapinoStatement } from "./snapino.ts";
@@ -37,8 +38,12 @@ export interface ToolsHost {
   holderOf(componentId: string): string | null;
   /** Bolt is mid-build: bulk changes would race its moves. */
   boltBuilding(): boolean;
-  program(): SnapinoStatement[];
-  loadProgram(program: SnapinoStatement[]): void;
+  /** The Snapino program the room runs (shared state). */
+  roomProgram(): { program: SnapinoStatement[]; running: boolean };
+  /** The local code editor's unsaved draft, or null when it matches the room's program. */
+  draftProgram(): SnapinoStatement[] | null;
+  /** Loads a program into this participant's editor only (not shared until they press Run). */
+  loadDraft(program: SnapinoStatement[]): void;
   status(message: string, tone: "neutral" | "valid" | "warning"): void;
   selected(): ComponentSpec | null;
   /** The meter opened or closed: re-frame the camera around it. */
@@ -81,6 +86,7 @@ export class WorkbenchTools {
   private tagsFrame = 0;
   private autosaveTimer = 0;
   private recoveryChecked = false;
+  private stepping = false;
   private disposed = false;
 
   constructor(host: ToolsHost) {
@@ -341,7 +347,7 @@ export class WorkbenchTools {
     if (ok) input?.blur();
   }
 
-  /** Validated property edit as one shared change and one undo step. */
+  /** Validated property edit as one shared edit (and one undo step once the room accepts). */
   private applyValue(componentId: string, kind: string, value: number): boolean {
     const workbench = this.host.workbench();
     if (!workbench || (kind !== "resistor" && kind !== "battery")) return false;
@@ -353,20 +359,10 @@ export class WorkbenchTools {
       return false;
     }
     const before = workbench.getSharedTransforms()[componentId];
-    if (sameProps(before?.props, props)) return true;
-    const room = this.host.room();
-    room?.claim(componentId);
-    const applied = workbench.setPartProps(componentId, props);
-    room?.release(componentId);
-    if (!applied) return false;
-    const after = workbench.getSharedTransforms()[componentId];
+    if (!before) return false;
+    if (sameProps(before.props, props)) return true;
     const label = kind === "resistor" ? `Set resistor to ${formatOhms(props.ohms!)}` : `Set battery to ${trimNumber(props.volts!)} V`;
-    this.history.record(label, [{ id: componentId, before, after }]);
-    this.trace(componentId, label);
-    this.host.status(`${label} · shared with the room`, "neutral");
-    this.updateHistoryButtons();
-    this.lastEditorKey = "";
-    this.queueRender();
+    void this.submit([{ id: componentId, transform: { ...before, props } }], label, { traceId: componentId });
     return true;
   }
 
@@ -439,24 +435,54 @@ export class WorkbenchTools {
     return inspector.getBoundingClientRect().right;
   }
 
-  // ── Shared multi-part changes ─────────────────────────────────────────────────
+  // ── Shared edits ──────────────────────────────────────────────────────────────
 
-  /** Claim → apply → send → release for each part. Returns false (nothing changed) if any part is held. */
-  private applyShared(changes: Array<{ id: string; transform: SharedTransform }>): boolean {
+  /**
+   * Submits `changes` (and optionally a new room program, which then stays stopped) as one
+   * atomic room edit. Only on acceptance: history entry, "edit" trace, status. Returns whether
+   * the room accepted it (true also when nothing needed to change).
+   */
+  async submit(
+    changes: Array<{ id: string; transform: SharedTransform }>,
+    label: string,
+    options: { program?: SnapinoStatement[]; traceId?: string; record?: boolean; tone?: "neutral" | "valid" } = {},
+  ): Promise<boolean> {
     const workbench = this.host.workbench();
     const room = this.host.room();
-    if (!workbench) return false;
-    const held = changes.map((change) => this.host.holderOf(change.id)).find(Boolean);
+    if (!workbench || !room) return false;
+    const before = workbench.getSharedTransforms();
+    const real = changes.filter((change) => !sameTransform(before[change.id], change.transform));
+    const programBefore = this.host.roomProgram().program;
+    const program = options.program && !sameProgram(programBefore, options.program) ? options.program : undefined;
+    if (!real.length && !program) {
+      this.host.status(`${label} · nothing to change`, "neutral");
+      return true;
+    }
+    const held = real.map((change) => ({ id: change.id, holder: this.host.holderOf(change.id) })).find((entry) => entry.holder);
     if (held) {
-      this.host.status(`${held} is holding a part; try again when they let go`, "warning");
+      this.host.status(`${label} refused · ${held.holder} is holding ${PART_NAMES[held.id] ?? "a part"}; try again when they let go`, "warning");
       return false;
     }
-    for (const { id, transform } of changes) {
-      room?.claim(id);
-      workbench.applyRemoteTransform(id, transform, true);
-      room?.sendTransform(id, transform);
-      room?.release(id);
+    const result = await room.submitEdit(real, program ? { program, running: false } : undefined);
+    if (!result.ok) {
+      this.host.status(refusalCopy(label, result), "warning");
+      this.lastEditorKey = "";
+      this.queueRender();
+      return false;
     }
+    // The accepted state was applied (through the room) before this resolved.
+    if (options.record !== false) {
+      const after = workbench.getSharedTransforms();
+      const recorded: HistoryChange[] = real.map((change) => ({ id: change.id, before: before[change.id], after: after[change.id] }));
+      this.history.record(label, recorded, program ? { before: programBefore, after: program } : undefined);
+    }
+    const count = real.length + (program ? 1 : 0);
+    this.trace(options.traceId ?? (real.length === 1 && !program ? real[0].id : undefined), count > 1 || program ? `${label} (${describeCount(real.length, Boolean(program))})` : label);
+    this.host.status(`${label} · shared with the room`, options.tone ?? "neutral");
+    this.updateHistoryButtons();
+    this.lastEditorKey = "";
+    this.queueRender();
+    this.noteChange();
     return true;
   }
 
@@ -479,55 +505,84 @@ export class WorkbenchTools {
     if (before) this.pending.set(id, before);
   }
 
-  /** Called when this participant lets go: record the move as one undo step. */
-  endLocalEdit(resourceId: string): void {
+  /** The room ended the drag before any move counted: forget it. */
+  cancelLocalEdit(resourceId: string): void {
+    const id = resourceId.split("::")[0];
+    if ([`${id}::endpoint-0`, `${id}::endpoint-1`].some((resource) => resource !== resourceId && this.pending.has(resource))) return;
+    this.pending.delete(id);
+  }
+
+  /**
+   * Called when this participant lets go. Captures the move now; the returned function records
+   * it as one undo step only if the room accepted every move of the drag.
+   */
+  endLocalEdit(resourceId: string): (accepted: boolean) => void {
     const id = resourceId.split("::")[0];
     const before = this.pending.get(id);
     const workbench = this.host.workbench();
     this.pending.delete(id);
-    if (!before || !workbench) return;
-    // A cable end released while the other end is still held stays one step.
-    if ([`${id}::endpoint-0`, `${id}::endpoint-1`].some((resource) => resource !== resourceId && this.pending.has(resource))) return;
+    if (!before || !workbench) return () => undefined;
     const after = workbench.getSharedTransforms()[id];
-    if (this.history.record(`Moved ${PART_NAMES[id] ?? id}`, [{ id, before, after }])) this.updateHistoryButtons();
-    this.scheduleAutosave();
+    return (accepted) => {
+      if (!accepted || !after) return;
+      if (this.history.record(`Moved ${PART_NAMES[id] ?? id}`, [{ id, before, after }])) this.updateHistoryButtons();
+      this.noteChange();
+    };
   }
 
   undo(): void {
-    this.step("undo");
+    void this.step("undo");
   }
 
   redo(): void {
-    this.step("redo");
+    void this.step("redo");
   }
 
-  private step(direction: "undo" | "redo"): void {
+  private async step(direction: "undo" | "redo"): Promise<void> {
     const workbench = this.host.workbench();
-    if (!workbench) return;
+    const room = this.host.room();
+    if (!workbench || !room) return;
+    // One undo/redo at a time: a second press while the room is answering the first would
+    // re-submit the same step.
+    if (this.stepping) {
+      this.host.status("Still waiting for the room to confirm the last undo/redo", "neutral");
+      return;
+    }
     const transforms = workbench.getSharedTransforms();
-    const verdict = this.history[direction](
+    const verdict = this.history.peek(
+      direction,
       (id) => transforms[id] ?? null,
       (id) => Boolean(this.host.holderOf(id)),
+      () => this.host.roomProgram().program,
     );
+    const did = direction === "undo" ? "Undid" : "Redid";
     if (!verdict.ok) {
       const copy = verdict.reason === "empty"
         ? `Nothing to ${direction}`
         : verdict.reason === "held"
           ? `Can't ${direction} "${verdict.label}" — ${this.host.holderOf(verdict.partId ?? "") ?? "a teammate"} is holding ${PART_NAMES[verdict.partId ?? ""] ?? "that part"}`
-          : `Can't ${direction} "${verdict.label}" — a teammate changed ${PART_NAMES[verdict.partId ?? ""] ?? "that part"} since, so their work is kept`;
+          : `Can't ${direction} "${verdict.label}" — a teammate changed ${verdict.partId === "program" ? "the program" : PART_NAMES[verdict.partId ?? ""] ?? "that part"} since, so their work is kept`;
       this.host.status(copy, verdict.reason === "empty" ? "neutral" : "warning");
       this.updateHistoryButtons();
       return;
     }
-    if (!this.applyShared(verdict.apply)) {
+    this.stepping = true;
+    const result = await room.submitEdit(verdict.apply, verdict.program ? { program: verdict.program, running: false } : undefined)
+      .finally(() => { this.stepping = false; });
+    if (!result.ok) {
+      // The room is the judge: a stale step can never apply again; held/offline may later.
+      if (result.reason === "stale") this.history.drop(direction, verdict.entry);
+      this.host.status(refusalCopy(`${direction === "undo" ? "Undo" : "Redo"} "${verdict.label}"`, result), "warning");
       this.updateHistoryButtons();
       return;
     }
-    this.trace(verdict.apply.length === 1 ? verdict.apply[0].id : undefined, `${direction === "undo" ? "Undid" : "Redid"}: ${verdict.label}`);
-    this.host.status(`${direction === "undo" ? "Undid" : "Redid"} · ${verdict.label}`, "neutral");
+    this.history.commit(direction, verdict.entry);
+    this.trace(verdict.apply.length === 1 && !verdict.program ? verdict.apply[0].id : undefined, `${did}: ${verdict.label}`);
+    this.host.status(`${did} · ${verdict.label}${verdict.program ? " · program restored, stopped" : ""}`, "neutral");
     this.updateHistoryButtons();
     this.lastEditorKey = "";
     this.queueRender();
+    this.noteChange();
   }
 
   updateHistoryButtons(): void {
@@ -555,13 +610,7 @@ export class WorkbenchTools {
     const workbench = this.host.workbench();
     const home = workbench?.homeTransform(componentId);
     if (!workbench || !home) return;
-    const before = workbench.getSharedTransforms()[componentId];
-    if (!this.applyShared([{ id: componentId, transform: home }])) return;
-    const label = `Returned ${PART_NAMES[componentId] ?? componentId} to the tray`;
-    this.history.record(label, [{ id: componentId, before, after: workbench.getSharedTransforms()[componentId] }]);
-    this.trace(componentId, label);
-    this.host.status(label, "neutral");
-    this.updateHistoryButtons();
+    void this.submit([{ id: componentId, transform: home }], `Returned ${PART_NAMES[componentId] ?? componentId} to the tray`, { traceId: componentId });
   }
 
   async confirmReset(): Promise<void> {
@@ -580,35 +629,15 @@ export class WorkbenchTools {
     const catalog = workbench.studioCatalog(this.host.studio());
     const changes: Array<{ id: string; transform: SharedTransform }> = [];
     for (const id of Object.keys(catalog.parts)) {
-      const home = workbench.homeTransform(id);
-      if (!home) continue;
-      const defaults = workbench.defaultPartProps(id);
-      if (defaults) home.props = defaults;
-      if (catalog.switches.includes(id)) home.on = false;
-      changes.push({ id, transform: home });
+      const transform = workbench.defaultTransform(id);
+      if (transform) changes.push({ id, transform });
     }
-    this.applyBulk(changes, "Reset the bench");
+    await this.applyBulk(changes, "Reset the bench");
   }
 
-  private applyBulk(changes: Array<{ id: string; transform: SharedTransform }>, label: string): boolean {
-    const workbench = this.host.workbench();
-    if (!workbench) return false;
-    const before = workbench.getSharedTransforms();
-    const real = changes.filter((change) => !sameTransform(before[change.id], change.transform));
-    if (!real.length) {
-      this.host.status(`${label} · nothing to change`, "neutral");
-      return true;
-    }
-    if (!this.applyShared(real)) return false;
-    const after = workbench.getSharedTransforms();
-    const recorded: HistoryChange[] = real.map((change) => ({ id: change.id, before: before[change.id], after: after[change.id] }));
-    this.history.record(label, recorded);
-    this.trace(undefined, `${label} (${real.length} part${real.length === 1 ? "" : "s"})`);
-    this.host.status(`${label} · shared with the room`, "valid");
-    this.updateHistoryButtons();
-    this.lastEditorKey = "";
-    this.queueRender();
-    return true;
+  /** A multi-part change as one atomic room edit and one undo step (demos, restores, reset). */
+  applyBulk(changes: Array<{ id: string; transform: SharedTransform }>, label: string): Promise<boolean> {
+    return this.submit(changes, label, { tone: "valid" });
   }
 
   // ── Export / import / recovery ────────────────────────────────────────────────
@@ -617,7 +646,14 @@ export class WorkbenchTools {
     const workbench = this.host.workbench();
     if (!workbench) return null;
     const studio = this.host.studio();
-    return buildProject(workbench.studioCatalog(studio), workbench.getSharedTransforms(), studio === "snapino" ? this.host.program() : null);
+    const snapino = studio === "snapino";
+    return buildProject(
+      workbench.studioCatalog(studio),
+      workbench.getSharedTransforms(),
+      snapino ? this.host.roomProgram().program : null,
+      new Date(),
+      snapino ? this.host.draftProgram() : null,
+    );
   }
 
   exportProject(): void {
@@ -632,8 +668,13 @@ export class WorkbenchTools {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    this.trace(undefined, "Exported the project file");
-    this.host.status("Project exported · parts, values and program only (no names, chat or activity)", "valid");
+    this.trace(undefined, project.draftProgram ? "Exported the project file (with an unsaved code draft)" : "Exported the project file");
+    this.host.status(
+      project.draftProgram
+        ? "Project exported · parts, values, the room's program and your unsaved code draft (kept apart)"
+        : "Project exported · parts, values and program only (no names, chat or activity)",
+      "valid",
+    );
   }
 
   chooseImport(): void {
@@ -649,8 +690,11 @@ export class WorkbenchTools {
     await this.importText(text, true);
   }
 
-  /** Validates, confirms and applies a project as shared edits (one undo step). */
-  async importText(text: string, confirm: boolean): Promise<boolean> {
+  /**
+   * Validates, confirms and applies a project as ONE room edit (parts and, for Snapino, the
+   * room program — loaded stopped). An unsaved draft in the file goes to this editor only.
+   */
+  async importText(text: string, confirm: boolean, label = "Loaded a project"): Promise<boolean> {
     const workbench = this.host.workbench();
     if (!workbench) return false;
     const parsed = parseProject(text, (studio) => workbench.studioCatalog(studio));
@@ -669,7 +713,7 @@ export class WorkbenchTools {
     }
     if (confirm && !(await confirmDialog(
       "Load this project?",
-      `It places ${project.parts.filter((part) => part.sockets).length} part(s) and replaces the current bench for everyone in the room. You can undo it.`,
+      `It places ${project.parts.filter((part) => part.sockets).length} part(s)${project.program ? " and loads its program (stopped)" : ""}, replacing the current bench for everyone in the room. You can undo it.`,
       "Load project",
     ))) return false;
     const changes: Array<{ id: string; transform: SharedTransform }> = [];
@@ -683,9 +727,17 @@ export class WorkbenchTools {
       if (part.on !== undefined) transform.on = part.on;
       changes.push({ id: part.id, transform });
     }
-    const applied = this.applyBulk(changes, "Loaded a project");
-    if (applied && project.program) this.host.loadProgram(project.program);
+    const applied = await this.submit(changes, label, { program: project.program, tone: "valid" });
+    if (applied && project.draftProgram) {
+      this.host.loadDraft(project.draftProgram);
+      this.host.status(`${label} · its unsaved code draft is in your editor (press Run to share it)`, "valid");
+    }
     return applied;
+  }
+
+  /** Something on the bench or the room program changed (here or remotely): autosave soon. */
+  noteChange(): void {
+    this.scheduleAutosave();
   }
 
   private scheduleAutosave(): void {
@@ -697,16 +749,21 @@ export class WorkbenchTools {
     return `vm-project:${this.host.roomCode()}:${this.host.studio()}`;
   }
 
+  /** Saves the latest bench (parts, values, room program, draft); an empty bench clears it. */
   private autosave(): void {
     const project = this.currentProject();
     if (!project || !this.recoveryChecked) return;
-    if (!project.parts.some((part) => part.sockets)) return;
+    if (isEmptyProject(project)) {
+      removeKey(this.storageKey());
+      return;
+    }
     writePreference(this.storageKey(), JSON.stringify(project));
   }
 
   /**
-   * After joining (and after any shared state has arrived), offer to restore the last bench
-   * this browser saved for this room, if the room's bench is different. Never automatic.
+   * After joining (and after the room's state has arrived), offer to restore the last bench
+   * this browser saved for this room, if it differs from the room's (parts, values or
+   * program). Never automatic.
    */
   offerRecovery(): void {
     const workbench = this.host.workbench();
@@ -717,8 +774,7 @@ export class WorkbenchTools {
     const parsed = parseProject(saved, (studio) => workbench.studioCatalog(studio));
     const current = this.currentProject();
     if (!parsed.ok || !current || parsed.project.studio !== this.host.studio()) return;
-    const same = JSON.stringify(parsed.project.parts) === JSON.stringify(current.parts);
-    if (same) return;
+    if (isEmptyProject(parsed.project) || sameContent(parsed.project, current)) return;
     const host = document.querySelector<HTMLElement>("#recovery-banner");
     if (!host) return;
     const when = new Date(parsed.project.savedAt);
@@ -728,8 +784,44 @@ export class WorkbenchTools {
       const action = (event.target as HTMLElement).closest<HTMLElement>("[data-recovery]")?.dataset.recovery;
       if (!action) return;
       host.hidden = true;
-      if (action === "restore") await this.importText(saved, false);
+      if (action === "restore") await this.importText(saved, false, "Restored the saved bench");
     };
+  }
+}
+
+/** Nothing seated, no program and no draft: nothing worth recovering. */
+function isEmptyProject(project: ProjectFile): boolean {
+  return !project.parts.some((part) => part.sockets) && !project.program?.length && !project.draftProgram?.length;
+}
+
+/** Same parts, values, switch states, room program and draft (ignores savedAt). */
+function sameContent(a: ProjectFile, b: ProjectFile): boolean {
+  return JSON.stringify(a.parts) === JSON.stringify(b.parts) &&
+    sameProgram(a.program, b.program) &&
+    sameProgram(a.draftProgram ?? null, b.draftProgram ?? null);
+}
+
+function describeCount(parts: number, program: boolean): string {
+  const items = [];
+  if (parts) items.push(`${parts} part${parts === 1 ? "" : "s"}`);
+  if (program) items.push("program");
+  return items.join(" + ");
+}
+
+/** What a refused or unconfirmed edit tells the learner. Nothing changed in every case. */
+function refusalCopy(label: string, result: Exclude<EditResult, { ok: true }>): string {
+  const part = result.componentId === "program" ? "the program" : PART_NAMES[result.componentId ?? ""] ?? "a part";
+  switch (result.reason) {
+    case "held":
+      return `${label} refused · ${result.holderName || "a teammate"} is holding ${part}; nothing changed`;
+    case "stale":
+      return `${label} refused · a teammate changed ${part} first, so their version is kept`;
+    case "offline":
+      return `${label} not sent · reconnecting to the room, nothing changed`;
+    case "timeout":
+      return `${label} not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)`;
+    default:
+      return `${label} not confirmed by the room · nothing changed`;
   }
 }
 
@@ -744,13 +836,14 @@ function summarize(analysis: CircuitAnalysis): { pill: string; tone: "neutral" |
   if (analysis.short) return { pill: "Short circuit", tone: "warning", explanation: firstError?.message ?? "The battery is shorted." };
   if (analysis.unprotectedLeds.length) return { pill: "LED burns out", tone: "warning", explanation: board.diagnostics.find((d) => d.code === "led-burnout")?.message ?? "" };
   if (analysis.overdrivenLeds.length) return { pill: "Overdriven", tone: "warning", explanation: board.diagnostics.find((d) => d.code === "led-overcurrent")?.message ?? "" };
+  if (analysis.reverseStressedLeds.length) return { pill: "Reverse > 5 V", tone: "warning", explanation: board.diagnostics.find((d) => d.code === "led-reverse-overvoltage")?.message ?? "" };
   if (analysis.powered) {
     const id = board.safeLitLeds[0];
     const amps = board.result.elements[id]?.amps ?? 0;
     return {
       pill: `Safe · ${formatAmps(amps)}`,
       tone: "valid",
-      explanation: `The LED carries ${formatAmps(amps)}, inside its 20 mA rating: the resistor takes the rest of the battery's voltage.${firstWarning ? ` Note: ${firstWarning.message}` : ""}`,
+      explanation: `The LED carries ${formatAmps(amps)}, within its 20 mA rating: the resistor takes the rest of the battery's voltage.${firstWarning ? ` Note: ${firstWarning.message}` : ""}`,
     };
   }
   if (analysis.reversedLeds.length) return { pill: "LED reversed", tone: "warning", explanation: board.diagnostics.find((d) => d.code === "reverse-led")?.message ?? "" };
@@ -810,6 +903,14 @@ function writePreference(key: string, value: boolean | string): void {
     localStorage.setItem(key, typeof value === "boolean" ? (value ? "1" : "0") : value);
   } catch {
     // Storage is a convenience; everything still works without it.
+  }
+}
+
+function removeKey(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Storage is a convenience.
   }
 }
 

@@ -115,6 +115,10 @@ export class AiTeammate {
         onPhase: (phase) => this.enterPhase(phase),
         onTrace: (trace) => this.onTrace(trace),
         onTransform: (componentId, _transform, participantId) => this.onBoardChange(componentId, participantId),
+        // Accepted edits (values, undo, import, demos) change the board too.
+        onApply: (componentId, _transform, { force }) => {
+          if (force) this.onBoardChange(componentId, "");
+        },
         onStudio: () => {
           this.cancelBuild();
           this.later(400, () => this.enterPhase(this.host.phase()));
@@ -345,20 +349,29 @@ export class AiTeammate {
       }
       const name = partLabel(move.id);
       this.host.yieldComponent(move.id);
-      // Grab (the host renders Bolt's hand on the part), carry, then let go.
-      this.room.claim(move.id);
+      // Grab (the host renders Bolt's hand on the part), carry, then let go. Bolt follows the
+      // room's claim rules like anyone: a refused claim means someone got there first.
+      const granted = await Promise.race([this.room.claim(move.id), sleep(4000).then(() => false)]);
+      if (this.disposed) return;
+      if (!granted) {
+        this.room.abandon(move.id);
+        skipped += 1;
+        continue;
+      }
       this.trace("claim", { objectId: move.id, objectName: name });
       await sleep(650);
       if (this.disposed) return;
       if (run !== this.buildRun) {
-        this.room.release(move.id);
+        void this.room.release(move.id);
         return;
       }
       this.room.sendTransform(move.id, move.transform);
       await sleep(900);
       if (this.disposed) return;
-      this.room.release(move.id);
-      this.trace("move", { objectId: move.id, objectName: name });
+      const accepted = await this.room.release(move.id);
+      if (this.disposed) return;
+      if (accepted) this.trace("move", { objectId: move.id, objectName: name });
+      else skipped += 1;
       await sleep(350);
     }
     if (this.disposed || run !== this.buildRun) return;

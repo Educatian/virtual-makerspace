@@ -1,61 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
-import { sanitizeTransform } from "./sanitize.js";
+import { RoomCore } from "./room-core.js";
+import { COMPONENT_IDS, componentResource, sanitizeEdit, sanitizeProgram, sanitizeTransform } from "./sanitize.js";
 
 const ROOM_CODE = /^[A-Z2-9]{4,12}$/;
-const COMPONENT_IDS = new Set([
-  "led-red",
-  "led-green",
-  "resistor-220",
-  "resistor-1k",
-  "wire-red",
-  "wire-blue",
-  "wire-yellow",
-  "battery-9v",
-  "soil-sensor",
-  "temp-sensor",
-  "light-sensor",
-  "farm-controller",
-  "water-pump",
-  "irrigation-hose",
-  "vent-fan",
-  "solar-panel",
-  "snap-b1",
-  "snap-s1",
-  "snap-l1",
-  "snap-m1",
-  "snap-w2",
-  "snap-w3a",
-  "snap-w3b",
-  "snap-w4",
-  "sno-l1",
-  "sno-d1",
-  "sno-m1",
-  "sno-s1",
-  "sno-w2a",
-  "sno-w2b",
-  "sno-w3",
-  "sno-w4a",
-  "sno-w4b",
-]);
 const STUDIOS = new Set(["circuit", "greenhouse", "snap", "snapino"]);
-const SNAPINO_PINS = new Set(["D3", "D5", "D6"]);
-
-function sanitizeProgram(value) {
-  if (!Array.isArray(value) || value.length > 24) return null;
-  const program = [];
-  for (const item of value) {
-    if (item?.op === "write" && SNAPINO_PINS.has(item.pin) && typeof item.value === "boolean") {
-      program.push({ op: "write", pin: item.pin, value: item.value });
-    } else if (item?.op === "wait" && Number.isFinite(item.ms)) {
-      program.push({ op: "wait", ms: Math.min(5000, Math.max(50, Math.round(item.ms / 50) * 50)) });
-    } else if (item?.op === "follow" && SNAPINO_PINS.has(item.pin) && typeof item.invert === "boolean") {
-      program.push({ op: "follow", pin: item.pin, invert: item.invert });
-    } else {
-      return null;
-    }
-  }
-  return program;
-}
 const studioOr = (value, fallback = "circuit") => (STUDIOS.has(value) ? value : fallback);
 const MAX_ROOM_MESSAGES_PER_SECOND = 120;
 const AI_TEAMMATE_NAME = "Bolt";
@@ -77,14 +25,10 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "signal",
   "studio",
   "program",
+  "edit",
+  "room-state-request",
 ]);
 
-function componentResource(value, allowEndpoint = true) {
-  const resource = String(value || "").slice(0, 160);
-  const match = resource.match(/^([a-z0-9-]+)(?:::endpoint-([01]))?$/);
-  if (!match || !COMPONENT_IDS.has(match[1]) || (!allowEndpoint && match[2] !== undefined)) return null;
-  return resource;
-}
 
 function sanitizeSignal(value) {
   if (!value || typeof value !== "object") return null;
@@ -396,8 +340,27 @@ export class MakerspaceRoom extends DurableObject {
     super(state, env);
     this.state = state;
     this.env = env;
-    this.claims = new Map();
     this.messageRates = new Map();
+    // Claims, the authoritative bench and revisions (cloudflare/room-core.js). The bench state
+    // is persisted so a hibernated object still answers joins and refused edits correctly;
+    // it is cleared when the last participant leaves, as before.
+    this.core = new RoomCore();
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list({ prefix: "bench:" });
+      const metadata = await this.state.storage.get("metadata");
+      this.core = new RoomCore({
+        entries: [...stored].map(([key, entry]) => [key.slice("bench:".length), entry]),
+        programRev: Number.isSafeInteger(metadata?.programRev) ? metadata.programRev : 0,
+        program: metadata?.program ? { program: metadata.program, running: Boolean(metadata.programRunning) } : null,
+      });
+      // Claims live in memory; after hibernation they are rebuilt from each socket's attachment.
+      for (const socket of this.state.getWebSockets()) {
+        const attachment = socket.deserializeAttachment();
+        for (const resourceId of Array.isArray(attachment?.claims) ? attachment.claims : []) {
+          if (typeof resourceId === "string") this.core.claims.set(resourceId, { participantId: attachment.id, participantName: attachment.name });
+        }
+      }
+    });
     this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
@@ -467,71 +430,62 @@ export class MakerspaceRoom extends DurableObject {
       socket.close(1008, "Message rate exceeded");
       return;
     }
-    let incoming;
+    // Any malformed message is dropped: parsing and validation never throw past this point.
+    let message;
     try {
-      incoming = JSON.parse(payload);
+      message = this.sanitizeMessage(JSON.parse(payload), attachment);
     } catch {
       return;
     }
-    const message = this.sanitizeMessage(incoming, attachment);
     if (!message) return;
-    if (message.kind === "claim") {
-      const current = this.claims.get(message.componentId);
-      if (current && current.participantId !== attachment.id) {
-        socket.send(JSON.stringify(current));
-        return;
-      }
-      const participantClaimCount = [...this.claims.values()]
-        .filter((claim) => claim.participantId === attachment.id).length;
-      if (!current && participantClaimCount >= MAX_CLAIMS_PER_PARTICIPANT) return;
-      this.claims.set(message.componentId, message);
+    const result = this.core.handle({ id: attachment.id, name: attachment.name }, message, { maxClaims: MAX_CLAIMS_PER_PARTICIPANT });
+    if (message.kind === "claim" || message.kind === "release") {
+      // Survives hibernation: the holder's claims ride on its socket attachment.
+      const held = [...this.core.claims].filter(([, claim]) => claim.participantId === attachment.id).map(([resourceId]) => resourceId);
+      socket.serializeAttachment({ ...attachment, claims: held });
     }
-    if (message.kind === "release") {
-      const current = this.claims.get(message.componentId);
-      if (current?.participantId !== attachment.id) return;
-      this.claims.delete(message.componentId);
+    if (message.kind === "studio") {
+      this.state.storage.get("metadata").then((metadata) => {
+        if (metadata) return this.state.storage.put("metadata", { ...metadata, studio: message.studio });
+      });
     }
-    if (message.kind === "transform") {
-      const endpoint = message.transform?.activeEndpoint;
-      const resourceId = endpoint === 0 || endpoint === 1
-        ? `${message.componentId}::endpoint-${endpoint}`
-        : message.componentId;
-      const current = this.claims.get(resourceId);
-      if (current && current.participantId !== attachment.id) return;
-    }
-    if (message.kind === "studio" || message.kind === "program") {
-      const update = message.kind === "studio"
-        ? { studio: message.studio }
-        : { program: message.program, programRunning: message.running };
+    if (result.persist.program) {
+      const update = result.persist.program;
       this.state.storage.get("metadata").then((metadata) => {
         if (metadata) return this.state.storage.put("metadata", { ...metadata, ...update });
       });
     }
-    const encoded = JSON.stringify(message);
-    for (const peer of this.state.getWebSockets()) {
-      if (peer !== socket && peer.readyState === WebSocket.OPEN) peer.send(encoded);
+    if (result.persist.state?.length) {
+      this.state.storage.put(Object.fromEntries(result.persist.state.map(([componentId, entry]) => [`bench:${componentId}`, entry])));
+    }
+    for (const reply of result.sender) socket.send(JSON.stringify(reply));
+    if (message.kind === "hello") for (const reply of this.core.join()) socket.send(JSON.stringify(reply));
+    for (const relay of result.others) {
+      const encoded = JSON.stringify(relay);
+      for (const peer of this.state.getWebSockets()) {
+        if (peer !== socket && peer.readyState === WebSocket.OPEN) peer.send(encoded);
+      }
     }
   }
 
   webSocketClose(socket, code, reason) {
     const attachment = socket.deserializeAttachment();
     this.messageRates.delete(attachment.id);
-    const released = [];
-    for (const [resourceId, claim] of this.claims) {
-      if (claim.participantId !== attachment.id) continue;
-      this.claims.delete(resourceId);
-      released.push(JSON.stringify({
-        kind: "release",
-        participantId: attachment.id,
-        participantName: attachment.name,
-        componentId: resourceId,
-      }));
-    }
+    const released = this.core.leave({ id: attachment.id, name: attachment.name }).map((message) => JSON.stringify(message));
     const goodbye = JSON.stringify({ kind: "goodbye", participantId: attachment.id });
+    let remaining = 0;
     for (const peer of this.state.getWebSockets()) {
       if (peer === socket || peer.readyState !== WebSocket.OPEN) continue;
+      remaining += 1;
       for (const release of released) peer.send(release);
       peer.send(goodbye);
+    }
+    if (remaining === 0) {
+      // Last one out: the bench resets, as it did when state lived only in the clients.
+      this.core.reset();
+      this.state.storage.list({ prefix: "bench:" }).then((stored) => {
+        if (stored.size) return this.state.storage.delete([...stored.keys()]);
+      });
     }
     socket.close(code, reason);
   }
@@ -632,10 +586,15 @@ export class MakerspaceRoom extends DurableObject {
     }
     if (incoming.kind === "transform") {
       const componentId = componentResource(incoming.componentId, false);
-      const transform = sanitizeTransform(incoming.transform, componentId);
-      const sequence = Number(incoming.sequence);
+      const transform = componentId ? sanitizeTransform(incoming.transform, componentId) : null;
+      const sequence = incoming.sequence;
       if (!componentId || !transform || !Number.isSafeInteger(sequence) || sequence < 0) return null;
       return { kind: "transform", participantId: participant.id, componentId, transform, sequence };
+    }
+    if (incoming.kind === "edit") {
+      const edit = sanitizeEdit(incoming);
+      if (!edit) return null;
+      return { kind: "edit", participantId: participant.id, ...edit };
     }
     if (incoming.kind === "voice-state") {
       return {
@@ -645,7 +604,7 @@ export class MakerspaceRoom extends DurableObject {
         muted: incoming.muted !== false,
       };
     }
-    if (incoming.kind === "goodbye" || incoming.kind === "state-request") {
+    if (incoming.kind === "goodbye" || incoming.kind === "state-request" || incoming.kind === "room-state-request") {
       return { kind: incoming.kind, participantId: participant.id };
     }
     if (incoming.kind === "state-response") {

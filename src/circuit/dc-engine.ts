@@ -40,6 +40,8 @@ export const DEFAULTS = {
   ledRatedAmps: 0.02,
   /** Above this the LED would fail within seconds (A). */
   ledBurnoutAmps: 0.1,
+  /** Typical datasheet maximum reverse voltage for an indicator LED (V); more is unsafe. */
+  ledReverseMaxVolts: 5,
   ledOffSiemens: 1e-9,
   /** Any source or wire carrying more than this is treated as a short circuit (A). */
   shortAmps: 1,
@@ -115,6 +117,7 @@ export type DiagnosticCode =
   | "open-circuit"
   | "short-circuit"
   | "reverse-led"
+  | "led-reverse-overvoltage"
   | "led-overcurrent"
   | "led-burnout"
   | "floating"
@@ -144,8 +147,10 @@ export interface ElementReading {
 }
 
 /**
- * Overall verdict, most severe first: invalid input, singular/non-convergence, short circuit,
- * unsafe (an LED overdriven or burning out), open circuit (no conducting loop), no source, ok.
+ * Overall verdict, most severe first: invalid input (always wins: the readings are of a
+ * circuit missing the rejected parts), singular/non-convergence, short circuit, unsafe (an
+ * LED above its rated current, burning out, or reverse-biased beyond its maximum), open
+ * circuit (no conducting loop), no source, ok.
  * `ok` means solved with current flowing and nothing unsafe — not necessarily that an LED is lit.
  */
 export type SolveStatus = "ok" | "no-source" | "open-circuit" | "short-circuit" | "unsafe" | "invalid" | "singular" | "non-convergence";
@@ -543,7 +548,7 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
 
   if (!x) {
     diagnostics.push({ code: "singular", severity: "error", message: "The circuit equations have no unique solution (an ideal loop or an unsupported arrangement). Nothing is shown as working." });
-    return result("singular", false, { iterations });
+    return result(invalidStatus ? "invalid" : "singular", false, { iterations });
   }
   if (!converged) {
     diagnostics.push({ code: "non-convergence", severity: "error", message: "The LED states did not settle; the readings are not reliable, so the circuit is not treated as working." });
@@ -572,11 +577,18 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
   }
 
   let short = false;
+  // Jumpers alone between a source's terminals are a short at any voltage, even when the
+  // current stays under the amps threshold (a 1 V cell through two wires draws ~0.9 A).
+  const wiresOnly = new DisjointSet();
+  for (const element of elements) if (element.kind === "wire") wiresOnly.union(sets.find(element.a), sets.find(element.b));
   for (const source of sources) {
     const amps = readings[source.id].amps;
     if (sets.find(source.pos) === sets.find(source.neg)) {
       short = true;
       diagnostics.push({ code: "short-circuit", severity: "error", elementId: source.id, message: `${nameOf(source)}'s + and − terminals are joined directly: a short circuit. A real battery would heat up quickly.` });
+    } else if (wiresOnly.find(sets.find(source.pos)) === wiresOnly.find(sets.find(source.neg))) {
+      short = true;
+      diagnostics.push({ code: "short-circuit", severity: "error", elementId: source.id, message: `${nameOf(source)}'s + and − terminals are joined by jumper wires alone (${formatAmps(Math.abs(amps))} with nothing to limit it): a short circuit.` });
     } else if (Math.abs(amps) > cfg.shortAmps) {
       short = true;
       diagnostics.push({ code: "short-circuit", severity: "error", elementId: source.id, message: `${nameOf(source)} is delivering ${formatAmps(Math.abs(amps))}: something bridges its terminals with almost no resistance (a short circuit).` });
@@ -590,6 +602,7 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
     }
   }
 
+  const reverseStressed = new Set<string>();
   for (const model of leds) {
     const reading = readings[model.element.id];
     const led = reading.led!;
@@ -606,8 +619,17 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
         code: "reverse-led",
         severity: "warning",
         elementId: model.element.id,
-        message: `${nameOf(model.element)} is in backwards (${reading.volts.toFixed(1)} V across it): an LED only conducts from its anode (long lead) to its cathode (flat side).${reading.volts < -5 ? " More than about 5 V in reverse can also damage a real LED." : ""}`,
+        message: `${nameOf(model.element)} is in backwards (${reading.volts.toFixed(1)} V across it): an LED only conducts from its anode (long lead) to its cathode (flat side).`,
       });
+      if (reading.volts < -cfg.ledReverseMaxVolts) {
+        reverseStressed.add(model.element.id);
+        diagnostics.push({
+          code: "led-reverse-overvoltage",
+          severity: "error",
+          elementId: model.element.id,
+          message: `${nameOf(model.element)} has ${Math.abs(reading.volts).toFixed(1)} V across it in reverse, more than the ${cfg.ledReverseMaxVolts} V a typical LED tolerates: it can be damaged. Turn it around (or lower the voltage).`,
+        });
+      }
     } else if (model.on && amps >= model.burnout) {
       led.state = "burnout";
       diagnostics.push({
@@ -616,7 +638,7 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
         elementId: model.element.id,
         message: `${nameOf(model.element)} would draw about ${formatAmps(amps)} — far above its ${formatAmps(model.rated)} rating. A real LED would burn out almost at once; add a series resistor.`,
       });
-    } else if (model.on && amps > model.rated * 1.05) {
+    } else if (model.on && amps > model.rated) {
       led.state = "overcurrent";
       diagnostics.push({
         code: "led-overcurrent",
@@ -642,13 +664,17 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
   // Open circuit: no source has a *conducting* path (resistors, wires, LEDs that are on) from
   // its + back to its −. This is topological, so a closed loop with a tiny current (1 MΩ at
   // 1.5 V) is not mistaken for an open one, and a loop blocked only by an off LED is.
-  const conducting = new DisjointSet();
-  for (const element of elements) {
-    if (element.kind === "resistor" || element.kind === "wire") conducting.union(sets.find(element.a), sets.find(element.b));
-  }
-  for (const model of leds) if (model.on) conducting.union(sets.find(model.element.anode), sets.find(model.element.cathode));
-  const anyLoop = sources.some((source) => conducting.find(sets.find(source.pos)) === conducting.find(sets.find(source.neg)));
-  const unsafe = leds.some((model) => {
+  // Other sources conduct too (cells in series), so each source is checked with every other.
+  const anyLoop = sources.some((source) => {
+    const conducting = new DisjointSet();
+    for (const element of elements) {
+      if (element.kind === "resistor" || element.kind === "wire") conducting.union(sets.find(element.a), sets.find(element.b));
+      if (element.kind === "source" && element !== source) conducting.union(sets.find(element.pos), sets.find(element.neg));
+    }
+    for (const model of leds) if (model.on) conducting.union(sets.find(model.element.anode), sets.find(model.element.cathode));
+    return conducting.find(sets.find(source.pos)) === conducting.find(sets.find(source.neg));
+  });
+  const unsafe = reverseStressed.size > 0 || leds.some((model) => {
     const state = readings[model.element.id].led?.state;
     return state === "burnout" || state === "overcurrent";
   });
@@ -667,7 +693,7 @@ export function solveCircuit(netlist: Netlist, options: Partial<typeof DEFAULTS>
         : "The battery is connected but the path does not return to its other terminal, so no current flows (an open circuit).",
     });
   }
-  if (invalidStatus && (status === "ok" || status === "open-circuit")) status = "invalid";
+  if (invalidStatus) status = "invalid";
   return result(status, converged, { nodeVolts, elements: readings, iterations });
 }
 

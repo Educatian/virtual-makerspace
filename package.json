@@ -13,10 +13,15 @@
     "test:agent": "node --experimental-strip-types scripts/teachable-agent-check.mjs",
     "test:project": "node --experimental-strip-types scripts/project-state-check.mjs",
     "test:snapino": "node --experimental-strip-types scripts/snapino-check.mjs && node --experimental-strip-types scripts/snapino-sketch-check.mjs",
-    "test": "npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino",
+    "test": "npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync",
     "test:e2e": "node scripts/e2e-ai-teammate.mjs",
     "test:e2e:worker": "node scripts/e2e-ai-teammate-worker.mjs",
-    "qa:3d": "node scripts/qa-3d.mjs"
+    "test:e2e:room": "node scripts/e2e-room-sync.mjs",
+    "test:e2e:sync": "node --experimental-strip-types scripts/e2e-worker-sync.mjs",
+    "test:e2e:snapino": "node scripts/e2e-snapino-history.mjs",
+    "test:e2e:cable": "node scripts/e2e-cable-end.mjs",
+    "qa:3d": "node scripts/qa-3d.mjs",
+    "test:sync": "node --experimental-strip-types scripts/sync-check.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

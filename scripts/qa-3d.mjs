@@ -113,6 +113,18 @@ await shot(page, "10-laptop");
 await page.context().close();
 }
 
+// Phone portrait (390×844 CSS px): the same working loop, default framing.
+if (wanted("16-phone")) {
+page = await open("circuit", { width: 390, height: 844 });
+await page.evaluate(() => {
+  window.__vmQa.place("battery-9v", 21, 23);
+  window.__vmQa.place("resistor-1k", 36, 39);
+  window.__vmQa.place("led-red", 53, 52);
+});
+await shot(page, "16-phone");
+await page.context().close();
+}
+
 writeFileSync(`${out}/stats.json`, JSON.stringify(stats, null, 2));
 console.log(JSON.stringify(stats, null, 1));
 console.log(issues.length ? issues.join("\n") : "no issues");

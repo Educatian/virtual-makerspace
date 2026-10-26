@@ -3,7 +3,7 @@
 //   node --experimental-strip-types scripts/project-state-check.mjs
 import assert from "node:assert/strict";
 
-const { EditHistory, sameTransform } = await import("../src/desktop/edit-history.ts");
+const { EditHistory, sameTransform, sameProgram } = await import("../src/desktop/edit-history.ts");
 const { buildProject, parseProject, PROJECT_FORMAT, MAX_PROJECT_BYTES } = await import("../src/desktop/project-file.ts");
 const { sanitizeProps } = await import("../src/circuit/part-props.ts");
 const worker = await import("../cloudflare/sanitize.js");
@@ -162,6 +162,147 @@ for (const [kind, raw] of [
   eq(worker.sanitizeTransform({ ...base, props: { ohms: 470 } }, "led-red").props, undefined, "worker drops props on parts without values");
   eq(worker.sanitizeTransform({ ...base, props: { ohms: 470, html: "<b>" } }, "resistor-1k").props, { ohms: 470 }, "worker copies only known fields");
   ok(worker.sanitizeTransform({ ...base, sockets: [36, 39.5] }, "resistor-1k") === null, "worker still rejects bad sockets");
+}
+
+// ── Hostile JSON: strict types, never a throw (PR #3 review) ──────────────────────────────
+{
+  const valid = JSON.parse(JSON.stringify(buildProject(catalogFor("circuit"), { "led-red": seated(53, 52), "resistor-1k": seated(36, 39, { ohms: 1000 }) })));
+  const hostile = [{ toString: 0 }, { toString: 0, valueOf: 0 }, { valueOf: 0 }, [], [1], { length: 2 }, "1", true, null, 1e309];
+  let refused = 0;
+  for (const field of ["format", "version", "studio", "solver", "savedAt", "parts", "program", "draftProgram"]) {
+    for (const value of hostile) {
+      const project = { ...valid, [field]: value };
+      let result;
+      assert.doesNotThrow(() => { result = parseProject(JSON.stringify(project), catalogFor); }, `${field}=${JSON.stringify(value)} does not throw`);
+      checks += 1;
+      if (!result.ok) refused += 1;
+      else ok(typeof result.project.solver === "string" && typeof result.project.savedAt === "string", `${field} hostile value is sanitized when tolerated`);
+    }
+  }
+  ok(refused > 30, "hostile top-level values are refused");
+  const versionObject = parseProject(JSON.stringify({ ...valid, version: { toString: 0 } }), catalogFor);
+  eq([versionObject.ok, /version is not supported/.test(versionObject.error)], [false, true], "version {toString:0} is refused with a truthful error (not a crash)");
+  for (const part of [
+    { id: "led-red", sockets: [{ toString: 0, valueOf: 0 }, 52] },
+    { id: "led-red", sockets: [true, ""] },
+    { id: "led-red", sockets: [false, "", null].slice(0, 2) },
+    { id: "led-red", sockets: ["53", "52"] },
+    { id: "led-red", sockets: [53.5, 52] },
+    { id: { toString: 0 }, sockets: [53, 52] },
+    { id: "resistor-1k", sockets: [36, 39], props: { ohms: { valueOf: 0 } } },
+    { id: "resistor-1k", sockets: [36, 39], props: { ohms: "1000" } },
+    { id: "led-red", sockets: [53, 52], on: "true" },
+  ]) {
+    let result;
+    assert.doesNotThrow(() => { result = parseProject(JSON.stringify({ ...valid, parts: [part] }), catalogFor); }, `part ${JSON.stringify(part)} does not throw`);
+    eq(result.ok, false, `part ${JSON.stringify(part)} is refused, not coerced`);
+  }
+  const snoBase = JSON.parse(JSON.stringify(buildProject(catalogFor("snapino"), {}, [{ op: "write", pin: "D5", value: true }])));
+  for (const program of [[{ op: "wait", ms: { valueOf: 0 } }], [{ op: "wait", ms: "500" }], [{ op: "write", pin: "D5", value: "true" }], [{ op: "write", pin: { toString: 0 }, value: true }], { 0: { op: "wait", ms: 50 }, length: 1 }]) {
+    let result;
+    assert.doesNotThrow(() => { result = parseProject(JSON.stringify({ ...snoBase, program }), catalogFor); }, "hostile program does not throw");
+    eq(result.ok, false, `program ${JSON.stringify(program)} is refused`);
+  }
+  ok(parseProject("x".repeat(70_000), catalogFor).ok === false, "oversized text refused");
+  ok(parseProject({ toString: 0 }, catalogFor).ok === false, "a non-string input is refused without a throw");
+}
+
+// ── Worker sanitizers: strict types, never a throw ─────────────────────────────────────────
+{
+  const base = { position: [0, 0.48, 0], rotation: [0, 0, 0], sockets: [36, 39] };
+  for (const position of [[{ toString: 0, valueOf: 0 }, 0, 0], [false, "", null], ["0", 0, 0], [0, 0], [0, 0, 0, 0], [Number.NaN, 0, 0], [99, 0, 0]]) {
+    let out;
+    assert.doesNotThrow(() => { out = worker.sanitizeTransform({ ...base, position }, "resistor-1k"); }, `position ${JSON.stringify(position)} does not throw`);
+    eq(out, null, `position ${JSON.stringify(position)} is rejected, not coerced`);
+  }
+  for (const sockets of [[true, ""], [{ valueOf: 1 }, 2], ["36", 39], [36], [36, 39, 40], [-1, 39], [36.5, 39]]) {
+    eq(worker.sanitizeTransform({ ...base, sockets }, "resistor-1k"), null, `sockets ${JSON.stringify(sockets)} rejected`);
+  }
+  eq(worker.sanitizeTransform([1, 2, 3], "resistor-1k"), null, "an array is not a transform");
+  eq(worker.sanitizeTransform({ ...base, endpoints: [[{ toString: 0 }, 0, 0], [0, 0, 0]] }, "wire-red"), null, "hostile endpoints rejected");
+  const edit = { opId: "op-1", changes: [{ componentId: "resistor-1k", transform: base, expectRev: 0 }] };
+  ok(worker.sanitizeEdit(edit) !== null, "a valid edit passes");
+  for (const bad of [
+    { ...edit, opId: { toString: 0 } }, { ...edit, opId: "has space" }, { ...edit, changes: "x" }, { ...edit, changes: [] },
+    { ...edit, changes: [{ ...edit.changes[0], expectRev: "0" }] }, { ...edit, changes: [{ ...edit.changes[0], expectRev: -1 }] },
+    { ...edit, changes: [{ ...edit.changes[0], componentId: "led-red::endpoint-0" }] },
+    { ...edit, changes: [edit.changes[0], edit.changes[0]] },
+    { ...edit, changes: [{ ...edit.changes[0], transform: { ...base, activeEndpoint: 0 } }] },
+    { ...edit, program: { program: [], running: "false", expectRev: 0 } },
+    { ...edit, program: { program: [{ op: "wait", ms: { valueOf: 0 } }], running: false, expectRev: 0 } },
+    { ...edit, program: { program: [], running: false, expectRev: "0" } },
+    null, [], "edit",
+  ]) {
+    let out;
+    assert.doesNotThrow(() => { out = worker.sanitizeEdit(bad); }, "hostile edit does not throw");
+    eq(out, null, `edit ${JSON.stringify(bad)?.slice(0, 80)} rejected`);
+  }
+  ok(worker.sanitizeEdit({ opId: "op-2", changes: [], program: { program: [], running: true, expectRev: null } }) !== null, "an unconditional program-only edit passes");
+  for (const program of [[{ op: "wait", ms: { valueOf: 0 } }], [{ op: "wait", ms: "50" }], [null], "x", [{ op: "write", pin: "D5", value: 1 }]]) {
+    eq(worker.sanitizeProgram(program), null, `worker program ${JSON.stringify(program)} rejected`);
+  }
+}
+
+// ── Snap-style studs may be shared; breadboard holes may not ───────────────────────────────
+{
+  const studs = { studio: "snapino", parts: { "sno-l1": null, "sno-w3": null }, socketCount: 63, switches: [], sharedSockets: true };
+  const stacked = buildProject(studs, { "sno-l1": seated(5, 30), "sno-w3": seated(30, 33) });
+  ok(parseProject(JSON.stringify(stacked), () => studs).ok, "a Snapino demo with parts stacked on one stud re-imports");
+  const holes = { studio: "circuit", parts: { "led-red": null, "resistor-1k": "resistor" }, socketCount: 192, switches: [] };
+  const clash = buildProject(holes, { "led-red": seated(53, 52), "resistor-1k": seated(52, 39, { ohms: 1000 }) });
+  eq(parseProject(JSON.stringify(clash), () => holes).ok, false, "two leads in one breadboard hole are refused");
+}
+
+// ── Snapino programs in history, export and recovery (PR #3 review) ───────────────────────
+{
+  const P = [{ op: "write", pin: "D5", value: true }];
+  const Q = [{ op: "write", pin: "D6", value: true }];
+  const R = [{ op: "write", pin: "D3", value: true }];
+  const history = new EditHistory();
+  // A program-only import is one undo entry.
+  ok(history.record("Loaded a project", [], { before: P, after: Q }), "a program-only import is recorded");
+  ok(!history.record("noop", [], { before: Q, after: Q }), "an unchanged program is not recorded");
+  let room = Q;
+  let verdict = history.peek("undo", () => null, () => false, () => room);
+  eq([verdict.ok, verdict.program], [true, P], "undo of a program-only import restores the previous program");
+  history.commit("undo");
+  room = P;
+  verdict = history.peek("redo", () => null, () => false, () => room);
+  eq([verdict.ok, verdict.program], [true, Q], "redo brings the imported program back");
+  history.commit("redo");
+  room = R; // a teammate uploads R after the import
+  verdict = history.peek("undo", () => null, () => false, () => room);
+  eq([verdict.ok, verdict.reason, verdict.partId], [false, "stale", "program"], "a stale undo never overwrites a teammate's newer program R");
+  ok(!history.canUndo, "and the stale entry is discarded");
+  // Parts and program together are one step; the room's refusal keeps or drops it.
+  const both = new EditHistory();
+  both.record("Loaded a project", [{ id: "sno-l1", before: home(1), after: seated(10, 28) }], { before: P, after: Q });
+  verdict = both.peek("undo", (id) => (id === "sno-l1" ? seated(10, 28) : null), () => false, () => Q);
+  eq([verdict.ok, verdict.apply.length, verdict.program], [true, 1, P], "parts + program undo as one step");
+  ok(both.canUndo, "peek does not move the entry");
+  both.drop("undo");
+  ok(!both.canUndo && !both.canRedo, "a room-stale step is dropped");
+  ok(sameProgram(null, []) && !sameProgram(P, Q), "programs compare by statements");
+
+  // Two quick Undo presses peek the same entry; the second's refusal must not drop another one.
+  const twice = new EditHistory();
+  twice.record("E2", [{ id: "led-red", before: home(1), after: home(2) }]);
+  twice.record("E1", [{ id: "led-red", before: home(2), after: home(3) }]);
+  const first = twice.peek("undo", () => home(3), () => false);
+  const second = twice.peek("undo", () => home(3), () => false);
+  twice.commit("undo", first.entry);
+  twice.drop("undo", second.entry); // refused as stale by the room (already undone)
+  eq([twice.undoLabel, twice.redoLabel], ["E2", "E1"], "a duplicate step's refusal never drops an unrelated entry");
+
+  // Export separates the room's program from an unsaved editor draft.
+  const exported = buildProject(catalogFor("snapino"), {}, P, new Date(0), Q);
+  eq([exported.program, exported.draftProgram], [P, Q], "export keeps the room program and the unsaved draft apart");
+  eq(buildProject(catalogFor("snapino"), {}, P, new Date(0), P).draftProgram, undefined, "no draft when the editor matches the room");
+  const reparsed = parseProject(JSON.stringify(exported), catalogFor);
+  eq([reparsed.ok, reparsed.project.program, reparsed.project.draftProgram], [true, P, Q], "both survive a round trip");
+  const draftOnCircuit = JSON.parse(JSON.stringify(buildProject(catalogFor("circuit"), {})));
+  draftOnCircuit.draftProgram = Q;
+  eq(parseProject(JSON.stringify(draftOnCircuit), catalogFor).ok, false, "only Snapino projects carry a draft");
 }
 
 console.log(`project state: ${checks} checks passed`);

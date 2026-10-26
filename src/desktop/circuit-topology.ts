@@ -70,6 +70,8 @@ export interface CircuitAnalysis {
   /** LEDs that glow but above their 20 mA rating (resistor too small for the supply). */
   overdrivenLeds: string[];
   reversedLeds: string[];
+  /** Reversed LEDs beyond their ~5 V reverse maximum (unsafe, never a success). */
+  reverseStressedLeds: string[];
   short: boolean;
   /** Current through each placed LED (A). */
   ledAmps: Record<string, number>;
@@ -145,6 +147,7 @@ export function analyzeCircuit(placements: CircuitPlacements, props: CircuitProp
     unprotectedLeds: board.burntLeds,
     overdrivenLeds: board.overdrivenLeds,
     reversedLeds: board.reversedLeds,
+    reverseStressedLeds: board.reverseStressedLeds,
     short: board.short,
     ledAmps,
     resistorInSeries,

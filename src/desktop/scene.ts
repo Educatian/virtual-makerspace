@@ -119,6 +119,16 @@ export interface SceneEvents {
   onClaim: (componentId: string) => boolean;
   onRelease: (componentId: string) => void;
   onAttempt: (snapshot: SceneSnapshot) => void;
+  /**
+   * The room ended this participant's drag (claim refused, or an accepted change the room
+   * ordered first): nothing was moved, so there is no move to record or release to trace.
+   */
+  onDragAborted?: (resourceId: string) => void;
+  /**
+   * A whole-part change made here (demo layout, slide switch, rotation reset, restoring an
+   * attempt) to submit to the room as one atomic edit; it shows when the room accepts it.
+   */
+  onEdit?: (changes: Array<{ id: string; transform: SharedTransform }>, label: string) => void;
   onCircuitState: (powered: boolean) => void;
   /** The Circuit Bench's latest engine analysis (every re-evaluation, not only on change). */
   onCircuitAnalysis?: (analysis: CircuitAnalysis) => void;
@@ -483,11 +493,10 @@ export class DesktopWorkbenchScene {
 
   resetSelectedRotation(): void {
     if (!this.selected) return;
-    this.selected.rotation.set(0, 0, 0);
-    this.selected.updateMatrixWorld(true);
-    this.emitTransform(this.selected, true);
-    this.selectionBox.update();
-    this.events.onStatus("Rotation reset", "neutral");
+    const id = this.selected.userData.componentId as string;
+    const transform = this.snapshotTransform(this.selected);
+    transform.rotation = [0, 0, 0];
+    this.events.onEdit?.([{ id, transform }], "Rotation reset");
   }
 
   toggleMagnetism(): boolean {
@@ -521,9 +530,20 @@ export class DesktopWorkbenchScene {
     }
   }
 
-  applyRemoteTransform(componentId: string, transform: SharedTransform, animate = true): void {
+  /**
+   * Applies a part state from the room. `force`: an accepted edit or the room's authoritative
+   * state — it ends a local drag of the part. `propsOnly`: this participant's own later moves
+   * of the part are still in flight, so only values and the switch state apply.
+   */
+  applyRemoteTransform(componentId: string, transform: SharedTransform, animate = true, options: { force?: boolean; propsOnly?: boolean } = {}): void {
     const component = this.components.get(componentId);
     if (!component) return;
+    if (options.propsOnly) {
+      this.applyPartValues(component, transform);
+      this.evaluateCurrentSystem();
+      return;
+    }
+    if (options.force) this.abortDrag(component);
     if (transform.activeEndpoint !== undefined && transform.endpoints) {
       const remoteIndex = transform.activeEndpoint;
       if (this.draggingEndpoint?.component === component && this.draggingEndpoint.index === remoteIndex) return;
@@ -538,16 +558,7 @@ export class DesktopWorkbenchScene {
       this.evaluateCurrentSystem();
       return;
     }
-    if (typeof transform.on === "boolean") this.setSwitch(component, transform.on);
-    if (transform.props) {
-      const spec = component.userData.spec as ComponentSpec;
-      const kind = propKind(spec);
-      const clean = kind ? sanitizeProps(kind, transform.props) : null;
-      if (clean) {
-        component.userData.props = clean;
-        this.refreshPartAppearance(component);
-      }
-    }
+    this.applyPartValues(component, transform);
     // Only an active local drag outranks a teammate's move; a merely selected part follows it.
     if (component === this.dragging || (component === this.transform.object && this.transform.dragging)) {
       this.evaluateCurrentSystem();
@@ -576,6 +587,100 @@ export class DesktopWorkbenchScene {
     component.updateMatrixWorld(true);
     if (component === this.selected) this.selectionBox.update();
     this.evaluateCurrentSystem();
+  }
+
+  private applyPartValues(component: Group, transform: SharedTransform): void {
+    if (typeof transform.on === "boolean") this.setSwitch(component, transform.on);
+    if (transform.props) {
+      const spec = component.userData.spec as ComponentSpec;
+      const kind = propKind(spec);
+      const clean = kind ? sanitizeProps(kind, transform.props) : null;
+      if (clean) {
+        component.userData.props = clean;
+        this.refreshPartAppearance(component);
+      }
+    }
+  }
+
+  /**
+   * The room refused this participant's move or claim: its state replaces the local guess
+   * (null = the part was never changed through the room, i.e. its default). `superseded`: a
+   * newer move of ours is still in flight and decides, so keep the position for now.
+   */
+  revertPart(componentId: string, transform: SharedTransform | null, superseded = false): void {
+    const component = this.components.get(componentId);
+    if (!component) return;
+    const target = transform ?? this.defaultTransform(componentId);
+    if (!target) return;
+    if (superseded) {
+      this.applyPartValues(component, target);
+      this.evaluateCurrentSystem();
+      return;
+    }
+    this.applyRemoteTransform(componentId, target, true, { force: true });
+  }
+
+  /**
+   * QA only (`?qa`): drops one cable end into a socket through the same path as a pointer drag —
+   * claim, snapped move, release in the same task — so tests exercise the real room ordering.
+   */
+  qaDropEndpoint(componentId: string, index: 0 | 1, socketIndex: number): boolean {
+    const component = this.components.get(componentId);
+    const socket = this.sockets[socketIndex];
+    const spec = component?.userData.spec as ComponentSpec | undefined;
+    if (!component || !socket || (spec?.kind !== "wire" && spec?.kind !== "hose")) return false;
+    const resourceId = this.endpointResourceId(componentId, index);
+    if (!this.events.onClaim(resourceId)) return false;
+    this.getEndpointPositions(component)[index].copy(component.worldToLocal(socket.clone()));
+    const sockets = this.cloneEndpointSockets(component.userData.sockets as EndpointSockets) ?? [null, null];
+    sockets[index] = socketIndex;
+    component.userData.sockets = sockets;
+    this.updateFlexibleWireGeometry(component, true);
+    component.updateMatrixWorld(true);
+    this.emitTransform(component, true, index);
+    this.evaluateCurrentSystem();
+    this.events.onRelease(resourceId);
+    return true;
+  }
+
+  /** Ends a local drag of the part, if any (the room refused the claim). */
+  abortDragOf(componentId: string): void {
+    const component = this.components.get(componentId);
+    if (component) this.abortDrag(component);
+  }
+
+  private abortDrag(component: Group): void {
+    const id = component.userData.componentId as string;
+    if (this.dragging === component) {
+      const resourceId = this.draggingEndpoint?.resourceId ?? id;
+      if (this.dragPointerId !== null && this.renderer.domElement.hasPointerCapture(this.dragPointerId)) {
+        this.renderer.domElement.releasePointerCapture(this.dragPointerId);
+      }
+      this.dragging = null;
+      this.draggingEndpoint = null;
+      this.dragPointerId = null;
+      this.orbit.enabled = true;
+      this.hideSnapPreview();
+      this.flexMotion.delete(id);
+      this.events.onDragAborted?.(resourceId);
+    } else if (this.transform.object === component && this.transform.dragging) {
+      // Detaching mid-drag drops the gizmo's mouseUp, so no final move is sent.
+      this.transform.detach();
+      this.orbit.enabled = true;
+      this.events.onDragAborted?.(id);
+    }
+  }
+
+  /** A part's state when nobody has changed it: in its tray slot, default values, switch off. */
+  defaultTransform(componentId: string): SharedTransform | null {
+    const transform = this.homeTransform(componentId);
+    const spec = this.components.get(componentId)?.userData.spec as ComponentSpec | undefined;
+    if (!transform || !spec) return null;
+    const props = defaultProps(spec);
+    if (props) transform.props = props;
+    else delete transform.props;
+    if (spec.kind === "snapswitch") transform.on = false;
+    return transform;
   }
 
   setOwner(componentId: string, owner: HandOwner | null): void {
@@ -635,14 +740,14 @@ export class DesktopWorkbenchScene {
     return snapshot;
   }
 
+  /** Restoring a saved attempt is one atomic shared edit (it shows once the room accepts it). */
   restoreAttempt(snapshot: SceneSnapshot): void {
-    for (const [id, transform] of Object.entries(snapshot.transforms)) {
-      this.applyRemoteTransform(id, transform);
-      this.events.onTransform(id, transform);
-    }
-    const restored = this.captureAttempt(`Restored from ${snapshot.id}`);
-    this.events.onAttempt(restored);
-    this.events.onStatus("Attempt restored as a new state", "valid");
+    const changes = Object.entries(snapshot.transforms).map(([id, transform]) => {
+      const clean = { ...transform };
+      delete clean.activeEndpoint;
+      return { id, transform: clean };
+    });
+    this.events.onEdit?.(changes, `Restored ${snapshot.id}`);
   }
 
   /** Re-run the active studio's evaluation quietly (refreshes listeners such as the meter). */
@@ -656,28 +761,26 @@ export class DesktopWorkbenchScene {
 
   loadCircuitDemo(): void {
     if (this.activeStudio !== "circuit") return;
-    const layout: Record<string, [number, number]> = {
-      // Battery + at r1c5, − at r1c7. The 1 kΩ resistor (r2c4→c7) limits the red LED (anode
-      // r3c5 on +, cathode r3c4) to about 7 mA at 9 V, inside its 20 mA rating.
+    // Battery + at r1c5, − at r1c7. The 1 kΩ resistor (r2c4→c7) limits the red LED (anode
+    // r3c5 on +, cathode r3c4) to about 7 mA at 9 V, inside its 20 mA rating.
+    this.submitLayout({
       "battery-9v": [21, 23],
       "resistor-1k": [36, 39],
       "led-red": [53, 52],
-    };
+    }, "Diagnostic LED path connected");
+  }
+
+  /**
+   * A demo layout as one atomic shared edit: seats each part exactly as a snapped move would,
+   * keeps everything else on the bench as it is, and shows once the room accepts it.
+   */
+  private submitLayout(layout: Record<string, [number, number]>, label: string, overrides: Record<string, Partial<SharedTransform>> = {}): void {
+    const changes: Array<{ id: string; transform: SharedTransform }> = [];
     for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.circuitSockets[pair[0]];
-      const b = this.circuitSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      const direction = b.clone().sub(a);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-direction.z, direction.x), 0);
-      component.userData.sockets = pair;
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
+      const transform = this.placementTransform(id, pair);
+      if (transform) changes.push({ id, transform: { ...transform, ...overrides[id] } });
     }
-    this.evaluateCircuit(true);
-    this.events.onAttempt(this.captureAttempt("Diagnostic LED path connected"));
+    if (changes.length) this.events.onEdit?.(changes, label);
   }
 
   /**
@@ -744,7 +847,7 @@ export class DesktopWorkbenchScene {
   }
 
   /** What a project file may contain for `studio`: its part ids, value kinds and socket range. */
-  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, "resistor" | "battery" | null>; socketCount: number; switches: string[] } {
+  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, "resistor" | "battery" | null>; socketCount: number; switches: string[]; sharedSockets: boolean } {
     const parts: Record<string, "resistor" | "battery" | null> = {};
     for (const spec of COMPONENTS) if (spec.studio === studio) parts[spec.id] = propKind(spec);
     return {
@@ -752,6 +855,8 @@ export class DesktopWorkbenchScene {
       parts,
       socketCount: this.socketsForStudio(studio).length,
       switches: COMPONENTS.filter((spec) => spec.studio === studio && spec.kind === "snapswitch").map((spec) => spec.id),
+      // Snap Lab and Snapino parts stack on shared studs; breadboard and greenhouse holes do not.
+      sharedSockets: studio === "snap" || studio === "snapino",
     };
   }
 
@@ -765,25 +870,6 @@ export class DesktopWorkbenchScene {
   getPartProps(componentId: string): PartProps | null {
     const props = this.components.get(componentId)?.userData.props as PartProps | undefined;
     return props ? { ...props } : null;
-  }
-
-  /**
-   * Applies validated electrical values locally and shares them as an ordinary transform
-   * (same position, new props). The caller checks claims first; property edits never go
-   * through claim/release, so they do not count as research claim/move events.
-   */
-  setPartProps(componentId: string, props: PartProps): boolean {
-    const component = this.components.get(componentId);
-    const spec = component?.userData.spec as ComponentSpec | undefined;
-    const kind = spec ? propKind(spec) : null;
-    const clean = kind ? sanitizeProps(kind, props) : null;
-    if (!component || !clean) return false;
-    this.cancelRemoteTween(component, true);
-    component.userData.props = clean;
-    this.refreshPartAppearance(component);
-    this.emitTransform(component, true);
-    this.evaluateCurrentSystem();
-    return true;
   }
 
   /** The latest Circuit Bench analysis from the shared DC engine. */
@@ -811,7 +897,7 @@ export class DesktopWorkbenchScene {
   loadSnapDemo(): void {
     if (this.activeStudio !== "snap") return;
     // studs are row * 9 + col: B1+ (r1c0) → W4 → W3 → M1 → L1 → S1 → W2 → B1− (r1c3)
-    const layout: Record<string, [number, number]> = {
+    this.submitLayout({
       "snap-b1": [9, 12],
       "snap-w4": [9, 45],
       "snap-w3a": [45, 48],
@@ -819,22 +905,7 @@ export class DesktopWorkbenchScene {
       "snap-l1": [50, 32],
       "snap-s1": [32, 14],
       "snap-w2": [14, 12],
-    };
-    for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.snapSockets[pair[0]];
-      const b = this.snapSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
-      component.userData.sockets = pair;
-      if (id === "snap-s1") this.setSwitch(component, true);
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
-    }
-    this.evaluateSnap(true);
-    this.events.onAttempt(this.captureAttempt("Series lamp + motor loop connected"));
+    }, "Series lamp + motor loop connected", { "snap-s1": { on: true } });
   }
 
   /** Keyboard/assistive path to operate the selected slide switch. */
@@ -851,11 +922,10 @@ export class DesktopWorkbenchScene {
       this.events.onStatus(`${owner.name} is holding S1`, "warning");
       return;
     }
-    this.setSwitch(component, !component.userData.switchOn);
-    this.emitTransform(component, true);
-    this.events.onStatus(`Slide switch S1 ${component.userData.switchOn ? "ON" : "OFF"}`, "neutral");
-    this.evaluateCurrentSystem(true);
-    this.events.onAttempt(this.captureAttempt(`S1 switched ${component.userData.switchOn ? "on" : "off"}`));
+    // A switch flip is a shared edit: it shows (here and for everyone) once the room accepts it.
+    const transform = this.snapshotTransform(component);
+    transform.on = !component.userData.switchOn;
+    this.events.onEdit?.([{ id, transform }], `S1 switched ${transform.on ? "on" : "off"}`);
   }
 
   private setSwitch(component: Group, on: boolean): void {
@@ -871,7 +941,7 @@ export class DesktopWorkbenchScene {
 
   loadGreenhouseDemo(): void {
     if (this.activeStudio !== "greenhouse") return;
-    const layout: Record<string, [number, number]> = {
+    this.submitLayout({
       "soil-sensor": [0, 1],
       "temp-sensor": [2, 3],
       "light-sensor": [4, 5],
@@ -880,31 +950,7 @@ export class DesktopWorkbenchScene {
       "water-pump": [12, 14],
       "irrigation-hose": [15, 18],
       "vent-fan": [19, 21],
-    };
-    for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.greenhouseSockets[pair[0]];
-      const b = this.greenhouseSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
-      component.userData.sockets = pair;
-      component.updateMatrixWorld(true);
-      const spec = component.userData.spec as ComponentSpec;
-      if (spec.kind === "wire" || spec.kind === "hose") {
-        const endpoints = this.getEndpointPositions(component);
-        endpoints[0].copy(component.worldToLocal(a.clone()));
-        endpoints[1].copy(component.worldToLocal(b.clone()));
-        this.updateFlexibleWireGeometry(component, true);
-      } else {
-        this.updateFlexibleWire(component, a.distanceTo(b), true);
-      }
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
-    }
-    this.evaluateGreenhouse(true);
-    this.events.onAttempt(this.captureAttempt("Field test layout connected"));
+    }, "Field test layout connected");
   }
 
   dispose(): void {
@@ -2706,25 +2752,11 @@ export class DesktopWorkbenchScene {
     if (this.activeStudio !== "snapino") return;
     // L1 from D5 down to row D and back to GND. Wiring S1 (D2 → 5V) is left to
     // the team: that path must cross this loop, the design problem of the task.
-    const layout: Record<string, [number, number]> = {
+    this.submitLayout({
       "sno-l1": [SNAPINO_PADS.D5, 30],
       "sno-w3": [30, 33],
       "sno-w2a": [33, SNAPINO_PADS.GND],
-    };
-    for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.snapSockets[pair[0]];
-      const b = this.snapSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
-      component.userData.sockets = pair;
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
-    }
-    this.evaluateSnapino(true);
-    this.events.onAttempt(this.captureAttempt("Snapino lamp wired to D5"));
+    }, "Snapino lamp wired to D5");
   }
 
   private evaluateGreenhouse(announce = false): boolean {
@@ -2794,10 +2826,11 @@ export class DesktopWorkbenchScene {
   private emitTransform(component: Group, force: boolean, activeEndpoint?: 0 | 1): void {
     this.cancelRemoteTween(component, false);
     if (!force && performance.now() - this.transformBroadcastAt < 40) return;
-    this.events.onTransform(
-      component.userData.componentId as string,
-      this.snapshotTransform(component, activeEndpoint),
-    );
+    // Live moves never carry electrical values: those change only through accepted edits, and
+    // the room keeps its accepted values when it stores a move.
+    const transform = this.snapshotTransform(component, activeEndpoint);
+    delete transform.props;
+    this.events.onTransform(component.userData.componentId as string, transform);
   }
 
   private snapshotTransform(component: Group, activeEndpoint?: 0 | 1): SharedTransform {
@@ -3029,10 +3062,14 @@ export function describeCircuit(analysis: CircuitAnalysis): { message: string; t
     const led = reading(analysis.overdrivenLeds[0]);
     return { message: `LED overdriven · ${formatAmps(led?.amps ?? 0)} exceeds its 20 mA rating; use a larger resistor`, tone: "warning" };
   }
+  if (analysis.reverseStressedLeds.length) {
+    const led = reading(analysis.reverseStressedLeds[0]);
+    return { message: `LED backwards at ${formatVolts(Math.abs(led?.volts ?? 0))} · more than the ~5 V an LED tolerates in reverse; turn it around`, tone: "warning" };
+  }
   if (analysis.powered) {
     const id = board.safeLitLeds[0];
     const led = reading(id);
-    return { message: `Circuit powered · LED at ${formatAmps(led?.amps ?? 0)}, ${formatVolts(led?.volts)} across it (safe, under 20 mA)`, tone: "valid" };
+    return { message: `Circuit powered · LED at ${formatAmps(led?.amps ?? 0)}, ${formatVolts(led?.volts)} across it (within its 20 mA rating)`, tone: "valid" };
   }
   if (analysis.reversedLeds.length) {
     return { message: "LED is backwards · its anode (long lead, lead A) must face the battery's + side", tone: "warning" };

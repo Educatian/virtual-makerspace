@@ -28,6 +28,8 @@ import {
 } from "./collaboration.js";
 import { AI_TEAMMATE_NAME, AiTeammate, TYPING_DETAIL, forgetAiTeammate } from "./ai-teammate.js";
 import { WorkbenchTools } from "./workbench-tools.js";
+import { sameProgram, sameTransform } from "./edit-history.ts";
+import type { SharedTransform } from "./collaboration.js";
 import {
   DesktopWorkbenchScene,
   type ComponentSpec,
@@ -88,7 +90,10 @@ let powered = false;
 let activeStudio: StudioKind = toStudio(params.get("studio"));
 let speechEnabled = false;
 let lobbyStudio: StudioKind = activeStudio;
+/** The local code editor's program (may hold unsaved edits). */
 let program: SnapinoStatement[] = EXAMPLES.blink.program.map((statement) => ({ ...statement }));
+/** The program the room runs (shared): changed only by accepted room edits. */
+let roomProgram: SnapinoStatement[] = program.map((statement) => ({ ...statement }));
 let programRunning = false;
 let programDirty = false;
 let pinLevels: PinStates = { D3: false, D5: false, D6: false };
@@ -546,6 +551,20 @@ async function testMicrophone(): Promise<void> {
   }
 }
 
+/**
+ * Someone else holding `resourceId` or a resource it conflicts with: a whole part conflicts
+ * with either cable end, an end with the whole part (and itself). Mirrors the room's rule.
+ */
+function conflictingOwner(resourceId: string): { id: string; name: string } | null {
+  const [partId, end] = resourceId.split("::");
+  const keys = end ? [partId, resourceId] : [partId, `${partId}::endpoint-0`, `${partId}::endpoint-1`];
+  for (const key of keys) {
+    const owner = owners.get(key);
+    if (owner && owner.id !== room?.participant.id) return owner;
+  }
+  return null;
+}
+
 function enterWorkspace(): void {
   params.set("room", currentRoomCode);
   params.set("studio", activeStudio);
@@ -573,8 +592,45 @@ function enterWorkspace(): void {
       renderTeamPanel();
     },
     onChat: appendChatMessage,
-    onTransform: (componentId, transform) => {
-      workbench?.applyRemoteTransform(componentId, transform);
+    onApply: (componentId, transform, { force, propsOnly }) => {
+      workbench?.applyRemoteTransform(componentId, transform, true, { force, propsOnly });
+      tools?.noteChange();
+    },
+    onRevert: (componentId, transform, { superseded, holderName }) => {
+      workbench?.revertPart(componentId, transform, superseded);
+      if (!superseded) showSceneStatus(holderName ? `${holderName} is holding this part · the room's position was kept` : "The room did not accept that move · the shared position was kept", "warning");
+      tools?.noteChange();
+    },
+    onClaimDenied: (resourceId, holderName) => {
+      workbench?.abortDragOf(resourceId.split("::")[0]);
+      showSceneStatus(`${holderName || "A teammate"} is already moving this component`, "warning");
+    },
+    onRoomState: ({ fresh, componentIds, ownMovesInFlight }) => {
+      if (!workbench || !room) return;
+      const ids = Object.keys(workbench.getSharedTransforms());
+      if (fresh) {
+        // The room has no bench (new, or everyone left): this bench seeds it, as one edit.
+        const seed: Array<{ id: string; transform: SharedTransform }> = [];
+        const current = workbench.getSharedTransforms();
+        for (const id of ids) {
+          const defaults = workbench.defaultTransform(id);
+          if (defaults && !sameTransform(current[id], defaults)) seed.push({ id, transform: current[id] });
+        }
+        if (seed.length) {
+          console.info(`[room] the room has no bench yet; seeding it with ${seed.length} changed part(s): ${seed.map((change) => change.id).join(", ")}`);
+          void room.submitEdit(seed).then((result) => {
+            if (!result.ok) room?.requestRoomState();
+          });
+        }
+        return;
+      }
+      // Parts the room does not list were never changed there: they are at their defaults.
+      for (const id of ids) {
+        if (componentIds.includes(id) || ownMovesInFlight.includes(id)) continue;
+        const defaults = workbench.defaultTransform(id);
+        if (defaults) workbench.applyRemoteTransform(id, defaults, false, { force: true });
+      }
+      tools?.noteChange();
     },
     onClaim: (componentId, owner) => {
       if (owner) owners.set(componentId, owner);
@@ -591,18 +647,23 @@ function enterWorkspace(): void {
     onVoiceStatus: updateVoiceStatus,
     onRemoteAudio: attachRemoteAudio,
     onStateRequest: (targetId) => {
-      if (workbench && room) room.sendState(targetId, workbench.getSharedTransforms());
+      if (workbench && room) room.sendState(targetId, workbench.getSharedTransforms(), { program: roomProgram, running: programRunning });
     },
-    onState: (transforms) => {
+    onState: (transforms, sharedProgram) => {
       if (workbench) workbench.applySharedState(transforms);
       else queuedSharedState = transforms;
+      const sanitized = sharedProgram ? sanitizeProgram(sharedProgram.program) : null;
+      if (sanitized && typeof sharedProgram?.running === "boolean") applyRoomProgram(sanitized, sharedProgram.running);
     },
     onProgram: (next, running, participantId) => {
       const sanitized = sanitizeProgram(next);
       if (!sanitized) return;
-      const author = participants.find((participant) => participant.id === participantId)?.name ?? "A teammate";
-      applyProgram(sanitized, running);
-      showSceneStatus(`${author} ${running ? "uploaded" : "stopped"} the Snapino program`, "neutral");
+      const changed = !sameProgram(sanitized, roomProgram) || running !== programRunning;
+      applyRoomProgram(sanitized, running);
+      if (changed && participantId && participantId !== room?.participant.id) {
+        const author = participants.find((participant) => participant.id === participantId)?.name ?? "A teammate";
+        showSceneStatus(`${author} ${running ? "uploaded" : "stopped"} the Snapino program${programDirty ? " · your unsaved edits are kept in your editor" : ""}`, "neutral");
+      }
     },
     onStudio: (studio, participantId) => {
       const mover = participants.find((participant) => participant.id === participantId)?.name ?? "The host";
@@ -634,30 +695,47 @@ function enterWorkspace(): void {
     onStatus: showSceneStatus,
     onTransform: (componentId, transform) => room?.sendTransform(componentId, transform),
     onClaim: (componentId) => {
-      const owner = owners.get(componentId);
-      if (owner && owner.id !== room?.participant.id) {
+      // A whole part conflicts with either cable end, and an end with the whole part.
+      const owner = conflictingOwner(componentId);
+      if (owner) {
         showSceneStatus(`${owner.name} is already moving this component`, "warning");
         return false;
       }
+      if (!room || room.offline) {
+        showSceneStatus("Reconnecting to the room · moves are paused so nothing is lost", "warning");
+        return false;
+      }
       tools?.beginLocalEdit(componentId);
-      room?.claim(componentId);
       const componentName = componentNameForResource(componentId);
-      room?.setActivity("moving", componentName);
-      room?.recordTrace("claim", collaborationPhase, activeStudio, {
-        objectId: componentId,
-        objectName: componentName,
+      room.setActivity("moving", componentName);
+      // The claim trace is written once the room grants the claim (never for a refused one).
+      void room.claim(componentId).then((granted) => {
+        if (!granted) return;
+        room?.recordTrace("claim", collaborationPhase, activeStudio, { objectId: componentId, objectName: componentName });
       });
       return true;
     },
     onRelease: (componentId) => {
       const componentName = componentNameForResource(componentId);
-      room?.release(componentId);
-      tools?.endLocalEdit(componentId);
-      room?.recordTrace("move", collaborationPhase, activeStudio, {
-        objectId: componentId,
-        objectName: componentName,
-      });
+      const record = tools?.endLocalEdit(componentId);
       setTransientActivity("available");
+      if (!room) return;
+      // History and the move trace follow the room: only a drag whose every move was accepted.
+      void room.release(componentId).then((accepted) => {
+        record?.(accepted);
+        if (!accepted) return;
+        room?.recordTrace("move", collaborationPhase, activeStudio, { objectId: componentId, objectName: componentName });
+      });
+    },
+    onDragAborted: (resourceId) => {
+      room?.abandon(resourceId);
+      tools?.cancelLocalEdit(resourceId);
+      setTransientActivity("available");
+    },
+    onEdit: (changes, label) => {
+      void tools?.applyBulk(changes, label).then((accepted) => {
+        if (accepted) workbench?.saveAttempt(label);
+      });
     },
     onAttempt: addAttempt,
     onCircuitState: (isPowered) => {
@@ -686,11 +764,9 @@ function enterWorkspace(): void {
       return null;
     },
     boltBuilding: () => Boolean(aiTeammate?.isBuilding),
-    program: () => program,
-    loadProgram: (next) => {
-      applyProgram(next, false);
-      room?.setProgram(next, false);
-    },
+    roomProgram: () => ({ program: roomProgram, running: programRunning }),
+    draftProgram: () => (programDirty ? program : null),
+    loadDraft: (next) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
     status: showSceneStatus,
     selected: () => selectedComponent,
     layoutChanged: () => updateViewInsets(),
@@ -707,6 +783,20 @@ function enterWorkspace(): void {
       view: (position: [number, number, number], target: [number, number, number]) => workbench?.setCameraView(position, target, true),
       stats: () => workbench?.renderStats(),
       demo: () => workbench?.loadCircuitDemo(),
+      /** What this participant sees: seated parts, values, switch states, the room program and any draft. */
+      bench: () => {
+        const transforms = workbench?.getSharedTransforms() ?? {};
+        const parts: Record<string, unknown> = {};
+        for (const [id, transform] of Object.entries(transforms)) {
+          if (!workbench?.studioCatalog(activeStudio).parts.hasOwnProperty(id)) continue;
+          parts[id] = { sockets: transform.sockets ?? null, ...(transform.props ? { props: transform.props } : {}), ...(transform.on !== undefined ? { on: transform.on } : {}) };
+        }
+        return { studio: activeStudio, parts, program: roomProgram, running: programRunning, draft: programDirty ? program : null, canUndo: tools?.history.canUndo ?? false, canRedo: tools?.history.canRedo ?? false };
+      },
+      /** Edit the local code editor (as typing in it would), without uploading. */
+      editDraft: (next: SnapinoStatement[]) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
+      /** Drop a cable end into a socket through the real drag path (claim → move → release). */
+      dropEnd: (componentId: string, index: 0 | 1, socket: number) => workbench?.qaDropEndpoint(componentId, index, socket) ?? false,
       /** Seat a part locally (no room traffic) for close-up captures. */
       place: (componentId: string, a: number, b: number) => {
         const transform = workbench?.placementTransform(componentId, [a, b]);
@@ -724,7 +814,7 @@ function enterWorkspace(): void {
     () => workbench?.readSnapinoInput() ?? false,
   );
   if (joinedProgram) {
-    applyProgram(joinedProgram.program, joinedProgram.running);
+    applyRoomProgram(joinedProgram.program, joinedProgram.running);
     joinedProgram = null;
   }
 
@@ -1281,7 +1371,7 @@ function switchStudio(studio: StudioKind, remote = false): void {
   tools?.updateStudio();
   loadChatHistory();
   workbench.saveAttempt(STUDIO_COPY[studio].opened);
-  if (studio === "snapino" && programRunning) snapinoRunner?.start(program);
+  if (studio === "snapino" && programRunning) snapinoRunner?.start(roomProgram);
 }
 
 function installNativeTooltips(): void {
@@ -2037,30 +2127,49 @@ function onKeyboardShortcut(event: KeyboardEvent): void {
 
 // ---------------------------------------------------------------- Snapino code panel
 
-function applyProgram(next: SnapinoStatement[], running: boolean): void {
-  program = next.map((statement) => ({ ...statement }));
+/**
+ * The room's program changed (accepted edit, upload/stop, or join). U1 runs the room's copy;
+ * the editor follows it unless it holds unsaved edits, which are kept.
+ */
+function applyRoomProgram(next: SnapinoStatement[], running: boolean): void {
+  roomProgram = next.map((statement) => ({ ...statement }));
   programRunning = running;
-  programDirty = false;
-  if (running && activeStudio === "snapino") snapinoRunner?.start(program);
+  if (!programDirty) program = roomProgram.map((statement) => ({ ...statement }));
+  programDirty = !sameProgram(program, roomProgram);
+  if (running && activeStudio === "snapino") snapinoRunner?.start(roomProgram.map((statement) => ({ ...statement })));
   else snapinoRunner?.stop();
   renderCodePanel();
+  tools?.noteChange();
 }
 
-function uploadProgram(): void {
-  applyProgram(program, true);
-  room?.setProgram(program, true);
-  room?.recordTrace("test", collaborationPhase, activeStudio, { detail: `Uploaded a ${program.length}-line program` });
-  showSceneStatus(`Uploaded · ${program.length} line${program.length === 1 ? "" : "s"} running on U1`, "valid");
+/** Run: the editor's program becomes the room's, running — once the room orders it. */
+async function uploadProgram(): Promise<void> {
+  if (!room) return;
+  const draft = program.map((statement) => ({ ...statement }));
+  const result = await room.submitEdit([], { program: draft, running: true, conditional: false });
+  if (!result.ok) {
+    showSceneStatus(result.reason === "offline" ? "Not uploaded · reconnecting to the room" : "Not uploaded · the room did not confirm it, nothing changed", "warning");
+    return;
+  }
+  if (sameProgram(program, draft)) {
+    programDirty = false;
+    renderCodePanel();
+  }
+  room.recordTrace("test", collaborationPhase, activeStudio, { detail: `Uploaded a ${draft.length}-line program` });
+  showSceneStatus(`Uploaded · ${draft.length} line${draft.length === 1 ? "" : "s"} running on U1`, "valid");
 }
 
-function stopProgram(): void {
-  applyProgram(program, false);
-  room?.setProgram(program, false);
+async function stopProgram(): Promise<void> {
+  if (!room) return;
+  const result = await room.submitEdit([], { program: roomProgram, running: false, conditional: false });
+  if (!result.ok) showSceneStatus("Not stopped · the room did not confirm it", "warning");
 }
 
 function editProgram(mutate: (draft: SnapinoStatement[]) => void, focusIndex?: number): void {
   mutate(program);
-  programDirty = true;
+  programDirty = !sameProgram(program, roomProgram);
+  // The unsaved draft is part of what local recovery keeps.
+  tools?.noteChange();
   renderCodePanel();
   if (focusIndex !== undefined) {
     document.querySelector<HTMLElement>(`#code-list li[data-index="${focusIndex}"] select, #code-list li[data-index="${focusIndex}"] input`)?.focus();
