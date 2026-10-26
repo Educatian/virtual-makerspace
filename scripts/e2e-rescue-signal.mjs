@@ -35,6 +35,16 @@ const browser = await chromium.launch({
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
 const ready = (page, label) => settled(page, label, { diagnostics: artifacts });
+/** The workshop and inspector are dock tabs: bring an element's tab (and the dock) to the front, as a person would. */
+async function showTabOf(page, selector) {
+  await page.evaluate((s) => {
+    const element = document.querySelector(s);
+    const panel = element?.closest(".discussion-panel");
+    if (!panel || panel.classList.contains("is-active")) return;
+    if (document.querySelector(".workspace-shell.is-dock-collapsed")) document.querySelector("#dock-reopen")?.click();
+    document.querySelector(`.discussion-tab[data-tab="${panel.dataset.panel}"]`)?.click();
+  }, selector);
+}
 /** Click a button like a person: it must exist and be enabled; otherwise fail now, with diagnostics. */
 async function tap(page, selector) {
   try {
@@ -43,8 +53,9 @@ async function tap(page, selector) {
     await dumpDiagnostics(page, artifacts, `tap-${selector}`);
     throw new Error(`${page.e2eLabel}: ${selector} not present/enabled within 120 s (${error.message.split("\n")[0]})`);
   }
-  const clicked = await page.evaluate((s) => { const element = document.querySelector(s); if (!element || element.disabled) return false; element.click(); return true; }, selector);
-  if (!clicked) throw new Error(`${page.e2eLabel}: ${selector} became unavailable before the click`);
+  await showTabOf(page, selector);
+  const clicked = await page.evaluate((s) => { const element = document.querySelector(s); if (!element || element.disabled || element.getClientRects().length === 0) return false; element.click(); return true; }, selector);
+  if (!clicked) throw new Error(`${page.e2eLabel}: ${selector} became unavailable (or not visible) before the click`);
 }
 const until = async (read, test, timeout = 120_000) => {
   const started = Date.now();
@@ -68,7 +79,7 @@ const BEACON = Array.from({ length: 12 }, () => flash(4000, 5000)).flat();
 // so a pixel sample needs a phase that outlasts the capture.
 const STEADY = [D5(true), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 })), D5(false), ...Array.from({ length: 11 }, () => ({ op: "wait", ms: 5000 }))];
 const shot = async (page, name) => { await page.screenshot({ path: `${artifacts}/${name}.png` }); };
-const panelText = (page) => page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? "");
+const panelText = async (page) => { await showTabOf(page, "#episode-body"); return page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? ""); };
 const header = (page) => page.evaluate(() => ({ pill: document.querySelector("#episode-pill")?.textContent ?? null, step: document.querySelector('.episode-steps [aria-current="step"]')?.textContent ?? null }));
 const episode = (page) => page.evaluate(() => window.__vmQa?.episode?.() ?? { state: null, role: null, elapsed: null });
 const { lightPulses, decode } = await import("../src/episodes/rescue-signal.ts");

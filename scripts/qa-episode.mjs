@@ -29,14 +29,25 @@ const issues = [];
 const only = process.env.QA_ONLY ? new Set(process.env.QA_ONLY.split(",")) : null;
 const wanted = (name) => !only || only.has(name);
 
+/** The workshop and inspector are dock tabs: bring an element's tab (and the dock) to the front, as a person would. */
+async function showTabOf(page, selector) {
+  await page.evaluate((s) => {
+    const element = document.querySelector(s);
+    const panel = element?.closest(".discussion-panel");
+    if (!panel || panel.classList.contains("is-active")) return;
+    if (document.querySelector(".workspace-shell.is-dock-collapsed")) document.querySelector("#dock-reopen")?.click();
+    document.querySelector(`.discussion-tab[data-tab="${panel.dataset.panel}"]`)?.click();
+  }, selector);
+}
 const tap = async (page, selector) => {
   // Fail fast: the button must be present and enabled.
   await page.waitForFunction((s) => { const element = document.querySelector(s); return Boolean(element) && !element.disabled; }, selector, { timeout: 120_000, polling: 250 });
-  const clicked = await page.evaluate((s) => { const element = document.querySelector(s); if (!element || element.disabled) return false; element.click(); return true; }, selector);
-  if (!clicked) throw new Error(`${selector} became unavailable before the click`);
+  await showTabOf(page, selector);
+  const clicked = await page.evaluate((s) => { const element = document.querySelector(s); if (!element || element.disabled || element.getClientRects().length === 0) return false; element.click(); return true; }, selector);
+  if (!clicked) throw new Error(`${selector} became unavailable (or not visible) before the click`);
 };
 const episode = (page) => page.evaluate(() => window.__vmQa.episode());
-const panelText = (page) => page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? "");
+const panelText = async (page) => { await showTabOf(page, "#episode-body"); return page.evaluate(() => document.querySelector("#episode-body")?.innerText.replace(/\s+/g, " ") ?? ""); };
 async function until(read, test, timeout = 180_000) {
   const started = Date.now();
   let value = await read();
@@ -79,7 +90,6 @@ async function open(viewport) {
   await tap(page, "#enter-room");
   await page.waitForFunction(() => Boolean(window.__vmQa?.episode), null, { timeout: 240_000 });
   await page.waitForFunction(() => !document.querySelector("#episode-panel")?.hidden, null, { timeout: 240_000 });
-  await page.evaluate(() => document.querySelector("#dock-collapse")?.click());
   await page.waitForTimeout(5000);
   return page;
 }
@@ -133,7 +143,7 @@ const [x, y, z] = lamp;
 const close = [[x + 1.15, y + 1.25, z + 1.6], [x, y + 0.22, z]];
 const low = [[x + 1.45, y + 0.42, z + 0.75], [x, y + 0.14, z]];
 // Close-ups are about the artifact: fold the panel away (the same toggle a learner uses).
-await tap(page, "#episode-toggle");
+await tap(page, "#dock-collapse");
 await page.evaluate(() => window.__vmQa.pins({ D5: true }));
 await shot(page, "e02-lamp-lit-close", close);
 // Pixel check (separate from the scene's own state): the bulb crop, lit vs unlit, same camera.
@@ -150,7 +160,7 @@ stats["e02-lamp-lit-close"].bulbBrightness = Number(litBrightness.toFixed(1));
 stats["e03-lamp-unlit-close"].bulbBrightness = Number(darkBrightness.toFixed(1));
 if (!(litBrightness - darkBrightness > 8)) issues.push(`pixels: lit bulb ${litBrightness.toFixed(1)} vs unlit ${darkBrightness.toFixed(1)}`);
 await shot(page, "e04-lamp-snaps-low", low);
-await tap(page, "#episode-toggle");
+await tap(page, "#dock-reopen");
 await page.evaluate(() => { window.__vmQa.pins({ D5: true }); window.__vmQa.receiverView(); });
 await shot(page, "e05-receiver-view-lit");
 await page.evaluate(() => window.__vmQa.pins({ D5: false }));
