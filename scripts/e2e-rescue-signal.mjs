@@ -520,10 +520,15 @@ await until(async () => {
   for (const [page, log] of logs8) await drain(page, log);
   return [...logs8.values()].map((log) => log.filter((frame) => frame.tx === round8.tx).length);
 }, (counts) => counts.every((count) => count > 0), 45_000);
+// No frame after the cut is checked: both pages stand aside from drawing while the member imports,
+// so the edit lands while the light still runs (attempts 7 and 8: a drawing page needed more than
+// the light's remaining time for the four import steps).
+await drawing([host, member], false);
 const memberBench = await member.evaluate(() => window.__vmQa.bench());
 const moved = Object.entries(memberBench.parts).map(([id, part]) => ({ id, sockets: id === "sno-w3" ? [30, 31] : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(member, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: moved });
 const cut = await until(() => episode(host), (state) => state.state?.round?.stopReason);
+await drawing([host, member], true);
 check("a teammate's bench edit ends the running transmission for everyone", cut.state.round.stopReason === "bench-changed" && (await episode(member)).state.round.stopReason === "bench-changed");
 for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
   const frames = summarize(await drain(page, logs8.get(page)), cut.state.round);
@@ -539,6 +544,7 @@ await until(() => member.evaluate(() => window.__vmQa.bench().parts["sno-w3"]?.s
 
 // ── Round 9: importing the identical program (same parts) while it transmits stops it ─────────
 await host.evaluate((program) => window.__vmQa.editDraft(program), LONG_SAFE);
+await drawing([host, member], false); // no frames are checked in this round; the import must land in time
 await tap(host, '[data-episode="transmit"]');
 await until(() => episode(member), (state) => state.state?.round?.n === 9);
 const same = await host.evaluate(() => ({ bench: window.__vmQa.bench(), program: window.__vmQa.bench().program }));
@@ -546,6 +552,7 @@ const sameParts = Object.entries(same.bench.parts).map(([id, part]) => ({ id, so
 await importProject(host, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: sameParts, program: same.program });
 const stopped = await until(() => episode(member), (state) => state.state?.round?.stopReason);
 check("importing the identical program while transmitting stops it (program-changed)", stopped.state.round.stopReason === "program-changed", `stopReason ${stopped.state?.round?.stopReason} at ${Math.round(stopped.elapsed)} of ${stopped.state?.round?.durationMs} ms`);
+await drawing([host, member], true);
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 9);
 
