@@ -68,6 +68,13 @@ Episodes 2–5 are not in the app. There are no placeholder buttons, rooms or st
 
 They explain the difference, revise and retest.
 
+**On screen.** The workshop is the **Workshop** tab of the single right-hand dock. Next to it are:
+- the **Bench inspector**: a live circuit diagram derived from the seated parts, plus per-part pinout, behaviour and limits;
+- Code;
+- the collaboration tabs.
+
+The 3D bench fills the space between the parts rail and the dock. Camera views: Bench 1, Top 2, Table 3, Lamp 4, and Fit part F. See [`reference-benchmark.md`](reference-benchmark.md).
+
 ### Protocol: Rescue Flash Code v1
 
 The protocol is explicit, inspectable and small (`src/episodes/rescue-signal.ts`):
@@ -188,6 +195,12 @@ The state holds:
 - In both conditions, diagnoses appear only after the receiver has committed a first reading, or to a lone sender in the *solo check*.
 - They are factual measurements against the circuit and the protocol: wiring, pins, flash and gap lengths, cut-offs and what the light said. They are not suggestions.
 
+**Live diagram (Bench inspector)**
+- In both conditions it draws every connection exactly as built.
+- Its wiring-fault notes (bypassed, no GND path, pin on GND, and so on) follow the same timing as the diagnoses:
+  - **DI:** shown at once.
+  - **PF:** withheld until the team's first compared round: a reading given, a lone sender's solo check, or a round closed. The reason is shown in their place.
+
 ### Outcomes
 
 | Outcome | Meaning |
@@ -254,6 +267,18 @@ These runs were made in a developer environment: headless Chromium with SwiftSha
 
 Between `606fa07` and `13aa2aa`, only the room client's clock sampling changed (`040df7c`, `13aa2aa`). The room-sync and cable suites do not use the clock.
 
+**After the reference-quality upgrade** of the Snapino bench and Episode 1 presentation: the workshop moved into the dock, and the Bench inspector, live diagram, camera views and stud detail were added. See [`reference-benchmark.md`](reference-benchmark.md). The full suite was run again. Final app `dc51187`; `a9fefef` differs from it only in the diagram's wire-list position. Details and every non-passing run: [`docs/qa/reference-upgrade/`](qa/reference-upgrade/README.md).
+
+| Command | App commit | Result |
+|---|---|---|
+| `npm test` (now with the diagram oracle, 62,861 checks) | `dc51187` | All passed |
+| `e2e-bench-inspector.mjs` (two browsers, Worker; real pointer and keyboard) | `dc51187` | 29/29. The first run on `da304f1` (27/28) found a wrong "Not changed" note on a timed-out but accepted flip; fixed in `57506d3`. |
+| `qa-reference.mjs` (same-camera before/after, layouts at 1440/1280/390, PF vs DI) | `dc51187` | 14/14 |
+| `qa-episode.mjs` (Episode 1 captures in the new layout) | `dc51187` | No issues on the third attempt, after two test-script fixes. Bulb pixels 193.3 lit vs 158.0 unlit. |
+| `e2e-rescue-signal.mjs` | `a9fefef` | 58/58 (after a test fix: Export is inside the project menu) |
+| `e2e-ai-teammate.mjs`, `e2e-worker-sync.mjs`, `e2e-snapino-history.mjs`, `e2e-room-sync.mjs`, `e2e-cable-end.mjs` | `a9fefef` | 37/37, 18/18, 25/25, 13/13, 12/12 |
+| `e2e-ai-teammate-worker.mjs` | `a9fefef` | 9/10 once (Bolt's "Done." line missing; cause not established), then 10/10 twice |
+
 ### Limits (honest)
 
 - **Not a radio or optics model.** Light reaches the receiver if the lamp is lit; there is no distance, glare or brightness threshold.
@@ -273,6 +298,69 @@ Between `606fa07` and `13aa2aa`, only the room client's clock sampling changed (
 ## Acceptance contracts for the next episodes (not implemented)
 
 Each starts only after the previous episode passes independent review.
+
+### Presentation and workbench quality contract for Episodes 2–5
+
+The common Snapino bench and Episode 1 were upgraded to this standard first; see [`reference-benchmark.md`](reference-benchmark.md) for the criteria, the provenance (the REA capture of the public reference was blocked) and the evidence. Every later episode must meet the same bar before review.
+
+**1. Composition**
+- The episode's 3D artifact is the largest thing on screen at 1440×900 and 1280×720:
+  - Its framing preset fills at least 60% of the width the panels leave free, measured with the projected-bounds hook as in `benchRect`.
+  - One side column only: the episode's panel is a tab of the dock, never a second floating column over the scene.
+  - Panels collapse, and the episode keeps working with the dock closed.
+- Camera presets fit the episode's own artifacts, not the Snapino bench:
+  - an overview;
+  - a top or plan view where the artifact has one;
+  - the view a role needs (the listener's speaker, the plant bed, the sorting bins, the loaded span);
+  - fit-selected.
+  - Each preset has a number key, and F fits the selection.
+- Phone width: no page scroll; the 3D and the dock stack; Chat stays one tap away.
+
+**2. Microdetail**
+- Up close, every manipulable part has:
+  - legible printed markings at its scale;
+  - real terminals, jacks, sockets or joints with depth;
+  - seated tips;
+  - bevels where real parts have them.
+- Selection and connection highlighting is printed-style and depth-tested. There is no additive "glow" used as decoration, and emissive light only where the physical part emits light.
+- Before/after renders are taken at the same camera, with draw calls and triangles for each shot.
+
+**3. Semantic cross-link**
+- Selecting a part in 3D, in the parts rail or in the episode's diagram selects it everywhere:
+  - the inspector shows it;
+  - its terminals and connections are marked in 3D;
+  - its node and edges are marked in the diagram.
+- Inspector edits are bounded room edits through the existing submit path. A declined, stale or offline edit leaves no local change and says so, and an unsaved draft (code, patch, labels, design) is never overwritten.
+- One canonical state drives simulation, render, diagram, inspector and export.
+
+**4. A live diagram of the episode's own flow, derived from the actual state.**
+It is never a static illustration, and wrong builds stay visibly wrong. Each episode's graph:
+
+| Episode | Graph | Drawn from |
+|---|---|---|
+| 2 · Sound Flow Studio | Signal-flow graph of the patched modules (source → processing → output). It shows open outputs, feedback loops and unpatched inputs as patched. | The same patch state that builds the Web Audio graph |
+| 3 · Greenhouse | Resource-flow graph of water and power: tank → pump → hoses → beds; supply → fan or pump. Flows are labelled in L/min and W, and invalid hoses are drawn and marked. | The water-balance and climate model's state at the current model time |
+| 4 · Smart Sorting Center | Data-flow graph: collected → labelled → training or held-out → model → predictions, with a confusion matrix from the actual held-out predictions. | The versioned dataset and model, never the label key |
+| 5 · Structural Test Yard | Member and joint diagram with supports, loads and member forces (tension or compression, with units), plus explicit mechanism or singular markers. | The solver's own result |
+
+- PF/DI: the diagram always shows the structure. Explanatory fault notes follow the episode's PF/DI rule.
+
+**5. Depth**
+- Each part has an Overview, Ports/Pinout and Behaviour & limits. Limits state real-world ratings with units, and where the model simplifies.
+- Keyboard: every diagram node and edge and every inspector control is reachable with Tab and operable with Enter/Space; tab lists use the arrow keys.
+- Targets are at least 44 px.
+- Text alternatives: a connection list for the diagram.
+- No fake compiler or upload badges, no fake training animations, no XP or points.
+
+**6. Validation for review**
+- An oracle for the diagram derivation, independent of the product's graph code, run on curated and random states.
+- Two-client browser tests with real pointer and keyboard input covering:
+  - selection cross-link;
+  - accepted, declined and stale inspector edits;
+  - draft preservation;
+  - presets.
+- Render comparisons and layout checks at 1440, 1280 and 390 px.
+- The full regression suite on the final SHA.
 
 ### 2 · Sound Flow Studio
 
