@@ -226,6 +226,19 @@ async function lampSample(page, wantLit, deadline) {
   }
   return null;
 }
+/**
+ * Clean-up between rounds: Stop the light if it still runs. The light can end on its own between the
+ * check and the click; only a round verified as ended right after a failed click excuses it.
+ */
+async function stopIfStillRunning(page) {
+  const ended = (now) => !now.state?.round || Boolean(now.state.round.stopReason) || now.elapsed >= now.state.round.durationMs;
+  if (ended(await episode(page))) return;
+  try {
+    await tap(page, '[data-episode="stop"]');
+  } catch (error) {
+    if (!ended(await episode(page))) throw error;
+  }
+}
 async function waitEnded(page) {
   return until(() => episode(page), (state) => state.state?.round && (state.state.round.stopReason || state.elapsed >= state.state.round.durationMs + 200));
 }
@@ -451,8 +464,7 @@ await member.evaluate(() => window.__vmQa.lightLog());
 const reconnectBoundary = await member.evaluate(() => Date.now());
 const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (rejoined.state.round.durationMs - rejoined.elapsed) - 4_000), reconnectBoundary);
 check("after reconnecting, the receiver's FRESH driven frames (round 6's tx, rendered after the reconnect) include lit AND dark, all agreeing", afterReconnect.tx === rejoined.state.round.tx && afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
-const r6 = await episode(host);
-if (r6.state.round && !r6.state.round.stopReason && r6.elapsed < r6.state.round.durationMs) await tap(host, '[data-episode="stop"]');
+await stopIfStillRunning(host);
 await waitEnded(member);
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 6);
@@ -465,8 +477,7 @@ const deadline7 = Date.now() + 118_000;
 const litPixels = await lampSample(member, true, deadline7);
 const darkPixels = await lampSample(member, false, deadline7);
 check("pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera)", litPixels && darkPixels && litPixels.brightness - darkPixels.brightness > 8, JSON.stringify({ lit: litPixels?.brightness?.toFixed(1), dark: darkPixels?.brightness?.toFixed(1), litAt: litPixels?.elapsed, darkAt: darkPixels?.elapsed, clip: litPixels?.clip }));
-const r7 = await episode(host);
-if (r7.state.round && !r7.state.round.stopReason && r7.elapsed < r7.state.round.durationMs) await tap(host, '[data-episode="stop"]');
+await stopIfStillRunning(host);
 await waitEnded(member);
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 7);
