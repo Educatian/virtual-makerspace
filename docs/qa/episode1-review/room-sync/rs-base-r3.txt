@@ -1,0 +1,23 @@
+  [ready] host entered: 9 s (+4 frames)
+PASS host enters the chosen studio — Snapino
+PASS host sees studio tabs
+PASS member lobby shows the room's studio — This room runs Snapino Bridge
+PASS other studio cards are locked
+  [ready] member entered: 95 s (+4 frames)
+PASS member enters the room's studio — Snapino
+PASS member has no studio tabs
+  [ready] host after the lamp was placed: 32 s (+3 frames)
+  [ready] member after the lamp was placed: 28 s (+3 frames)
+  [ready] member after the program started: 28 s (+3 frames)
+PASS member receives the upload — Running on U1
+PASS member's D5 blinks
+PASS member's lamp lights from synced wiring + code
+  [ready] late joiner entered: 18 s (+3 frames)
+PASS late joiner loads the persisted running program — Running on U1
+PASS stop propagates to host — Stopped
+  [ready] late joiner after the studio switch: 14 s (+3 frames)
+PASS host studio switch moves the other maker — Circuit Bench
+PASS the other maker has no studio tabs
+
+13/13 passed · room TPBJ
+exit 0

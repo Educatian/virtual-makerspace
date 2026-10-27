@@ -1,0 +1,46 @@
+  [ready] host entered: 4 s (+3 frames)
+  [ready] member entered: 12 s (+3 frames)
+PASS bench built through the room (layout button + one atomic edit)
+  [ready] host after bench: 31 s (+3 frames)
+  [ready] member after bench: 35 s (+3 frames)
+  [ready] host after lamp click: 38 s (+3 frames)
+PASS pointer click on the 3D lamp selects it and focuses the inspector tab — {"title":"Lamp L1","tab":"inspect"}
+PASS the lamp's rung is selected and both of its nets are highlighted on the diagram — D5,GND
+PASS 3D highlights = the studs of the lamp's two nets (independent rebuild), terminals marked — 4 rings
+PASS the click did not move the lamp (both clients)
+PASS Tab reaches the S1 rung on the diagram — 14 Tab presses
+PASS Enter on the rung selects S1 (inspector + its two studs ringed in 3D) — [14,32]
+PASS Tab reaches the inspector's Switch S1 button — 2 Tab presses
+PASS Enter on Switch S1 on: accepted, S1 on for both clients
+  [ready] host after switch: 35 s (+3 frames)
+  [ready] member after switch: 36 s (+3 frames)
+FAIL host: inspector reports the room accepted it — Not changed: the room did not accept the flip, so S1 is still off here and for everyone.
+PASS diagram on both: S1 closed, D2's net at 5 V — is-supply/is-supply
+PASS code panel on both: D2 input reads HIGH — D3LOW · outputD5LOW · outputD6LOW · outputD2HIGH · input · S1 | D3LOW · outputD5LOW · outputD6LOW · outputD2HIGH · input · S1
+PASS both clients' diagrams list the same connections — Lamp L1: D5 (D5) to GND (D-4), offSlide switch S1: 5V (5V) to D2 (D-6), closed
+PASS the unsaved code draft is untouched by the accepted edit
+PASS the member, with nothing selected, has no stud rings (selection is local)
+PASS while the member holds S1, the host's inspector says so and the switch is disabled — {"held":" member is holding this part","button":true,"disabled":true}
+PASS a double-click on held S1 changes nothing for anyone
+PASS after the member lets go, S1 is still seated on both
+  [ready] host after release: 28 s (+3 frames)
+  [ready] member after release: 34 s (+3 frames)
+  [ready] host after flip 1: 20 s (+3 frames)
+PASS concurrent flips: one accepted, the other refused as stale (observed) — attempt 1, refused on host
+PASS after the refusal both clients hold the same S1 state (the refused flip left no local change) — {"attempt":1,"refusedBy":"host","notes":["Not changed: the room did not accept the flip, so S1 is still off here and for everyone.","The room accepted it: S1 is off for everyone."],"states":[false,false]}
+  [ready] host view bench: 25 s (+3 frames)
+PASS Bench view: the base and carrier sit inside the free view and fill most of its width — bench 504 px of 588 px free
+PASS Top view: camera above the bench, columns left to right — {"position":[-0.75,6.907275873779922,1.538094714912727],"target":[-0.75,0.375,0.029999999999999912],"moving":false}
+  [ready] host view top: 24 s (+3 frames)
+PASS Table view: pulled back past the bench view (tray included) — 12.47 vs 8.06
+  [ready] host view table: 22 s (+3 frames)
+PASS key 4: receiver's view of the lamp — [-1.23,0.5,-0.48]
+  [ready] host view receiver: 18 s (+3 frames)
+PASS key 1: back to the bench view
+  [ready] host select for fit: 24 s (+3 frames)
+PASS F fits the selected part (closer than the bench view) — 3.21
+  [ready] host view fit: 30 s (+3 frames)
+PASS renderer counters recorded per view — bench: 551 calls, 98026 tris; top: 481 calls, 95810 tris; table: 739 calls, 109186 tris; receiver: 367 calls, 86026 tris; fit: 412 calls, 86666 tris
+PASS no page errors on either client
+27/28 checks passed · room IVV4 · artifacts /tmp/claude-0/-home-claude/b1a004a0-ff88-51a7-aa88-59351a4740a9/scratchpad/insp-2
+exit 1

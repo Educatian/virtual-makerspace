@@ -7,7 +7,7 @@ bundles: the analysis tool could not reach the site (see **Provenance**).
 
 ## Provenance
 
-### REA (Reverse Engineer Anything): attempted and blocked
+### REA (Reverse Engineer Anything): **[blocked]** attempted, no target analysis
 
 **Tool and version:**
 - `rea-agents` 6.8.0 from npm (canonical project github.com/morluto/rea, MIT). It needs Node `^22.23.4 || ^24.22.1`.
@@ -45,14 +45,14 @@ We also did not get as far as the flags the parent suggested (`--observation-ms 
 - We did not use the user's own browser or computer.
 - We did not present any other analysis as REA's.
 
-**Evidence.** The raw JSON outputs and their SHA-256 sums are kept outside the repository, in the session scratch folder `rea/evidence-final/`:
+**Evidence.** The unedited outputs are committed in [`docs/qa/reference-upgrade/rea-evidence/`](qa/reference-upgrade/rea-evidence/README.md), with the exact commands and full hashes. Two files are trimmed, as stated there.
 
-| File | SHA-256 (prefix) |
+| File | SHA-256 |
 |---|---|
-| `analyze-web-bundle.json` | `62192544f2e5…` |
-| `inspect-web-page.json` | `b8944b6119aa…` |
-| `list-browser-targets.json` | `871f25a77a09…` |
-| `doctor.json` | `978147315d42…` |
+| `analyze-web-bundle.json` | `62192544f2e5f27cd95b92285c6fba37c4e66d7925cff584eeaeb72e602e8eca` |
+| `inspect-web-page.json` | `b8944b6119aa80d087153a944c4abdd5c5de87e012a5602dbde2184e6041e23d` |
+| `list-browser-targets.json` | `871f25a77a09a717d3c65fc1732d933e372c9d230d5069cc2aa80377758fe97b` |
+| `doctor.json` | `978147315d42633de209ea426ce9e948b14a6f4d7eb05f97e39cf70223015ac0` |
 
 **To complete the REA step,** run the same commands from a network that can reach the site. For example, the user's machine, with the same owned and isolated profile and loopback CDP.
 

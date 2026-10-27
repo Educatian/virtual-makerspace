@@ -1,0 +1,65 @@
+  [ready] host entered: 4 s (+3 frames)
+  [ready] member entered: 150 s (+4 frames)
+PASS the workshop panel opens for both makers (room state, not a local overlay)
+PASS sender and receiver are taken by different makers
+  [ready] host after the lamp was placed: 28 s (+3 frames)
+  [ready] member after the lamp was placed: 33 s (+3 frames)
+PASS the receiver's panel does not show the intended message — Roles Design & build Transmit Read Compare & explain Sender host Receiver member (you) Leave role Sw
+PASS the transmission reaches the receiver as room state
+PASS the round's light under the protocol is INJURED · NORTH
+PASS round 1: every driven frame of the receiver's lamp agrees with the timeline (and there were some) — {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+PASS round 1: every driven frame of the sender's lamp agrees with the timeline (and there were some) — {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+PASS unread round: the header shows the reading step
+PASS the comparison says the message was delivered — on both screens
+PASS a second reading is refused by the room and the first stays — {"ok":false,"reason":"already-read"}
+PASS and the receiver's panel offers no second 'Record reading'
+PASS the explained, delivered round meets the workshop goal (history milestone)
+PASS after closing the delivered round (next round's design): the header does not claim delivery — {"pill":"Round 2 · design","step":"Design & build"}
+PASS round 2 ended, unread: the header does not claim delivery — {"pill":"Reading","step":"Read"}
+PASS a 500 ms flash makes the round ambiguous, even with the 'right' reading
+PASS the diagnosis states the measured flash against the bands
+PASS ambiguous round 2: the header does not claim delivery — {"pill":"Not delivered","step":"Compare & explain"}
+PASS with the circuit open, the receiver's lamp never lit although the code ran — 1 frames
+PASS an open circuit cannot deliver a message
+PASS open-circuit round 3: the header does not claim delivery — {"pill":"Not delivered","step":"Compare & explain"}
+PASS (the receiver has drafted a reading of the first transmission) — ["SAFE"]
+PASS a retransmission keeps round 4 but is a new transmission (new tx) on the receiver too
+PASS the receiver's draft of the replaced transmission is discarded
+PASS a delayed reading of the replaced transmission is refused by the room — {"ok":false,"reason":"stale-round"}
+PASS after rebuilding, the same message is delivered (recovery)
+PASS (round 5 is a 108 s recurring light)
+  [frames] receiver, round 5: {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+  [frames] sender, round 5: {"frames":4,"lit":1,"dark":3,"wrong":0,"wrongAt":[]}
+PASS the receiver's own render-driven frames include lit AND dark, all agreeing with the timeline — {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+PASS the sender's too — {"frames":4,"lit":1,"dark":3,"wrong":0,"wrongAt":[]}
+PASS running round 5: the header does not claim delivery — {"pill":"Transmitting","step":"Transmit"}
+PASS the sender's Stop ends the transmission on both screens — stopped
+PASS after Stop the receiver's bench lamp is dark
+PASS stopped, unread round 5: the header does not claim delivery — {"pill":"Reading","step":"Read"}
+PASS (round 6 runs the recurring light again)
+PASS (the receiver's socket is dropped mid-transmission)
+PASS the room released the dropped receiver's role
+PASS the dropped client reconnected by itself and holds the room's state (no role)
+PASS after reconnecting, the receiver is back in the running transmission — 49807 of 108000 ms
+PASS its room-clock estimate agrees with the sender's within 250 ms (same machine clock) — Δ 1 ms; round trips 3 / 3 ms
+  [frames] receiver after reconnect: {"frames":11,"lit":4,"dark":7,"wrong":0,"wrongAt":[]}
+PASS after reconnecting, the receiver's driven frames again include lit AND dark, all agreeing — {"frames":11,"lit":4,"dark":7,"wrong":0,"wrongAt":[]}
+PASS pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera) — {"lit":"200.8","dark":"163.6","litAt":[17610,40638],"darkAt":[68385,91399],"clip":{"x":352.9504218990033,"y":230.63423118159596,"width":73.13664816758609,"height":74.50447368535947}}
+PASS a teammate's bench edit ends the running transmission for everyone
+PASS round 8: the receiver's driven frames before the cut-off agree with the timeline (and there were some) — {"frames":4,"lit":0,"dark":4,"wrong":0,"wrongAt":[]}
+PASS round 8: the sender's driven frames before the cut-off agree with the timeline (and there were some) — {"frames":4,"lit":1,"dark":3,"wrong":0,"wrongAt":[]}
+PASS cut-off round 8: the header does not claim delivery — {"pill":"Reading","step":"Read"}
+PASS importing the identical program while transmitting stops it (program-changed) — stopReason program-changed at 20192 of 61500 ms
+  [ready] member entered: 15 s (+3 frames)
+PASS after a reload the receiver gets the room's rounds, and no role
+PASS roles swap between rounds, on both screens
+file:///home/claude/virtual-makerspace/scripts/e2e-rescue-signal.mjs:58
+  if (!clicked) throw new Error(`${page.e2eLabel}: ${selector} became unavailable (or not visible) before the click`);
+                      ^
+
+Error: member: #export-project became unavailable (or not visible) before the click
+    at tap (file:///home/claude/virtual-makerspace/scripts/e2e-rescue-signal.mjs:58:23)
+    at async Promise.all (index 1)
+    at async file:///home/claude/virtual-makerspace/scripts/e2e-rescue-signal.mjs:461:20
+
+Node.js v22.22.0

@@ -29,23 +29,27 @@ Design, provenance and the REA blocker: [`../../reference-benchmark.md`](../../r
 |---|---|---|---|
 | `npm test`: typecheck, circuit 17,742, agent, project 270, snapino, sync 858, tools 36, rescue signal 17,738, episode sync 55, **diagram 62,861** | `dc51187` | all passed | — |
 | `npm run build` | `dc51187` | OK | — |
-| `e2e-bench-inspector.mjs` (two browsers, Worker) | `dc51187` | **29/29** | [`inspector-dc51187.log`](inspector-dc51187.log) |
+| `e2e-bench-inspector.mjs` (two browsers, Worker) | `dc51187` | **29/29** | [`inspector-dc51187.txt`](inspector-dc51187.txt) |
 | `qa-reference.mjs after` (captures, layouts, PF/DI) | `dc51187` | **14/14**, 11 shots | [report](qa-reference-after-report.json) |
 | `qa-episode.mjs` (Episode 1 captures) | `dc51187` | no issues on the third attempt; the first two stopped on test-script problems (items 6 and 7 below). Bulb pixels 193.3 lit vs 158.0 unlit. | [renders](../../images/episodes/rescue-signal/README.md) |
-| `e2e-bench-inspector.mjs` | `a9fefef` | 29/29 | [`inspector-a9fefef.log`](inspector-a9fefef.log) |
-| `e2e-rescue-signal.mjs` (two browsers, Worker) | `a9fefef` | **58/58** | [`rescue-a9fefef.log`](rescue-a9fefef.log) |
-| `e2e-ai-teammate.mjs` (peer) | `a9fefef` | 37/37 | [log](e2e-ai-teammate-a9fefef.log) |
-| `e2e-ai-teammate-worker.mjs` | `a9fefef` | 9/10, then 10/10 and 10/10 | [1](e2e-ai-teammate-worker-a9fefef.log), [2](e2e-ai-teammate-worker-2-a9fefef.log), [3](e2e-ai-teammate-worker-3-a9fefef.log) |
-| `e2e-worker-sync.mjs` | `a9fefef` | 18/18 | [log](e2e-worker-sync-a9fefef.log) |
-| `e2e-snapino-history.mjs` | `a9fefef` | 25/25 | [log](e2e-snapino-history-a9fefef.log) |
-| `e2e-room-sync.mjs` | `a9fefef` | 13/13 | [log](e2e-room-sync-a9fefef.log) |
-| `e2e-cable-end.mjs` | `a9fefef` | 12/12 | [log](e2e-cable-end-a9fefef.log) |
+| `e2e-bench-inspector.mjs` | `a9fefef` | 29/29 | [`inspector-a9fefef.txt`](inspector-a9fefef.txt) |
+| `e2e-rescue-signal.mjs` (two browsers, Worker) | `a9fefef` | **58/58** | [`rescue-a9fefef.txt`](rescue-a9fefef.txt) |
+| `e2e-ai-teammate.mjs` (peer) | `a9fefef` | 37/37 | [log](e2e-ai-teammate-a9fefef.txt) |
+| `e2e-ai-teammate-worker.mjs` | `a9fefef` | 9/10, then 10/10 and 10/10 | [1](e2e-ai-teammate-worker-a9fefef.txt), [2](e2e-ai-teammate-worker-2-a9fefef.txt), [3](e2e-ai-teammate-worker-3-a9fefef.txt) |
+| `e2e-worker-sync.mjs` | `a9fefef` | 18/18 | [log](e2e-worker-sync-a9fefef.txt) |
+| `e2e-snapino-history.mjs` | `a9fefef` | 25/25 | [log](e2e-snapino-history-a9fefef.txt) |
+| `e2e-room-sync.mjs` | `a9fefef` | 13/13 | [log](e2e-room-sync-a9fefef.txt) |
+| `e2e-cable-end.mjs` | `a9fefef` | 12/12 | [log](e2e-cable-end-a9fefef.txt) |
 
 Every non-passing run is listed here, with what it was:
 
-1. **`e2e-bench-inspector`, first run (`da304f1` app): 27/28.** This was a **real defect.** The host's S1 flip was accepted by the room and reached both clients. But the host's page was stalled past the client's 8 s edit deadline (a SwiftShader shader link), so the inspector said "Not changed: the room did not accept the flip". It now distinguishes a timeout ("Not confirmed in time … switches when its answer arrives") and updates the note if the answer lands within 60 s (`57506d3`). [Log](inspector-da304f1-first-run.log).
-2. **`e2e-rescue-signal` attempt 1 (`a9fefef`): stopped at the export step.** The tap helper now refuses invisible elements, and Export lives in the closed project menu. The test now opens the menu first, as a person would (`73ebb42`). All 47 checks before that point had passed. [Log](rescue-a9fefef-attempt1-export-tap.log).
-3. **`e2e-ai-teammate-worker` run 1: 9/10.** The check for Bolt saying "Done." failed, while the following check (the host's circuit lit safely from Bolt's relayed moves) passed. Bolt says "Done." only if every claim was granted within its 4 s window; otherwise it says it left a part. That run kept no record of what Bolt said, so the cause is **not established**; we did not rely on it. The test now prints Bolt's last lines on failure (`13f5dba`). Two further fresh-room runs passed 10/10. This suite is Circuit Bench only and does not touch the code changed here.
+1. **`e2e-bench-inspector`, first run (`da304f1` app): 27/28.** This was a **real defect.** The host's S1 flip was accepted by the room and reached both clients. But the host's page was stalled past the client's 8 s edit deadline (a SwiftShader shader link), so the inspector said "Not changed: the room did not accept the flip". It now distinguishes a timeout ("Not confirmed in time … switches when its answer arrives") and updates the note if the answer lands within 60 s (`57506d3`). [Log](inspector-da304f1-first-run.txt).
+2. **`e2e-rescue-signal` attempt 1 (`a9fefef`): stopped at the export step.** The tap helper now refuses invisible elements, and Export lives in the closed project menu. The test now opens the menu first, as a person would (`73ebb42`). All 47 checks before that point had passed. [Log](rescue-a9fefef-attempt1-export-tap.txt).
+3. **`e2e-ai-teammate-worker` run 1: 9/10. Cause unknown.** The check for Bolt saying "Done." failed. The following check (the host's circuit lit safely from Bolt's relayed moves) passed.
+   - **Why "Done." can be missing:** Bolt counts a part as skipped, and then does not say "Done.", if the part was held by someone else, its claim was refused, its claim was not granted within 4 s, or its release was refused. A build superseded by a later lesson also ends without "Done.".
+   - **What we know:** that run kept no record of what Bolt said or of those outcomes, so none of these can be singled out. The two later 10/10 runs do not explain the failure either.
+   - **Diagnostics now kept:** Bolt keeps a per-part build log, and the test retains it on every run (`6c14f4c`), with Bolt's lines and the final bench. See the diagnostic runs below.
+   - **Scope:** this suite is Circuit Bench only.
 4. **`qa-episode` attempt 1 (`a9fefef`): stopped at Stop.** With the workshop in the open dock, the 110 s capture flash ended before the script reached Stop, and the fail-fast tap refused the absent button. The script now presses Stop only while the flash still runs, and records which way it ended (`d3485c8`).
 5. **`qa-reference` (`a9fefef`): the first shot's counters were read too early.** `same-01-overview` read 81 calls before the GLB parts replaced the stand-ins; the image itself was fine. A dedicated re-measure gave **687 calls and 104,890 triangles** (after) against **683 and 96,826** (before), each the same over three reads. The script now settles twice before reading (`4b65d6a`), and the `dc51187` run reads 687 / 104,890 directly.
 6–7. **`qa-episode` on `dc51187`, attempts 1 and 2: stopped at the phone section.** All 11 desktop shots completed (`e01`–`e09`, `e12`, `e13`). The phone page could not press the field-test button, which is `display: none` below 620 px; that rule predates this branch. The old capture had clicked it while it was hidden. The phone page now submits the same layout as one room edit (`dfdaa29`). The rerun then lost the Stop race again: the flash ended between the "still running" check and the click. Stop may now lose that race only if the round is verified to have ended; any other missing Stop still fails (`781a2c5`).

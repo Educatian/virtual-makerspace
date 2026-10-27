@@ -1,0 +1,70 @@
+  [ready] host entered: 14 s (+3 frames)
+  [ready] member entered: 129 s (+6 frames)
+PASS the workshop panel opens for both makers (room state, not a local overlay)
+PASS sender and receiver are taken by different makers
+  [ready] host after the lamp was placed: 27 s (+3 frames)
+  [ready] member after the lamp was placed: 32 s (+3 frames)
+PASS the receiver's panel does not show the intended message — Roles Design & build Transmit Read Compare & explain Sender host Receiver member (you) Leave role Sw
+PASS the transmission reaches the receiver as room state
+PASS the round's light under the protocol is INJURED · NORTH
+PASS round 1: every driven frame of the receiver's lamp agrees with the timeline (and there were some) — {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+PASS round 1: every driven frame of the sender's lamp agrees with the timeline (and there were some) — {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+PASS unread round: the header shows the reading step
+PASS the comparison says the message was delivered — on both screens
+PASS a second reading is refused by the room and the first stays — {"ok":false,"reason":"already-read"}
+PASS and the receiver's panel offers no second 'Record reading'
+PASS the explained, delivered round meets the workshop goal (history milestone)
+PASS after closing the delivered round (next round's design): the header does not claim delivery — {"pill":"Round 2 · design","step":"Design & build"}
+PASS round 2 ended, unread: the header does not claim delivery — {"pill":"Reading","step":"Read"}
+PASS a 500 ms flash makes the round ambiguous, even with the 'right' reading
+PASS the diagnosis states the measured flash against the bands
+PASS ambiguous round 2: the header does not claim delivery — {"pill":"Not delivered","step":"Compare & explain"}
+PASS with the circuit open, the receiver's lamp never lit although the code ran — 1 frames
+PASS an open circuit cannot deliver a message
+PASS open-circuit round 3: the header does not claim delivery — {"pill":"Not delivered","step":"Compare & explain"}
+PASS (the receiver has drafted a reading of the first transmission) — ["SAFE"]
+PASS a retransmission keeps round 4 but is a new transmission (new tx) on the receiver too
+PASS the receiver's draft of the replaced transmission is discarded
+PASS a delayed reading of the replaced transmission is refused by the room — {"ok":false,"reason":"stale-round"}
+PASS after rebuilding, the same message is delivered (recovery)
+PASS (round 5 is a 108 s recurring light)
+  [frames] receiver, round 5: {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+  [frames] sender, round 5: {"frames":3,"lit":1,"dark":2,"wrong":0,"wrongAt":[]}
+PASS the receiver's own render-driven frames include lit AND dark, all agreeing with the timeline — {"frames":2,"lit":1,"dark":1,"wrong":0,"wrongAt":[]}
+PASS the sender's too — {"frames":3,"lit":1,"dark":2,"wrong":0,"wrongAt":[]}
+PASS running round 5: the header does not claim delivery — {"pill":"Transmitting","step":"Transmit"}
+PASS the sender's Stop ends the transmission on both screens — stopped
+PASS after Stop the receiver's bench lamp is dark
+PASS stopped, unread round 5: the header does not claim delivery — {"pill":"Reading","step":"Read"}
+PASS (round 6 runs the recurring light again)
+PASS (the receiver's socket is dropped mid-transmission)
+PASS the room released the dropped receiver's role
+PASS the dropped client reconnected by itself and holds the room's state (no role)
+PASS after reconnecting, the receiver is back in the running transmission — 47645 of 108000 ms
+PASS its room-clock estimate agrees with the sender's within 250 ms (same machine clock) — Δ 0 ms; round trips 5 / 5 ms
+  [frames] receiver after reconnect: {"frames":10,"lit":3,"dark":7,"wrong":0,"wrongAt":[]}
+PASS after reconnecting, the receiver's driven frames again include lit AND dark, all agreeing — {"frames":10,"lit":3,"dark":7,"wrong":0,"wrongAt":[]}
+PASS pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera) — {"lit":"200.8","dark":"163.5","litAt":[8352,35830],"darkAt":[62747,94728],"clip":{"x":352.3314968825728,"y":230.61651817662943,"width":73.14025478622597,"height":74.49251926820563}}
+PASS a teammate's bench edit ends the running transmission for everyone
+PASS round 8: the receiver's driven frames before the cut-off agree with the timeline (and there were some) — {"frames":3,"lit":0,"dark":3,"wrong":0,"wrongAt":[]}
+PASS round 8: the sender's driven frames before the cut-off agree with the timeline (and there were some) — {"frames":3,"lit":1,"dark":2,"wrong":0,"wrongAt":[]}
+PASS cut-off round 8: the header does not claim delivery — {"pill":"Reading","step":"Read"}
+PASS importing the identical program while transmitting stops it (program-changed) — stopReason program-changed at 20480 of 61500 ms
+  [ready] member entered: 88 s (+5 frames)
+PASS after a reload the receiver gets the room's rounds, and no role
+PASS roles swap between rounds, on both screens
+PASS export schema: only project keys, the design is exactly {id, v, mission, intent}, parts carry only id/sockets/props/on — {"topKeys":["episode","format","parts","program","savedAt","solver","studio","version"],"episode":{"id":"rescue-signal","v":1,"mission":"ridge","intent":["SAFE"]},"partKeys":["id","sockets","on"]}
+PASS export contains no session activity (no reading, explanation, round or role)
+PASS reset reaches both connected clients immediately, with a higher revision — {"before":43,"host":44,"member":44}
+PASS after the reset, the next transmission reaches the other client (round 1 again, a new tx) — tx 46
+PASS leaving during a transmission returns to the lobby without page errors — Leave room · 
+PASS the leaver's receiver role is freed; the sender keeps theirs
+PASS the late joiner joined while the transmission was running (state at join) — 99637 of 108000 ms
+PASS its room-clock estimate agrees with the sender's within 250 ms (same machine clock) — Δ 7 ms; round trips 20 / 5 ms
+  [ready] late joiner entered: 19 s (+3 frames)
+  [frames] late joiner: {"frames":1,"lit":1,"dark":0,"wrong":0,"wrongAt":[]}
+PASS the late joiner's driven frames agree with the timeline — {"frames":1,"lit":1,"dark":0,"wrong":0,"wrongAt":[]}
+PASS phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested) — {"left":0,"right":390,"width":390,"overflow":0}
+PASS no page errors on the pages that stayed
+
+58/58 passed · room RJ63 · artifacts /tmp/claude-0/-home-claude/b1a004a0-ff88-51a7-aa88-59351a4740a9/scratchpad/final/rescue

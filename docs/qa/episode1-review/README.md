@@ -43,12 +43,12 @@ The same stall explains a later symptom: at 1440×900, every ordinary frame took
 
 | run | build | result | longest readiness wait |
 |---|---|---|---|
-| [rs-head-3](room-sync/rs-head-3.log) | head | 13/13 | member after lamp placed: 93 s |
-| [rs-base-1](room-sync/rs-base-1.log) | baseline | 13/13 | member after lamp: 29 s |
-| [rs-head-r2](room-sync/rs-head-r2.log) | head | 13/13 | member entered: 90 s |
-| [rs-base-r2](room-sync/rs-base-r2.log) | baseline | 13/13 | member entered: 104 s; late joiner: 96 s |
-| [rs-head-r3](room-sync/rs-head-r3.log) | head | 13/13 | member after lamp: 71 s |
-| [rs-base-r3](room-sync/rs-base-r3.log) | baseline | 13/13 | member entered: 95 s |
+| [rs-head-3](room-sync/rs-head-3.txt) | head | 13/13 | member after lamp placed: 93 s |
+| [rs-base-1](room-sync/rs-base-1.txt) | baseline | 13/13 | member after lamp: 29 s |
+| [rs-head-r2](room-sync/rs-head-r2.txt) | head | 13/13 | member entered: 90 s |
+| [rs-base-r2](room-sync/rs-base-r2.txt) | baseline | 13/13 | member entered: 104 s; late joiner: 96 s |
+| [rs-head-r3](room-sync/rs-head-r3.txt) | head | 13/13 | member after lamp: 71 s |
+| [rs-base-r3](room-sync/rs-base-r3.txt) | baseline | 13/13 | member entered: 95 s |
 
 The 70–104 s waits move between steps and occur on both builds. They are the shader-link stalls, not a regression on this branch.
 
@@ -77,11 +77,11 @@ The same stall therefore explains how a 30 s check could fail. The test now wait
 
 | run | result | readiness after the host's drop | late joiner entered |
 |---|---|---|---|
-| [cable-1](cable/cable-1.log) | 12/12 | 44 s | 5 s |
-| [cable-2](cable/cable-2.log) | 12/12 | 49 s | 34 s |
-| [cable-3](cable/cable-3.log) | 12/12 | 13 s | 5 s |
-| [cable-4](cable/cable-4.log) | 12/12 | 15 s | 33 s |
-| [cable-5](cable/cable-5.log) | 12/12 | 14 s | 30 s |
+| [cable-1](cable/cable-1.txt) | 12/12 | 44 s | 5 s |
+| [cable-2](cable/cable-2.txt) | 12/12 | 49 s | 34 s |
+| [cable-3](cable/cable-3.txt) | 12/12 | 13 s | 5 s |
+| [cable-4](cable/cable-4.txt) | 12/12 | 15 s | 33 s |
+| [cable-5](cable/cable-5.txt) | 12/12 | 14 s | 30 s |
 
 ## `e2e-rescue-signal.mjs`: final runs, and one more defect found
 
@@ -89,8 +89,8 @@ The strengthened two-browser test (58 checks) was run on the final app before th
 
 | run | app | result |
 |---|---|---|
-| [rescue-040df7c](rescue-signal/rescue-040df7c.log) ([results](rescue-signal/rescue-040df7c-results.json)) | `040df7c` | **57/58** |
-| [rescue-13aa2aa](rescue-signal/rescue-13aa2aa.log) ([results](rescue-signal/rescue-13aa2aa-results.json)) | `13aa2aa` | **58/58** |
+| [rescue-040df7c](rescue-signal/rescue-040df7c.txt) ([results](rescue-signal/rescue-040df7c-results.json)) | `040df7c` | **57/58** |
+| [rescue-13aa2aa](rescue-signal/rescue-13aa2aa.txt) ([results](rescue-signal/rescue-13aa2aa-results.json)) | `13aa2aa` | **58/58** |
 
 **The failure on `040df7c` was a real defect, not a flake.** The late joiner's room-clock estimate was 2,626 ms away from the sender's. The round trips were 9 ms for the joiner and 5,271 ms for the sender.
 
