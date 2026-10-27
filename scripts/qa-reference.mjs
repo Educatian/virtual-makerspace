@@ -42,6 +42,8 @@ async function place(page, layout) {
 }
 async function shot(page, name, note = "") {
   await settled(page, name, { budgetMs: 900_000 });
+  // A first read can come before the detailed models replace the stand-ins: settle twice.
+  await settled(page, `${name} (again)`, { budgetMs: 900_000 });
   const stats = await page.evaluate(() => window.__vmQa.stats());
   await page.screenshot({ path: `${out}/${name}.png` });
   report.shots[name] = { ...stats, note };
