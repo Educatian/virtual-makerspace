@@ -175,11 +175,14 @@ await page.evaluate(() => window.__vmQa.receiverView());
 await page.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, ...Array.from({ length: 22 }, () => ({ op: "wait", ms: 5000 })), { op: "write", pin: "D5", value: false }]));
 await tap(page, '[data-episode="transmit"]');
 await until(() => episode(page), (state) => state.state?.round?.n === 1);
-await until(() => page.evaluate(() => window.__vmQa.lights()), (lights) => lights.includes("sno-l1"), 60_000);
-stats["e06-transmitting"] = await page.evaluate(() => window.__vmQa.stats());
+// Shoot at once: on this machine each page call waits behind seconds-long frames, and the first
+// re-review run reached the screenshot only after the flash had ended (151.7 of 110 s). The lamp is
+// lit for the whole flash, so "still running and lit right after the shot" proves the shot is of it.
 await page.screenshot({ path: `${out}/e06-transmitting.png` });
 const live = await episode(page);
-if (!(live.elapsed < live.state.round.durationMs) || !/Stop/.test(await panelText(page))) issues.push(`e06 was not captured during the transmission (${Math.round(live.elapsed)} of ${live.state.round.durationMs} ms)`);
+const litAfterShot = (await page.evaluate(() => window.__vmQa.lights())).includes("sno-l1");
+stats["e06-transmitting"] = await page.evaluate(() => window.__vmQa.stats());
+if (!(live.elapsed < live.state.round.durationMs) || !litAfterShot || !/Stop/.test(await panelText(page))) issues.push(`e06 was not captured during the lit transmission (${Math.round(live.elapsed)} of ${live.state.round.durationMs} ms, lit after the shot: ${litAfterShot})`);
 // Under software rendering the steps above can take a minute or more; if the 110 s flash has
 // already ended, there is nothing left to stop (recorded in stats.json either way).
 const stillRunning = await episode(page);
