@@ -72,13 +72,12 @@ const flash = (ms, after) => [D5(true), { op: "wait", ms }, D5(false), ...(after
 const SLOW_INJURED_NORTH = [...flash(1450, 550), ...flash(1450, 4000), { op: "wait", ms: 4000 }, ...flash(1450, 550), ...flash(420, 550), ...flash(420, 0)];
 // SAFE followed by 60 s of silence: still running when a teammate acts on it.
 const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 }))];
-// A recurring light (not a protocol word): 4 s on, 5 s off, 12 times = 108 s (under the 120 s cap).
-// Long phases let seconds-per-frame clients log both states and let a screenshot finish inside one.
-const BEACON = Array.from({ length: 12 }, () => flash(4000, 5000)).flat();
-// The same kind of light with irregular on/off lengths. A software renderer can take a
-// steady ~9 s per frame; sampling a strictly periodic 9 s light at that rate can land on the same
-// phase every time (aliasing: a first fresh-frames run after reconnect saw 7 frames, all lit).
-// Irregular phases cannot lock to a frame period, so fresh frames must see both states.
+// A recurring light (not a protocol word) with irregular on/off lengths. Long phases let
+// seconds-per-frame clients log both states. Irregular, because a software renderer can take a
+// steady ~9 s per frame, and sampling a strictly periodic 9 s light (4 s on, 5 s off, as these rounds
+// used before) can land on the same phase every time: aliasing. Two runs saw it, once after the
+// reconnect (7 fresh frames, all lit) and once in round 5 (5 frames, all lit).
+// Irregular phases cannot lock to a frame period, so the frames must see both states.
 // (Each wait block is at most 5 s, so every phase is 2.5–5 s; 107.5 s in all, under the 120 s cap,
 // long enough for a late joiner that needs minutes to render its first frames.)
 const ON = [5, 3.5, 5, 4, 2.5, 3, 4.5, 5, 5, 3.5, 5, 4.5];
@@ -369,13 +368,13 @@ check("after rebuilding, the same message is delivered (recovery)", /Round 4 · 
 await tap(host, '[data-episode="close-round"]');
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 4);
 
-// ── Round 5: a recurring light. Per-client lit/dark frames, pixels, then the sender's Stop ────
-await host.evaluate((program) => window.__vmQa.editDraft(program), BEACON);
+// ── Round 5: a recurring light. Per-client lit/dark frames, then the sender's Stop ────
+await host.evaluate((program) => window.__vmQa.editDraft(program), IRREGULAR);
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
 const beacon = await until(() => episode(member), (state) => state.state?.round?.n === 5);
-check("(round 5 is a 108 s recurring light)", beacon.state.round.durationMs === 108_000);
+check("(round 5 is a 107.5 s recurring light with irregular phases)", beacon.state.round.durationMs === IRREGULAR_MS, `${beacon.state.round.durationMs} ms`);
 const deadline5 = Date.now() + 75_000; // leaves time to press Stop while it still runs
 const receiverFrames = await observeLitAndDark(member, "receiver, round 5", 45_000);
 const senderFrames = await observeLitAndDark(host, "sender, round 5", Math.max(5_000, deadline5 - Date.now()));
