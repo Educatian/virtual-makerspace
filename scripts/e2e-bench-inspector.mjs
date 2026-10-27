@@ -126,9 +126,14 @@ try {
   // ── Bench: the field-test layout (L1 D5 → GND) plus S1 from 5V to D2, through the room ──
   await host.locator("#load-field-test").click();
   await until(() => bench(member), (snapshot) => seatOf(snapshot, "sno-l1") === "[12,30]");
+  await until(() => bench(host), (snapshot) => seatOf(snapshot, "sno-l1") === "[12,30]");
+  await ready(host, "host after the field-test layout");
+  // The host's own answer can time out on a slow page while the room accepts (the room is the
+  // authority): the check reads the room's state as the member received it, and records the answer.
   const seated = await host.evaluate(() => window.__vmQa.seatShared({ "sno-s1": [14, 32], "sno-w4a": [32, 28], "sno-w2b": [28, 10] }));
   const memberBench = await until(() => bench(member), (snapshot) => seatOf(snapshot, "sno-s1") === "[14,32]" && seatOf(snapshot, "sno-w2b") === "[28,10]");
-  check("bench built through the room (layout button + one atomic edit)", seated && seatOf(memberBench, "sno-l1") === "[12,30]" && seatOf(memberBench, "sno-s1") === "[14,32]");
+  check("bench built through the room (layout button + one atomic edit)", seatOf(memberBench, "sno-l1") === "[12,30]" && seatOf(memberBench, "sno-s1") === "[14,32]" && seatOf(memberBench, "sno-w4a") === "[32,28]" && seatOf(memberBench, "sno-w2b") === "[28,10]",
+    JSON.stringify({ hostAnswer: seated, member: ["sno-l1", "sno-s1", "sno-w4a", "sno-w2b"].map((id) => `${id} ${seatOf(memberBench, id)}`) }));
   await ready(host, "host after bench");
   await ready(member, "member after bench");
 
