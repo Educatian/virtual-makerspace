@@ -450,20 +450,23 @@ check("(round 6 runs a recurring light with irregular phases)", beacon6.state.ro
 check("(the receiver's socket is dropped mid-transmission)", await member.evaluate(() => window.__vmQa.dropConnection()));
 const released = await until(() => episode(host), (state) => state.state?.roles.receiver === null, 60_000);
 check("the room released the dropped receiver's role", released.state?.roles.receiver === null);
-const back = await until(() => episode(member), (state) => state.online && state.state?.roles.receiver === null && state.clockRtt !== null && state.clockRtt <= 1000, 120_000);
+const back = await until(() => episode(member), (state) => state.online && state.state?.roles.receiver === null && state.state?.round?.n === 6, 120_000);
 check("the dropped client reconnected by itself and holds the room's state (no role)", back.online && back.role === null && back.state?.round?.n === 6);
-await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
-const rejoined = await until(() => episode(member), (state) => state.role === "receiver");
-const hostClock = await episode(host);
-const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
-check("after reconnecting, the receiver is back in the running transmission", rejoined.state.round.n === 6 && !rejoined.state.round.stopReason && rejoined.elapsed < rejoined.state.round.durationMs, `${Math.round(rejoined.elapsed)} of ${rejoined.state.round.durationMs} ms`);
-check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
-// Fresh frames only: drain the log now, and count only frames of round 6's transmission rendered
-// after this moment (the page's own clock), i.e. after the reconnect and the retaken role.
+check("after reconnecting, the receiver is back in the running transmission", back.state?.round?.n === 6 && !back.state.round.stopReason && back.elapsed < back.state.round.durationMs, `${Math.round(back.elapsed)} of ${back.state?.round?.durationMs} ms`);
+// Fresh frames only, at once (the light is what runs out): drain the log now, and count only frames
+// of round 6's transmission rendered after this moment (the page's own clock), i.e. after the
+// confirmed reconnect. The role is retaken and the clock compared afterwards.
 await member.evaluate(() => window.__vmQa.lightLog());
 const reconnectBoundary = await member.evaluate(() => Date.now());
-const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (rejoined.state.round.durationMs - rejoined.elapsed) - 4_000), reconnectBoundary);
-check("after reconnecting, the receiver's FRESH driven frames (round 6's tx, rendered after the reconnect) include lit AND dark, all agreeing", afterReconnect.tx === rejoined.state.round.tx && afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
+const backNow = await episode(member);
+const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (backNow.state.round.durationMs - backNow.elapsed) - 4_000), reconnectBoundary);
+check("after reconnecting, the receiver's FRESH driven frames (round 6's tx, rendered after the reconnect) include lit AND dark, all agreeing", afterReconnect.tx === back.state.round.tx && afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
+await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
+await until(() => episode(member), (state) => state.role === "receiver");
+const rejoined = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 120_000);
+const hostClock = await episode(host);
+const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
+check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
 await stopIfStillRunning(host);
 await waitEnded(member);
 await tap(host, '[data-episode="close-round"]');
