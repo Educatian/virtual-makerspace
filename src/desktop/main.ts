@@ -849,6 +849,8 @@ function enterWorkspace(): void {
       editDraft: (next: SnapinoStatement[]) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
       /** Frames driven by a transmission: elapsed time and the lights the bench showed. */
       lightLog: () => lightLog.splice(0),
+      /** Stop or resume drawing this page (tests on software rendering; see Scene.setQaDrawing). */
+      drawing: (enabled: boolean) => workbench?.setQaDrawing(enabled),
       /** Drive the bench's Snapino pins locally (visual QA of a lit/unlit lamp; no room traffic). */
       pins: (levels: Partial<PinStates>) => workbench?.setSnapinoPins({ ...LOW_PINS, ...levels }),
       /** Frame the receiver's view of the lamp (the panel's "Receiver's view" button). */

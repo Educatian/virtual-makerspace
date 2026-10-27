@@ -3148,6 +3148,17 @@ export class DesktopWorkbenchScene {
   }
 
   /** Pin levels come from the running program (main.ts drives a SnapinoRunner) or a transmission. */
+  /**
+   * QA only (`?qa`): stop or resume drawing this page. Software-rendered test pages share a few CPU
+   * cores; a page whose frames are not under test can stand aside while another page is sampled.
+   * Nothing else stops: room traffic, clocks and timers keep running, and no frame is logged.
+   */
+  setQaDrawing(enabled: boolean): void {
+    this.qaDrawingPaused = !enabled;
+  }
+
+  private qaDrawingPaused = false;
+
   setSnapinoPins(pins: PinStates): void {
     this.snapinoPins = { ...pins };
     if (this.activeStudio === "snapino") this.evaluateSnapino();
@@ -3404,6 +3415,7 @@ export class DesktopWorkbenchScene {
   beforeFrame: (() => void) | null = null;
 
   private readonly render = (): void => {
+    if (this.qaDrawingPaused) return;
     this.beforeFrame?.();
     if (this.cameraTween) this.stepCameraTween(performance.now());
     this.orbit.update();
