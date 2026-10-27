@@ -1,0 +1,16 @@
+{
+ "label": "a9fefef",
+ "pages": [
+  {
+   "frames": 15,
+   "seconds": 98.74870000000298,
+   "stats": {
+    "calls": 533,
+    "triangles": 94938,
+    "geometries": 288,
+    "textures": 13,
+    "pixelRatio": 1
+   }
+  }
+ ]
+}

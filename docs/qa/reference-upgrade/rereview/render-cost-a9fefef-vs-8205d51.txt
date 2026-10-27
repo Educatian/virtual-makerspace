@@ -1,0 +1,18 @@
+  [ready] a9fefef page 1: 7 s (+4 frames)
+a9fefef page 1 ready in 32 s
+a9fefef: 15 frames in 99 s; 533 calls, 94938 triangles
+  [ready] 8205d51 page 1: 7 s (+3 frames)
+8205d51 page 1 ready in 28 s
+8205d51: 14 frames in 94 s; 533 calls, 94938 triangles
+  [ready] a9fefef page 1: 7 s (+3 frames)
+a9fefef page 1 ready in 35 s
+  [ready] a9fefef page 2: 265 s (+5 frames)
+a9fefef page 2 ready in 351 s
+a9fefef: 7 frames in 112 s; 533 calls, 94938 triangles
+a9fefef: 7 frames in 113 s; 533 calls, 94938 triangles
+  [ready] 8205d51 page 1: 7 s (+3 frames)
+8205d51 page 1 ready in 33 s
+  [ready] 8205d51 page 2: 253 s (+7 frames)
+8205d51 page 2 ready in 297 s
+8205d51: 7 frames in 112 s; 533 calls, 94938 triangles
+8205d51: 7 frames in 113 s; 533 calls, 94938 triangles

@@ -1,0 +1,12 @@
+PASS Worker refuses an AI teammate whose host isn't in the room — {"probeRoom":"VBWK","created":{"status":200,"body":"{\"room\":\"VBWK\",\"joined\":true,\"created\":true,\"persisted\":false,\"role\":\"owner\",\"studio\":\"circuit\",\"program\":null,\"programRunning\":false}"},"agentSocket":403}
+PASS Bolt joins over the Worker as an agent named Bolt — [{"name":"Host · You","agent":false},{"name":"Bolt AI","agent":true}]
+PASS Bolt's greeting relays through the Durable Object
+PASS Bolt builds over WebSocket after being taught
+PASS host scene lights safely from Bolt's relayed moves
+PASS a late joiner sees Bolt as an agent — [{"name":"host","agent":false},{"name":"Bolt AI","agent":true},{"name":"member · You","agent":false}]
+PASS the late joiner gets Bolt's circuit from the room's authoritative state
+PASS the late joiner is not offered a second Bolt
+PASS a resistor value edit relays through the Durable Object — Safe · 14.6 mA
+PASS a later joiner's room-state carries the edited value — Safe · 14.6 mA
+
+10/10 checks passed

@@ -1,0 +1,282 @@
+{
+ "room": "WEQJ",
+ "probeRoom": "V8Q4",
+ "results": [
+  {
+   "name": "Worker refuses an AI teammate whose host isn't in the room",
+   "ok": false,
+   "detail": ""
+  },
+  {
+   "name": "Bolt joins over the Worker as an agent named Bolt",
+   "ok": true,
+   "detail": "[{\"name\":\"Host · You\",\"agent\":false},{\"name\":\"Bolt AI\",\"agent\":true}]"
+  },
+  {
+   "name": "Bolt's greeting relays through the Durable Object",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "Bolt builds over WebSocket after being taught",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host scene lights safely from Bolt's relayed moves",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a late joiner sees Bolt as an agent",
+   "ok": true,
+   "detail": "[{\"name\":\"host\",\"agent\":false},{\"name\":\"Bolt AI\",\"agent\":true},{\"name\":\"member · You\",\"agent\":false}]"
+  },
+  {
+   "name": "the late joiner gets Bolt's circuit from the room's authoritative state",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the late joiner is not offered a second Bolt",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a resistor value edit relays through the Durable Object",
+   "ok": true,
+   "detail": "Safe · 14.6 mA"
+  },
+  {
+   "name": "a later joiner's room-state carries the edited value",
+   "ok": true,
+   "detail": "Safe · 14.6 mA"
+  }
+ ],
+ "bolt": {
+  "lines": [
+   "Hi! I'm Bolt. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.",
+   "What's your plan? Walk me through it and I'll check each step.",
+   "So parts only connect when they share a column. Got it.",
+   "Okay, I'll build. You check my work.",
+   "I'll build my plan now.",
+   "So the current has to come back to the battery. Got it.",
+   "So the resistor keeps too much current from reaching the LED. Got it.",
+   "Done. Have a look, then we can test."
+  ],
+  "build": [
+   {
+    "run": 2,
+    "event": "build started (2 moves)",
+    "at": 1793121396708
+   },
+   {
+    "run": 3,
+    "event": "build started (3 moves, superseding)",
+    "at": 1793121403477
+   },
+   {
+    "run": 2,
+    "part": "battery-9v",
+    "claim": "granted",
+    "event": "ended: superseded by a newer build (released)",
+    "at": 1793121405596
+   },
+   {
+    "run": 3,
+    "part": "battery-9v",
+    "claim": "granted",
+    "event": "ended: superseded by a newer build (released)",
+    "at": 1793121411542
+   },
+   {
+    "run": 4,
+    "event": "build started (4 moves)",
+    "at": 1793121413441
+   },
+   {
+    "run": 4,
+    "part": "battery-9v",
+    "claim": "granted",
+    "release": "accepted",
+    "at": 1793121425496
+   },
+   {
+    "run": 4,
+    "part": "resistor-1k",
+    "claim": "granted",
+    "release": "accepted",
+    "at": 1793121440181
+   },
+   {
+    "run": 4,
+    "part": "led-red",
+    "claim": "granted",
+    "release": "accepted",
+    "at": 1793121456810
+   },
+   {
+    "run": 4,
+    "part": "wire-blue",
+    "claim": "granted",
+    "release": "accepted",
+    "at": 1793121473483
+   },
+   {
+    "run": 4,
+    "event": "built (0 skipped)",
+    "at": 1793121477924
+   }
+  ],
+  "afterLit": {
+   "lines": [
+    "Hi! I'm Bolt. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.",
+    "What's your plan? Walk me through it and I'll check each step.",
+    "So parts only connect when they share a column. Got it.",
+    "Okay, I'll build. You check my work.",
+    "I'll build my plan now.",
+    "So the current has to come back to the battery. Got it.",
+    "So the resistor keeps too much current from reaching the LED. Got it.",
+    "Done. Have a look, then we can test."
+   ],
+   "build": [
+    {
+     "run": 2,
+     "event": "build started (2 moves)",
+     "at": 1793121396708
+    },
+    {
+     "run": 3,
+     "event": "build started (3 moves, superseding)",
+     "at": 1793121403477
+    },
+    {
+     "run": 2,
+     "part": "battery-9v",
+     "claim": "granted",
+     "event": "ended: superseded by a newer build (released)",
+     "at": 1793121405596
+    },
+    {
+     "run": 3,
+     "part": "battery-9v",
+     "claim": "granted",
+     "event": "ended: superseded by a newer build (released)",
+     "at": 1793121411542
+    },
+    {
+     "run": 4,
+     "event": "build started (4 moves)",
+     "at": 1793121413441
+    },
+    {
+     "run": 4,
+     "part": "battery-9v",
+     "claim": "granted",
+     "release": "accepted",
+     "at": 1793121425496
+    },
+    {
+     "run": 4,
+     "part": "resistor-1k",
+     "claim": "granted",
+     "release": "accepted",
+     "at": 1793121440181
+    },
+    {
+     "run": 4,
+     "part": "led-red",
+     "claim": "granted",
+     "release": "accepted",
+     "at": 1793121456810
+    },
+    {
+     "run": 4,
+     "part": "wire-blue",
+     "claim": "granted",
+     "release": "accepted",
+     "at": 1793121473483
+    },
+    {
+     "run": 4,
+     "event": "built (0 skipped)",
+     "at": 1793121477924
+    }
+   ],
+   "bench": {
+    "studio": "circuit",
+    "parts": {
+     "led-red": {
+      "sockets": [
+       157,
+       158
+      ]
+     },
+     "led-green": {
+      "sockets": null
+     },
+     "resistor-220": {
+      "sockets": null,
+      "props": {
+       "ohms": 220
+      }
+     },
+     "resistor-1k": {
+      "sockets": [
+       138,
+       141
+      ],
+      "props": {
+       "ohms": 1000
+      }
+     },
+     "wire-red": {
+      "sockets": null
+     },
+     "wire-blue": {
+      "sockets": [
+       174,
+       168
+      ]
+     },
+     "wire-yellow": {
+      "sockets": null
+     },
+     "battery-9v": {
+      "sockets": [
+       122,
+       120
+      ],
+      "props": {
+       "volts": 9
+      }
+     }
+    },
+    "program": [
+     {
+      "op": "write",
+      "pin": "D5",
+      "value": true
+     },
+     {
+      "op": "wait",
+      "ms": 500
+     },
+     {
+      "op": "write",
+      "pin": "D5",
+      "value": false
+     },
+     {
+      "op": "wait",
+      "ms": 500
+     }
+    ],
+    "running": false,
+    "draft": null,
+    "canUndo": false,
+    "canRedo": false
+   }
+  }
+ }
+}

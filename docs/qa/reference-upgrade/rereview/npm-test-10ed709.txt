@@ -1,0 +1,53 @@
+
+> virtual-makerspace@0.1.0 test
+> npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync && npm run test:tools && npm run test:episode && npm run test:diagram
+
+
+> virtual-makerspace@0.1.0 typecheck
+> tsc --noEmit -p .
+
+
+> virtual-makerspace@0.1.0 test:circuit
+> node --experimental-strip-types scripts/circuit-engine-check.mjs
+
+generated: 821 safe loops succeeded, 223 overdriven loops refused, 3284 variants checked (reversed, bypassed, shorted, 10 Ω)
+fuzz: 3000 random layouts solved (1154 safe successes)
+circuit engine: 17742 checks passed (dc-mna-1.0.0)
+
+> virtual-makerspace@0.1.0 test:agent
+> node --experimental-strip-types scripts/teachable-agent-check.mjs
+
+teachable-agent: all checks passed
+
+> virtual-makerspace@0.1.0 test:project
+> node --experimental-strip-types scripts/project-state-check.mjs
+
+project state: 270 checks passed
+
+> virtual-makerspace@0.1.0 test:snapino
+> node --experimental-strip-types scripts/snapino-check.mjs && node --experimental-strip-types scripts/snapino-sketch-check.mjs
+
+snapino self-check passed
+snapino sketch: 16 generated sketches pass g++ -fsyntax-only (stub Arduino.h; not an AVR build)
+
+> virtual-makerspace@0.1.0 test:sync
+> node --experimental-strip-types scripts/sync-check.mjs
+
+sync: 400 random multi-client schedules converged (1512 edits accepted, 5273 refused)
+sync: 858 checks passed
+
+> virtual-makerspace@0.1.0 test:tools
+> node --experimental-strip-types scripts/tools-check.mjs
+
+workbench tools: 36 checks passed
+
+> virtual-makerspace@0.1.0 test:episode
+> node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs
+
+rescue signal: 17751 checks passed
+episode sync: 55 checks passed
+
+> virtual-makerspace@0.1.0 test:diagram
+> node --experimental-strip-types scripts/snapino-diagram-check.mjs
+
+66886/66886 diagram checks passed

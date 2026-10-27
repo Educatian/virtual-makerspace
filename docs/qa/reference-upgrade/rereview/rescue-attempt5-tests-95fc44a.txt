@@ -1,0 +1,18 @@
+  [ready] host entered: 13 s (+3 frames)
+  [ready] member entered: 26 s (+3 frames)
+PASS the workshop panel opens for both makers (room state, not a local overlay)
+PASS sender and receiver are taken by different makers — {"host":"sender","member":"receiver"}
+  [ready] host after the lamp was placed: 35 s (+3 frames)
+  [ready] member after the lamp was placed: 38 s (+3 frames)
+PASS the receiver's panel does not show the intended message — Roles Design & build Transmit Read Compare & explain Sender host Receiver member (you) Leave role Sw
+PASS the transmission reaches the receiver as room state
+  [diagnostics] <scratch>/r3/rescue5/member-tap-_data-episode_receiver-view_.json
+file://<repo>/scripts/e2e-rescue-signal.mjs:63
+    throw new Error(`${page.e2eLabel}: ${selector} not present/enabled within 120 s (${error.message.split("\n")[0]})`);
+          ^
+
+Error: member: [data-episode="receiver-view"] not present/enabled within 120 s (page.waitForFunction: Timeout 120000ms exceeded.)
+    at tap (file://<repo>/scripts/e2e-rescue-signal.mjs:63:11)
+    at async file://<repo>/scripts/e2e-rescue-signal.mjs:279:1
+
+Node.js v22.22.0

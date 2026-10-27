@@ -1,0 +1,27 @@
+{
+ "label": "paused-800",
+ "pages": [
+  {
+   "frames": 17,
+   "seconds": 93.8185,
+   "stats": {
+    "calls": 303,
+    "triangles": 73218,
+    "geometries": 190,
+    "textures": 13,
+    "pixelRatio": 1
+   }
+  },
+  {
+   "frames": 5760,
+   "seconds": 96.06139999999851,
+   "stats": {
+    "calls": 38,
+    "triangles": 26068,
+    "geometries": 43,
+    "textures": 3,
+    "pixelRatio": 1
+   }
+  }
+ ]
+}
