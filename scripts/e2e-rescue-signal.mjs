@@ -482,7 +482,9 @@ await until(() => episode(member), (state) => state.role === "receiver");
 // thread for seconds, so every pong waits behind one (attempt 8: best round trip 7446 ms in 120 s).
 // A real device draws in milliseconds; the client keeps sampling until a round trip is short.
 await drawing([host, member], false);
-const rejoined = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 120_000);
+// The 250 ms bound is only meaningful for estimates whose own error (rtt / 2) is below it: wait for
+// samples with round trips of at most 400 ms (attempt 9 compared a 756 ms sample: 377 ms apart).
+const rejoined = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
 const hostClock = await episode(host);
 const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
 check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
@@ -619,8 +621,8 @@ check("the late joiner's own driven frames (this tx) include lit AND dark, all a
 // The clock is sampled with the joiner not drawing either (as after the reconnect); the client keeps
 // sampling until a round trip is short, and the bound applies to that estimate (error <= rtt / 2).
 await drawing([phone], false);
-const joinClock = await until(() => episode(phone), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
-const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
+const joinClock = await until(() => episode(phone), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
+const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
 const joinSkew = Math.abs(joinClock.clockOffset - senderClock.clockOffset);
 check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", joinSkew <= 250, `Δ ${Math.round(joinSkew)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms`);
 await drawing([phone], true);
