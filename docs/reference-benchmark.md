@@ -81,9 +81,9 @@ The parent browsed the site and recorded the observations below. They are the pa
 |---|---|---|
 | A large, labelled 3D hero, with turn, zoom and reset controls | The Snapino bench fills the free view. There are five camera views: Bench, Top, Table, Lamp and Fit part, on keys 1–4 and F. | **Done** |
 | A contextual Part inspector with Overview / Pinout / Example / Specifications tabs and "Zoom to it" | The Bench inspector, with Overview / Pinout / Behaviour & limits and Zoom to it. Limits give real ratings with units and say where the bench simplifies. | **Done.** We have no "Example" tab: worked examples are DI-only in Episode 1. |
-| Clicking a value opens the part. A preset updates the rendered state, the code values and the schematic together. | Selecting a part (3D, rail or diagram) cross-links the inspector, the 3D terminal and net rings, and the diagram's rung and rows. The S1 flip is one room edit, and the bench, diagram and D2 input LED follow from canonical state on every client. | **Partly.** Our only inspector edit is S1. The Snapino blocks have no per-part numeric values to edit, and we did not invent some. Resistor and voltage edits exist on the Circuit Bench meter. |
-| A schematic overlay and a current-flow toggle | The live ladder diagram, derived from the actual nets. Wrong wiring is drawn as built; fault notes follow PF/DI. | **Done** for the schematic. **Deferred:** an animated current-flow toggle; the diagram shows levels and running state instead. |
-| Shaped PCB, chips, headers, metal pins, breadboard holes, curved colour-coded wires, soft shadows | Stud collars (socket depth), legible row and column marks, and printed-style terminal and net rings. The existing GLB carrier, header and part models are kept. | **Partly.** Snap parts are rigid, so this studio has no curved wires. The Circuit Bench jumpers were not changed. |
+| Clicking a value opens the part. A preset updates the rendered state, the code values and the schematic together. | Selecting a part (3D, rail or diagram) cross-links the inspector, the 3D terminal and net rings, and the diagram's rung and rows, with one tone contract: A amber/solid, B cyan/dashed, letters. On Snapino the inspector's edit is the S1 flip; on the Circuit Bench the docked meter's real resistor and supply editors. Both are room edits with Undo, and code drafts are untouched. | **Partly.** We invented no numeric controls for fixed Snapino parts, so there is no 'preset changes code values' equivalent there. |
+| A schematic overlay and a current-flow toggle | Snapino: the live ladder diagram, derived from the actual nets (wrong wiring is drawn as built; fault notes follow PF/DI), plus an optional **logical drive** overlay: source → GND on running loads, labelled not current. Circuit Bench: an optional **solved-current** view with arrows on the jumper wires, from the DC solver, in its sign and direction. Off for short, open or unsolved circuits. | **Done**, as honest stand-ins. Snapino has no current model, so it shows no amperes. |
+| Shaped PCB, chips, headers, metal pins, breadboard holes, curved colour-coded wires, soft shadows | Stud collars (socket depth), legible row and column marks, patterned terminal and net rings. The existing GLB carrier, header and part models are kept, as are the Circuit Bench's curved jumpers and seated tips. | **Partly.** No new part models. |
 | A 16-lesson rail | Not adopted. We keep our five original episodes, with no placeholder lessons. | By design |
 | "Compiling…" / "Uploading…" labels | Not adopted. Our blocks run in a stated block runner, with no compiler or upload claims. Whether the reference compiles anything is unknown to us, since REA could not trace it. | By design |
 
@@ -94,7 +94,7 @@ The parent browsed the site and recorded the observations below. They are the pa
 | 1 | **Composition.** The 3D bench is the main thing on screen, with one side column, not two. Panels collapse. There are camera views and fit-part. It works on desktop, laptop and phone. Collaboration stays one click away. | Projected-bench metric (`benchRect`): share of the free view the bench fills. Layout checks at 1440, 1280 and 390 px: no page scroll, Chat tab present, targets ≥ 44 px. |
 | 2 | **Microdetail.** Legible board markings, depth at the sockets, connection highlighting, and no fake glow. | Same-camera before/after renders, with draw calls and triangles for each shot. |
 | 3 | **Semantic cross-link.** Selecting a part shows it in the inspector, rings its terminals and nets in 3D, and marks its rung and nets on the diagram. Edits go through the room: accepted, declined or stale. A dirty draft is never overwritten. | Two-client end-to-end test with real pointer and keyboard input. 3D rings are compared to a diagram rebuilt independently from the reported bench. |
-| 4 | **Live diagram.** Derived from the actual connections. Wrong wiring is drawn as built. Fault notes follow the PF/DI rule. | 62,859 oracle checks (an independent BFS over the placements, 4,000 random benches). Browser check of a bypassed lamp under PF and DI. |
+| 4 | **Live diagram.** Derived from the actual connections. Wrong wiring is drawn as built. Fault notes follow the PF/DI rule. | 66,886 oracle checks (an independent BFS over the placements, 4,000 random benches), including tones and the drive overlay. Browser check of a bypassed lamp under PF and DI. |
 | 5 | **Depth.** Per-part overview, pinout, on-bench behaviour and real-hardware limits with units. Keyboard access and minimum target size. No fake compiler or upload badges, no XP. | Inspector content review, keyboard path in the end-to-end test, target-size check. |
 
 ## What we built (original implementation)
@@ -169,11 +169,49 @@ The inspector is `src/desktop/snapino-inspector.ts`, with content in `src/deskto
   - Zoom to it.
   - Switch S1. This is one room edit through the existing path. Nothing changes locally until the room accepts it; a refused or stale flip says "Not changed".
 
+### Circuit Bench: the meter in the same inspector column
+
+The circuit meter now sits in the dock's Inspector tab instead of floating over the left of the scene. It contains:
+- readings;
+- the selected part's leads;
+- the real resistor and supply editors.
+
+The editors keep the existing room path (authority, refusals, Undo), and the "never re-render under the cursor" draft guard is unchanged. Selecting a part focuses the tab by the same rule as on Snapino.
+
+**Show current flow** (off by default) puts arrowheads along each jumper wire's own curve:
+- They point in the direction of the dc-engine's solved conventional current. The reading's sign gives the direction: positive means end A to end B.
+- Their speed is log-scaled and stated as not to scale.
+- They stand still with reduced motion.
+- **When there are none:** a short, an open loop, no supply, or an unsolvable circuit draws nothing, and the note says which.
+- **What it covers:** only jumpers. Parts' own currents stay in the readings.
+
+### One selection-tone contract
+
+`src/desktop/selection-style.ts` defines the tones once. The 3D rings, the diagram's row strokes and letter badges, and the inspector's legend and pinout all use it:
+
+| Tone | Colour | Ring | Badge |
+|---|---|---|---|
+| End A's net | amber | solid | `A` |
+| End B's net | cyan | dashed | `B` |
+| Both ends on one net | red | double | `!` |
+
+Colour is never the only cue. A selected snap wire highlights its own net as A, never as a fault.
+
+### Phone layout
+
+At 620 px and below:
+- the studios and parts share one row, and the tools sit on one scrollable row;
+- the bench now starts at about 192 px from the top, instead of 434 px;
+- the dock's tabs are on the first screen;
+- the dock itself follows below, reached by normal vertical scrolling.
+
+The phone test scrolls there with the mouse wheel, uses the pointer and the keyboard, and captures each state. No touch input was tested.
+
 ### Microdetail in the 3D bench
 
 - **Socket collars.** A shaded ring where each of the 63 studs meets the plate, in one instanced draw call.
 - **Board labels.** The base's row letters (A–G) and column numbers (1–9) are enlarged about 1.9–2× and printed darker, so the stud names the inspector uses can be found on the board.
-- **Selection rings.** Rings mark the selected part's terminals (larger) and every stud of its two nets: amber for end A's net, cyan for end B's, red when both ends share a net. They are printed-style, depth-tested and unlit, with no additive glow and no bloom. They use one instanced draw call.
+- **Selection rings.** Rings mark the selected part's terminals (larger) and every stud of its two nets, following the tone contract above: amber solid for end A's net, cyan dashed for end B's, red double when both ends share a net. They are printed-style, depth-tested and unlit, with no additive glow and no bloom. They use one instanced draw call.
 
 Not changed:
 - The parts' models.
@@ -183,14 +221,24 @@ Not changed:
 
 Run in the developer environment: headless Chromium with SwiftShader, not a GPU and not CI. Full logs and numbers are in [`docs/qa/reference-upgrade/README.md`](qa/reference-upgrade/README.md), and the images in [`docs/images/reference-upgrade/`](images/reference-upgrade/).
 
+## Compatibility with shared code
+
+- **Shared solver and part files:** since the PR4 base `3394e4b`, this work has not changed:
+  - `src/circuit/dc-engine.ts` (solver `dc-mna-1.0.0`);
+  - `src/circuit/breadboard.ts`;
+  - `src/circuit/part-props.ts`;
+  - `src/desktop/circuit-topology.ts`;
+  - `src/desktop/bench-models.ts`.
+- **How the flow view uses them:** it only reads the solver's element readings.
+- **Research mode:** it is owned by another workstream (`src/research/**`, `server/research-*.mjs`, `scripts/research-*`, `?mode=research`). It is not on this branch and nothing here implements or routes it. When the branches meet, the research bootstrap should keep its precedence in `main.ts`.
+
 ## Limits
 
 - The REA analysis of the target is blocked here, as described above. These criteria come from our own design goals, the parent review, and a one-line structural fetch. They do not come from the target's code.
-- The circuit meter of the Circuit Bench studio still floats over the left of that studio. This upgrade covers the Snapino bench and Episode 1.
 - SwiftShader draw-call and triangle counts are not frame rates. Nothing was measured on a real GPU, phone or headset.
 - **Not done:**
-  - an animated current-flow view;
-  - inspector value edits beyond S1;
-  - Circuit Bench wire and meter composition;
-  - matching the diagram's highlight colours to the 3D ring tones (rows are highlighted, but not in amber and cyan).
+  - current through the parts' bodies and the breadboard strips (the flow view covers jumpers only);
+  - numeric inspector edits on Snapino, whose parts have no adjustable values in our model;
+  - new part models;
+  - touch-input testing.
 - The 3D stud rings sit at the plate. A seated part's rivet covers its own terminal stud, so only a rim of the larger terminal ring shows from most angles.

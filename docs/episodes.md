@@ -318,7 +318,7 @@ The common Snapino bench and Episode 1 were upgraded to this standard first; see
   - the view a role needs (the listener's speaker, the plant bed, the sorting bins, the loaded span);
   - fit-selected.
   - Each preset has a number key, and F fits the selection.
-- Phone width: no page scroll; the 3D and the dock stack; Chat stays one tap away.
+- Phone width: no horizontal overflow; compact chrome so the 3D work area starts high on the first screen; the dock follows below by normal vertical scrolling, and is reached in the test by real scrolling, pointer and keyboard; Chat stays one tap away.
 
 **2. Microdetail**
 - Up close, every manipulable part has:
