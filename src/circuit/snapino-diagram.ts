@@ -320,7 +320,7 @@ export function renderSnapinoDiagramSvg(diagram: SnapinoDiagram, options: Diagra
       <line class="dg-net" x1="${LABEL_W - 6}" y1="${rowY}" x2="${width - 6}" y2="${rowY}" />
       <text class="dg-label" x="4" y="${rowY + 4}">${escapeXml(row.label)}</text>
       <text class="dg-level" x="${LABEL_W - 10}" y="${rowY - 5}" text-anchor="end">${escapeXml(LEVEL_COPY[row.level])}</text>
-      ${row.via.length ? `<text class="dg-via" x="${LABEL_W - 2}" y="${rowY + 13}">${escapeXml(row.via.join(" · "))}</text>` : ""}
+      ${row.via.length ? `<text class="dg-via" x="4" y="${rowY + 15}">${escapeXml(viaLabel(row.via))}</text>` : ""}
     </g>`;
   }).join("");
 
@@ -364,6 +364,12 @@ export function renderSnapinoDiagramSvg(diagram: SnapinoDiagram, options: Diagra
   }).join("");
 
   return `<svg class="snapino-diagram" viewBox="0 0 ${width} ${height}" width="100%" role="group" aria-label="Live circuit diagram of the Snapino bench">${rowSvg}${rungSvg}</svg>`;
+}
+
+/** The wires forming a net, short enough for the label column (the full list is in the row's label). */
+function viaLabel(via: string[]): string {
+  const text = `via ${via.join(" · ")}`;
+  return text.length <= 15 ? text : `via ${via.length} wires`;
 }
 
 /** A small schematic symbol centred on `mid` (lamp ⊗, LED ▷|, motor Ⓜ, switch blade). */
