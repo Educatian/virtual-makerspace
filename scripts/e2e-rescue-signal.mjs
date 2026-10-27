@@ -209,26 +209,28 @@ async function brightness(png) {
  * the capture, inside one phase of the timeline. Returns its brightness, or null if no clean sample.
  */
 async function lampSample(page, wantLit, deadline) {
+  const tries = { screenshots: 0, phaseChanged: 0 };
   while (Date.now() < deadline) {
     const before = await episode(page);
     const round = before.state?.round;
-    if (!round || before.elapsed >= round.durationMs || round.stopReason) return null;
+    if (!round || before.elapsed >= round.durationMs || round.stopReason) return { failed: "the light ended", ...tries };
     const lights = await page.evaluate(() => window.__vmQa.lights());
     if (lights.includes("sno-l1") !== wantLit) { await new Promise((resolve) => setTimeout(resolve, 300)); continue; }
     const rect = await page.evaluate(() => window.__vmQa.partScreenRect("sno-l1"));
-    if (!rect || rect.width < 4 || rect.height < 4) return null;
+    if (!rect || rect.width < 4 || rect.height < 4) return { failed: "no lamp on screen", rect, ...tries };
     const clip = { x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: Math.min(rect.width, 400), height: Math.min(rect.height, 400) };
     const png = await page.screenshot({ clip });
+    tries.screenshots += 1;
     const after = await episode(page);
     const lightsAfter = await page.evaluate(() => window.__vmQa.lights());
     const pulses = pulsesOf(round, null);
     const samePhase = lightsAfter.includes("sno-l1") === wantLit && litIn(pulses, before.elapsed) === wantLit && litIn(pulses, after.elapsed) === wantLit
       && pulses.every((pulse) => !(before.elapsed < pulse.start && pulse.start < after.elapsed) && !(before.elapsed < pulse.end && pulse.end < after.elapsed));
-    if (!samePhase) continue;
+    if (!samePhase) { tries.phaseChanged += 1; continue; }
     writeFileSync(`${artifacts}/pixel-${wantLit ? "lit" : "dark"}.png`, png);
     return { brightness: await brightness(png), clip, elapsed: [Math.round(before.elapsed), Math.round(after.elapsed)] };
   }
-  return null;
+  return { failed: "deadline", ...tries };
 }
 /**
  * Clean-up between rounds: Stop the light if it still runs. The light can end on its own between the
@@ -476,10 +478,15 @@ check("after reconnecting, the receiver's FRESH driven frames (round 6's tx, ren
 await drawing([host], true);
 await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
 await until(() => episode(member), (state) => state.role === "receiver");
+// Clock samples are taken with both pages not drawing: on this machine a frame blocks a page's main
+// thread for seconds, so every pong waits behind one (attempt 8: best round trip 7446 ms in 120 s).
+// A real device draws in milliseconds; the client keeps sampling until a round trip is short.
+await drawing([host, member], false);
 const rejoined = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 120_000);
 const hostClock = await episode(host);
 const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
 check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
+await drawing([host, member], true);
 await stopIfStillRunning(host);
 await waitEnded(member);
 await tap(host, '[data-episode="close-round"]');
@@ -494,7 +501,7 @@ await drawing([host], false); // only the receiver's lamp is sampled
 const litPixels = await lampSample(member, true, deadline7);
 const darkPixels = await lampSample(member, false, deadline7);
 await drawing([host], true);
-check("pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera)", litPixels && darkPixels && litPixels.brightness - darkPixels.brightness > 8, JSON.stringify({ lit: litPixels?.brightness?.toFixed(1), dark: darkPixels?.brightness?.toFixed(1), litAt: litPixels?.elapsed, darkAt: darkPixels?.elapsed, clip: litPixels?.clip }));
+check("pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera)", litPixels.brightness !== undefined && darkPixels.brightness !== undefined && litPixels.brightness - darkPixels.brightness > 8, JSON.stringify({ lit: litPixels.brightness?.toFixed(1) ?? litPixels, dark: darkPixels.brightness?.toFixed(1) ?? darkPixels, litAt: litPixels.elapsed, darkAt: darkPixels.elapsed, clip: litPixels.clip }));
 await stopIfStillRunning(host);
 await waitEnded(member);
 await tap(host, '[data-episode="close-round"]');
@@ -600,16 +607,14 @@ await phone.waitForFunction(() => { const panel = document.querySelector("#episo
 await ready(phone, "late joiner entered");
 const lateFrames = await observeLitAndDark(phone, "late joiner", Math.max(5_000, (joinedRound?.durationMs ?? 0) - (await episode(phone)).elapsed - 2_000));
 check("the late joiner's own driven frames (this tx) include lit AND dark, all agreeing with the timeline", joinedRound !== null && lateFrames.tx === joinedRound.tx && lateFrames.lit > 0 && lateFrames.dark > 0 && lateFrames.wrong === 0, JSON.stringify(lateFrames));
-// The first clock samples of a page busy with its first draws have long round trips; the client
-// keeps sampling until one is short. The bound applies to that estimate (error <= rtt / 2).
-const joinClock = await until(() => episode(phone), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
-const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
+// The clock is sampled with the joiner not drawing either (as after the reconnect); the client keeps
+// sampling until a round trip is short, and the bound applies to that estimate (error <= rtt / 2).
+await drawing([phone], false);
+const joinClock = await until(() => episode(phone), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
+const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
 const joinSkew = Math.abs(joinClock.clockOffset - senderClock.clockOffset);
-// Each estimate's own stated error is at most half the round trip of the sample it uses. With short
-// round trips this is the usual 250 ms bound; a joiner page that draws without pause (attempt 4: its
-// best round trip in 180 s was 1328 ms) is held to the bound its own sample states, never more than 1 s.
-const joinBound = Math.max(250, (joinClock.clockRtt ?? Infinity) / 2 + (senderClock.clockRtt ?? Infinity) / 2 + 50);
-check("its room-clock estimate agrees with the sender's within the two samples' stated error (≥ 250 ms, ≤ 1 s; same machine clock)", joinBound <= 1000 && joinSkew <= joinBound, `Δ ${Math.round(joinSkew)} ms, bound ${Math.round(joinBound)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms`);
+check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", joinSkew <= 250, `Δ ${Math.round(joinSkew)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms`);
+await drawing([phone], true);
 await shot(phone, "09-phone-late-joiner");
 const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
 check("phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)", layout.left >= 0 && layout.right <= layout.width && layout.overflow <= 0, JSON.stringify(layout));
