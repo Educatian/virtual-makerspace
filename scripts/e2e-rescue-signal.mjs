@@ -151,9 +151,16 @@ async function enter(page) {
  * reconnect, can never satisfy a later check.
  */
 async function drivenFrames(page, round, since = null) {
+  return summarize(await page.evaluate(() => window.__vmQa.lightLog()), round, since);
+}
+/** Drains a page's probe log into `into` (reading the log empties it), for a later summary. */
+async function drain(page, into) {
+  into.push(...await page.evaluate(() => window.__vmQa.lightLog()));
+  return into;
+}
+function summarize(log, round, since = null) {
   const pulses = pulsesOf(round, null);
   const end = round.stoppedAtMs ?? round.durationMs;
-  const log = await page.evaluate(() => window.__vmQa.lightLog());
   const frames = log.filter((frame) => frame.tx === round.tx && (since === null || frame.at > since) && frame.elapsed >= 0 && frame.elapsed < end);
   const lit = frames.filter((frame) => frame.lights.includes("sno-l1"));
   const wrong = frames.filter((frame) => frame.lights.includes("sno-l1") !== litIn(pulses, frame.elapsed));
@@ -353,8 +360,10 @@ const benchNow = await host.evaluate(() => window.__vmQa.bench());
 const parts = Object.entries(benchNow.parts).map(([id, part]) => ({ id, sockets: id === "sno-w2a" ? null : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(host, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts });
 await until(() => member.evaluate(() => window.__vmQa.bench().parts["sno-w2a"]?.sockets), (sockets) => !sockets);
-// 10 s with D5 HIGH: long enough for software-rendered frames to be driven while it runs.
-await host.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, { op: "wait", ms: 5000 }, { op: "wait", ms: 5000 }, { op: "write", pin: "D5", value: false }]));
+await ready(member, "member after the return wire was removed");
+// 30 s with D5 HIGH: long enough for software-rendered frames (up to ~15 s each here) to be driven
+// while it runs (a 10 s run left the receiver with no frame in attempt 6).
+await host.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, ...Array.from({ length: 6 }, () => ({ op: "wait", ms: 5000 })), { op: "write", pin: "D5", value: false }]));
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
@@ -467,14 +476,21 @@ await host.evaluate((program) => window.__vmQa.editDraft(program), LONG_SAFE);
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
-await until(() => episode(member), (state) => state.state?.round?.n === 8);
+const round8 = (await until(() => episode(member), (state) => state.state?.round?.n === 8)).state.round;
+// Both pages draw this transmission before the teammate's edit (bounded wait; the light runs 62 s):
+// an edit made at once could leave a page that takes seconds per frame with nothing to check.
+const logs8 = new Map([[member, []], [host, []]]);
+await until(async () => {
+  for (const [page, log] of logs8) await drain(page, log);
+  return [...logs8.values()].map((log) => log.filter((frame) => frame.tx === round8.tx).length);
+}, (counts) => counts.every((count) => count > 0), 45_000);
 const memberBench = await member.evaluate(() => window.__vmQa.bench());
 const moved = Object.entries(memberBench.parts).map(([id, part]) => ({ id, sockets: id === "sno-w3" ? [30, 31] : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 await importProject(member, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: moved });
 const cut = await until(() => episode(host), (state) => state.state?.round?.stopReason);
 check("a teammate's bench edit ends the running transmission for everyone", cut.state.round.stopReason === "bench-changed" && (await episode(member)).state.round.stopReason === "bench-changed");
 for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
-  const frames = await drivenFrames(page, cut.state.round);
+  const frames = summarize(await drain(page, logs8.get(page)), cut.state.round);
   check(`round 8: the ${label}'s driven frames before the cut-off agree with the timeline (and there were some)`, frames.frames >= 1 && frames.wrong === 0, JSON.stringify(frames));
 }
 await notDelivered(host, "cut-off round 8");
