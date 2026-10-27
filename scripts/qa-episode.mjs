@@ -183,7 +183,15 @@ if (!(live.elapsed < live.state.round.durationMs) || !/Stop/.test(await panelTex
 // Under software rendering the steps above can take a minute or more; if the 110 s flash has
 // already ended, there is nothing left to stop (recorded in stats.json either way).
 const stillRunning = await episode(page);
-if (stillRunning.state.round && !stillRunning.state.round.stopReason && stillRunning.elapsed < stillRunning.state.round.durationMs - 3000) await tap(page, '[data-episode="stop"]');
+if (stillRunning.state.round && !stillRunning.state.round.stopReason && stillRunning.elapsed < stillRunning.state.round.durationMs - 3000) {
+  try {
+    await tap(page, '[data-episode="stop"]');
+  } catch (error) {
+    // Only acceptable if the flash really ended while the (slow) page got to the button.
+    const after = await episode(page);
+    if (!(after.state.round && after.elapsed >= after.state.round.durationMs)) throw error;
+  }
+}
 const halted = await until(() => episode(page), (state) => state.state?.round?.stopReason === "stopped" || state.elapsed >= state.state.round.durationMs);
 stats["e06-transmitting"].endedBy = halted.state.round.stopReason === "stopped" ? `Stop at ${Math.round(halted.state.round.stoppedAtMs)} ms` : "ran to its end before Stop";
 stats["e06-transmitting"].capturedAtMs = Math.round(live.elapsed);
