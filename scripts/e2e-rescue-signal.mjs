@@ -257,6 +257,19 @@ await tap(host, "#load-field-test");
 await until(() => host.evaluate(() => window.__vmQa.bench().parts["sno-l1"]?.sockets), Boolean);
 await ready(host, "host after the lamp was placed");
 await ready(member, "member after the lamp was placed");
+// Shader warm-up (developer machine): SwiftShader links a new program the first time the lamp is drawn
+// lit, and that froze the receiver's page for 120 s inside the 18 s first round (attempt 5: the round
+// had ended before its "Receiver's view" button could be pressed). Each page lights its own lamp once
+// locally (display only, no room traffic), settles, and turns it off again before any transmission.
+// The receiver frames the lamp while waiting, as the panel tells them to (before the warm-up, so the
+// warm-up draws the view the receiver will watch).
+await tap(member, '[data-episode="receiver-view"]');
+for (const page of [host, member]) {
+  await page.evaluate(() => window.__vmQa.pins({ D5: true }));
+  await ready(page, `${page.e2eLabel} lamp warm-up (lit)`);
+  await page.evaluate(() => window.__vmQa.pins({ D5: false }));
+  await ready(page, `${page.e2eLabel} lamp warm-up (dark)`);
+}
 await tap(host, '[data-episode="mission"][data-mission="ridge"]');
 await until(() => episode(host), (state) => state.state?.mission === "ridge");
 await tap(host, '[data-episode="intent-add"][data-word="INJURED"]');
@@ -276,7 +289,6 @@ await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
 const running1 = await until(() => episode(member), (state) => state.state?.round?.n === 1);
 check("the transmission reaches the receiver as room state", running1.state?.round?.intent.join() === "INJURED,NORTH");
-await tap(member, '[data-episode="receiver-view"]');
 await shot(member, "02-receiver-watching");
 await waitEnded(member);
 const round1 = (await episode(member)).state.round;
