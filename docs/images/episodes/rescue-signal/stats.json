@@ -1,96 +1,96 @@
 {
   "e01-overview-design": {
-    "calls": 855,
-    "triangles": 105658,
-    "geometries": 438,
+    "calls": 487,
+    "triangles": 92850,
+    "geometries": 268,
     "textures": 13,
     "pixelRatio": 1
   },
   "e02-lamp-lit-close": {
-    "calls": 255,
-    "triangles": 58866,
-    "geometries": 438,
+    "calls": 241,
+    "triangles": 65946,
+    "geometries": 268,
     "textures": 13,
     "pixelRatio": 1,
-    "bulbBrightness": 193.2
+    "bulbBrightness": 193.3
   },
   "e03-lamp-unlit-close": {
-    "calls": 255,
-    "triangles": 58866,
-    "geometries": 438,
+    "calls": 241,
+    "triangles": 65946,
+    "geometries": 268,
     "textures": 13,
     "pixelRatio": 1,
-    "bulbBrightness": 158.2
+    "bulbBrightness": 158
   },
   "e04-lamp-snaps-low": {
-    "calls": 539,
-    "triangles": 73370,
-    "geometries": 543,
+    "calls": 303,
+    "triangles": 68546,
+    "geometries": 297,
     "textures": 13,
     "pixelRatio": 1
   },
   "e05-receiver-view-lit": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
     "pixelRatio": 1
   },
   "e06-transmitting": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
     "pixelRatio": 1,
-    "endedBy": "Stop at 89439 ms",
-    "capturedAtMs": 52942
+    "endedBy": "ran to its end before Stop",
+    "capturedAtMs": 74261
   },
   "e07-solo-check-delivered": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
     "pixelRatio": 0.75
   },
   "e08-open-circuit-solo-check": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
     "pixelRatio": 0.75
   },
   "e09-recovered-solo-check": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
     "pixelRatio": 0.75
   },
   "e12-pin-short-bypassed-solo-check": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
-    "pixelRatio": 0.75
+    "pixelRatio": 0.7
   },
   "e13-5v-still-lit-solo-check": {
-    "calls": 456,
-    "triangles": 86990,
-    "geometries": 561,
+    "calls": 372,
+    "triangles": 86246,
+    "geometries": 333,
     "textures": 13,
-    "pixelRatio": 0.75
+    "pixelRatio": 0.7
   },
   "e10-phone-design": {
-    "calls": 515,
-    "triangles": 85706,
-    "geometries": 258,
+    "calls": 327,
+    "triangles": 76298,
+    "geometries": 185,
     "textures": 13,
     "pixelRatio": 1
   },
   "e11-phone-collapsed-3d": {
-    "calls": 223,
-    "triangles": 62306,
-    "geometries": 268,
+    "calls": 227,
+    "triangles": 70370,
+    "geometries": 196,
     "textures": 13,
     "pixelRatio": 1
   }

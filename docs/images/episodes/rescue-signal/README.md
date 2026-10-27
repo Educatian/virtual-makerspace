@@ -1,6 +1,10 @@
 # Episode 1 · Rescue Signal Workshop — renders
 
-**App code:** commit `13aa2aa` (branch `feat/makerspace-episodes`), built with `npm run build`. Earlier versions of these files showed `89a238c`.
+**App code:**
+- `e01`–`e13` at commit `dc51187`;
+- the two-client set at `a9fefef`, which differs from `dc51187` only in the diagram's wire-list position.
+
+Both are on branch `feat/makerspace-episodes`, built with `npm run build`. These renders show the **reference-quality layout**: the workshop is a tab of the right-hand dock, and there is a single side column. Earlier versions of these files showed `13aa2aa` and `89a238c`, with the workshop floating over the left of the scene. The same-camera before/after comparisons are in [`../../reference-upgrade/`](../../reference-upgrade/).
 **Where:** a developer environment (headless Chromium 1194 with SwiftShader software WebGL, 2 CPU cores). These are not GitHub CI runs; the repository's only GitHub check is GitGuardian.
 **Rooms:** fresh random local QA rooms for every page (`Q…` and `R…` codes). The production room 7K3M was never used.
 
@@ -10,8 +14,8 @@ Software rendering is slow: a Snapino frame takes seconds. The renderer counters
 
 | Set | Script | Mode |
 |---|---|---|
-| `e01`–`e13` | `node scripts/qa-episode.mjs http://localhost:4173 <dir>` (static server over `dist/`) | One maker, solo sender, same-device (peer) room. Close-ups use the `?qa` camera hook. The matched lit/unlit pair drives D5 HIGH/LOW through `__vmQa.pins`, the same pin path a transmission uses. |
-| `two-client-*` | `node --experimental-strip-types scripts/e2e-rescue-signal.mjs http://vm.test:8800 <dir>` (wrangler dev + `scripts/access-proxy.mjs`) | Two browsers in one room over the real Worker/Durable Object, clicking the real panel. This run passed 58/58 checks ([log](../../../qa/episode1-review/rescue-signal/rescue-13aa2aa.log)). |
+| `e01`–`e13` | `node scripts/qa-episode.mjs http://localhost:4173 <dir>` (static server over `dist/`) | One maker, solo sender, same-device (peer) room. Close-ups use the `?qa` camera hook, with the dock closed by its own button. The matched lit/unlit pair drives D5 HIGH/LOW through `__vmQa.pins`, the same pin path a transmission uses. |
+| `two-client-*` | `node --experimental-strip-types scripts/e2e-rescue-signal.mjs http://vm.test:8800 <dir>` (wrangler dev + `scripts/access-proxy.mjs`) | Two browsers in one room over the real Worker/Durable Object, clicking the real panel. This run passed 58/58 checks ([log](../../../qa/reference-upgrade/rescue-a9fefef.log)). |
 
 JPEG (quality 84) conversions of the PNG captures. Counters for `e01`–`e11` are in [`stats.json`](stats.json).
 
@@ -19,16 +23,14 @@ JPEG (quality 84) conversions of the PNG captures. Counters for `e01`–`e11` ar
 
 | View | Draw calls | Triangles |
 |---|---:|---:|
-| `e01` overview, sender designing INJURED · NORTH | 855 | 105,658 |
-| `e02` / `e03` lamp L1 lit / unlit, identical camera | 255 | 58,866 |
-| `e04` low angle on L1's snaps and the D5 pad | 539 | 73,370 |
-| `e05` the receiver's framing ("Receiver's view"), lamp lit | 456 | 86,990 |
-| `e06`–`e09` panel states, receiver's framing | 456 | 86,990 |
-| `e10` phone 390×844, panel open | 515 | 85,706 |
-| `e11` phone 390×844, panel folded | 223 | 62,306 |
-| `e12`, `e13` fault rounds, receiver's framing | 456 | 86,990 |
+| `e01` overview, sender designing INJURED · NORTH (workshop tab open, Bench view) | 487 | 92,850 |
+| `e02` / `e03` lamp L1 lit / unlit, identical camera, dock closed | 241 | 65,946 |
+| `e04` low angle on L1's snaps and the D5 pad | 303 | 68,546 |
+| `e05`–`e09`, `e12`, `e13` the receiver's framing, with the workshop tab | 372 | 86,246 |
+| `e10` phone 390×844, workshop open | 327 | 76,298 |
+| `e11` phone 390×844, workshop folded | 227 | 70,370 |
 
-**Pixel check.** In the matched close-ups, separate from the scene's own state, the bulb crop has mean luminance **193.2 lit** and **158.2 unlit** (`stats.json`).
+**Pixel check.** In the matched close-ups, separate from the scene's own state, the bulb crop has mean luminance **193.3 lit** and **158.0 unlit** (`stats.json`).
 
 ![Overview](e01-overview-design.jpg)
 
@@ -43,7 +45,7 @@ Lamp L1 seated on its snaps, D5 HIGH (left) and LOW (right), same camera:
 
 ## Running, working, error and recovery states
 
-- **`e06` running.** The transmission is running: progress bar, elapsed time, Stop, and the lamp lit on the bench. This capture round is one deliberately long 110 s flash, which is not a protocol word, so that a seconds-per-frame renderer can catch it. The shot was taken 52.9 s in, and the script's Stop ended it at 89.4 s (recorded in `stats.json`).
+- **`e06` running.** The transmission is running: progress bar, elapsed time, Stop, and the lamp lit on the bench. This capture round is one deliberately long 110 s flash, which is not a protocol word, so that a seconds-per-frame renderer can catch it. The shot was taken 74.3 s in, and the flash ran to its end before the script reached Stop (`stats.json`). Stop itself is exercised in the two-client run.
 - **`e07` working round.** The solo check after the DI helper's INJURED · NORTH blocks: both words are decoded and no problems are found.
 - **`e08` error.** The return wire `W2a` is off the base, which leaves an open circuit. The code ran, but there was no light at all. The diagnosis says L1 had no end reaching GND.
 - **`e09` recovery.** The loop is rebuilt, the same message is transmitted again, and no problems are found.
@@ -79,7 +81,7 @@ These two faults come from the parent review, imported through the real project-
 | `two-client-07-cut-off-by-bench-change` | A teammate's bench edit cut the transmission off. The strip's axis is labelled. |
 | `two-client-08-unread-after-success` | After a delivered round, a new unread round. The header pill and stepper show **Reading** for the current round, not the earlier "Delivered". |
 | `two-client-09-phone-late-joiner` | A late joiner on a phone, joined while the 108 s recurring light ran. It gets the rounds, the current round and the roles from the room. |
-| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 201.6 lit vs 164.5 dark. |
+| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 200.8 lit vs 163.5 dark. |
 
 ![Sender design](two-client-01-sender-design.jpg)
 ![Receiver after the transmission](two-client-02-receiver-watching.jpg)
