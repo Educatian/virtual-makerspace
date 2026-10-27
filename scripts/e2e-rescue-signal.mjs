@@ -32,18 +32,22 @@ const launchOptions = {
   executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
 };
-// The host and the member share one browser, as in every earlier run. The late joiner gets a browser
-// process of its own: contexts of one browser share one GPU process, where SwiftShader renders their
-// WebGL one after another, and a third page there got no room state within 300 s (two runs), longer
-// than any transmission. With its own process a probe measured 41 s. Giving EVERY maker its own
-// process was tried and is not used: two software GPU processes on 2 cores made each drawing page
-// take 17-22 s per frame (the member then missed a 120 s button deadline).
+// Every maker runs in a browser process of its own (its own GPU process), as on separate machines.
+// In one shared browser SwiftShader serves the pages unevenly: measured on this machine, two pages
+// drew a frame every 6 s and every 26 s; a third page got no room state within 300 s (two runs).
+// Each in its own process: about one frame per 10 s each (scripts/qa-render-cost.mjs).
 const browsers = [];
 const launch = async () => { const own = await chromium.launch(launchOptions); browsers.push(own); return own; };
 const browser = await launch();
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
 const ready = (page, label) => settled(page, label, { diagnostics: artifacts });
+/**
+ * While one page's frames are sampled, pages whose frames are not under test stop drawing (?qa hook;
+ * their room traffic, clocks and timers keep running and they log no frames), so the sampled page
+ * gets the CPU. Used only where a single page is checked; both pages draw wherever both are checked.
+ */
+const drawing = (pages, enabled) => Promise.all(pages.map((page) => page.evaluate((on) => window.__vmQa.drawing(on), enabled)));
 /** The workshop and inspector are dock tabs: bring an element's tab (and the dock) to the front, as a person would. */
 async function showTabOf(page, selector) {
   await page.evaluate((s) => {
@@ -108,8 +112,8 @@ const litIn = (pulses, ms) => pulses.some((pulse) => ms >= pulse.start && ms < p
 // SwiftShader pages drew one frame per ~16 s each at 1000×680 (533 draw calls) and the short rounds
 // (an 18 s message) could pass with no frame at all; at 800×544 (303 calls) a probe measured about
 // twice the frames. The checks themselves are unchanged.
-async function maker(email, viewport = { width: 800, height: 544 }, { ownBrowser = false } = {}) {
-  const context = await (ownBrowser ? await launch() : browser).newContext({ viewport, acceptDownloads: true });
+async function maker(email, viewport = { width: 800, height: 544 }) {
+  const context = await (await launch()).newContext({ viewport, acceptDownloads: true });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
   await instrument(context);
   await context.addInitScript(() => {
@@ -379,9 +383,11 @@ await ready(member, "member after the return wire was removed");
 await host.evaluate(() => window.__vmQa.editDraft([{ op: "write", pin: "D5", value: true }, ...Array.from({ length: 6 }, () => ({ op: "wait", ms: 5000 })), { op: "write", pin: "D5", value: false }]));
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
+await drawing([host], false); // only the receiver's frames are checked in this round
 await tap(host, '[data-episode="transmit"]');
 await until(() => episode(member), (state) => state.state?.round?.n === 3);
 await waitEnded(member);
+await drawing([host], true);
 const openLamp = await member.evaluate(() => window.__vmQa.lightLog());
 check("with the circuit open, the receiver's lamp never lit although the code ran", openLamp.length > 0 && openLamp.every((frame) => !frame.lights.includes("sno-l1")), `${openLamp.length} frames`);
 await readAs(member, ["SAFE"]);
@@ -447,6 +453,7 @@ await tap(host, '[data-episode="transmit"]');
 const beacon6 = await until(() => episode(member), (state) => state.state?.round?.n === 6);
 check("(round 6 runs a recurring light with irregular phases)", beacon6.state.round.durationMs === IRREGULAR_MS && !beacon6.state.round.stopReason, `${beacon6.state.round.durationMs} ms`);
 // Network drop mid-transmission: the room frees the role; the client reconnects on its own.
+await drawing([host], false); // only the receiver's frames are checked until its fresh frames are in
 check("(the receiver's socket is dropped mid-transmission)", await member.evaluate(() => window.__vmQa.dropConnection()));
 const released = await until(() => episode(host), (state) => state.state?.roles.receiver === null, 60_000);
 check("the room released the dropped receiver's role", released.state?.roles.receiver === null);
@@ -461,6 +468,7 @@ const reconnectBoundary = await member.evaluate(() => Date.now());
 const backNow = await episode(member);
 const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (backNow.state.round.durationMs - backNow.elapsed) - 4_000), reconnectBoundary);
 check("after reconnecting, the receiver's FRESH driven frames (round 6's tx, rendered after the reconnect) include lit AND dark, all agreeing", afterReconnect.tx === back.state.round.tx && afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
+await drawing([host], true);
 await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
 await until(() => episode(member), (state) => state.role === "receiver");
 const rejoined = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 120_000);
@@ -477,8 +485,10 @@ await host.evaluate((program) => window.__vmQa.editDraft(program), STEADY);
 await tap(host, '[data-episode="transmit"]');
 await until(() => episode(member), (state) => state.state?.round?.n === 7);
 const deadline7 = Date.now() + 118_000;
+await drawing([host], false); // only the receiver's lamp is sampled
 const litPixels = await lampSample(member, true, deadline7);
 const darkPixels = await lampSample(member, false, deadline7);
+await drawing([host], true);
 check("pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera)", litPixels && darkPixels && litPixels.brightness - darkPixels.brightness > 8, JSON.stringify({ lit: litPixels?.brightness?.toFixed(1), dark: darkPixels?.brightness?.toFixed(1), litAt: litPixels?.elapsed, darkAt: darkPixels?.elapsed, clip: litPixels?.clip }));
 await stopIfStillRunning(host);
 await waitEnded(member);
@@ -565,7 +575,7 @@ await member.evaluate((program) => window.__vmQa.editDraft(program), IRREGULAR);
 
 // The late joiner's page is loaded and waiting in the lobby BEFORE the recurring light starts, so
 // its join happens early in the 107.5 s light.
-const phoneContext = await maker("phone@example.test", { width: 390, height: 844 }, { ownBrowser: true });
+const phoneContext = await maker("phone@example.test", { width: 390, height: 844 });
 const phoneLobby = await lobby(phoneContext, "phone");
 await host.evaluate(() => window.__vmQa.lightLog());
 await tap(member, '[data-episode="transmit"]');
@@ -573,6 +583,7 @@ const afterReset = await until(() => episode(host), (state) => state.state?.roun
 check("after the reset, the next transmission reaches the other client (round 1 again, a new tx)", afterReset.state.round.tx > beforeReset.state.rev, `tx ${afterReset.state.round.tx}`);
 
 // ── Late join during the running recurring light (phone-width page) ──────────────────────────
+await drawing([host, member], false); // only the joiner's frames are checked until its checks are done
 await tap(phoneLobby, "#enter-room");
 const joined = await until(() => episode(phoneLobby), (state) => Boolean(state.state?.round), 240_000);
 const joinedRound = joined.state?.round ?? null;
@@ -596,8 +607,9 @@ check("its room-clock estimate agrees with the sender's within the two samples' 
 await shot(phone, "09-phone-late-joiner");
 const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
 check("phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)", layout.left >= 0 && layout.right <= layout.width && layout.overflow <= 0, JSON.stringify(layout));
-// The joiner's checks are done: close its page so the leave below runs at the usual CPU budget.
+// The joiner's checks are done: close its page and let the others draw again.
 await phoneContext.close();
+await drawing([host, member], true);
 
 // ── Leaving mid-transmission ─────────────────────────────────────────────────────────────────
 // Always on a fresh transmission: the late-join light may have ended by now. The sender abandons
