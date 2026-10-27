@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import WebSocket from "ws";
+import http from "node:http";
 
 const base = process.argv[2] ?? "http://vm.test:8800";
 // Local QA origins only: this test never talks to a deployed room.
@@ -80,17 +81,34 @@ const roster = (page) => page.evaluate(() => {
   }));
 });
 
-// An agent socket with no host in the room is refused.
+// An agent socket with no host in the room is refused. The probe room is created fresh first (by the
+// local admin, through the same join request the lobby makes) and left empty, so the refusal has to
+// come from the host-presence rule (403), not from an unknown room (404). An earlier version probed
+// a room that did not exist: 404, and the check failed (run 1 of the re-review set).
+const probeCreated = await new Promise((resolve) => {
+  const target = new URL(`/api/rooms/${probeRoom}/join`, base);
+  const request = http.request({
+    host: "127.0.0.1", port: Number(target.port || 80), method: "POST", path: target.pathname,
+    headers: { Host: target.host, Origin: base, Cookie: "e2e_email=host%40example.test", "content-type": "application/json" },
+  }, (response) => {
+    let body = "";
+    response.on("data", (chunk) => { body += chunk; });
+    response.on("end", () => resolve({ status: response.statusCode, body: body.slice(0, 200) }));
+  });
+  request.on("error", (error) => resolve({ status: null, body: error.message }));
+  request.end(JSON.stringify({ studio: "circuit" }));
+});
+let probeStatus = null;
 const refused = await new Promise((resolve) => {
   const socket = new WebSocket(
     `${base.replace("http", "ws")}/api/room?room=${probeRoom}&participant=solo@example.test:x&agent=1`,
     { headers: { Origin: base, Host: new URL(base).host, Cookie: "e2e_email=solo%40example.test" }, lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]) },
   );
-  socket.on("open", () => { socket.close(); resolve(false); });
-  socket.on("unexpected-response", (_request, response) => resolve(response.statusCode === 403));
+  socket.on("open", () => { probeStatus = 101; socket.close(); resolve(false); });
+  socket.on("unexpected-response", (_request, response) => { probeStatus = response.statusCode; resolve(response.statusCode === 403); });
   socket.on("error", (error) => { console.error("agent socket error:", error.message); resolve(false); });
 });
-check("Worker refuses an AI teammate whose host isn't in the room", refused);
+check("Worker refuses an AI teammate whose host isn't in the room", probeCreated.status === 200 && refused, JSON.stringify({ probeRoom, created: probeCreated, agentSocket: probeStatus }));
 
 const host = await maker("host@example.test", "&teammate=ai");
 await host.waitForFunction(() => document.querySelector(".chat-message .avatar.is-agent"), null, { timeout: 120_000 });
