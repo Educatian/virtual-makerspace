@@ -97,7 +97,7 @@ let transmissionActive = false;
 /** Opened from the lobby or `?episode=rescue-signal`: open the workshop once the room answers. */
 let wantEpisode = false;
 /** QA only: per-frame record of the episode-driven lamp (see `__vmQa.lightLog`). */
-const lightLog: Array<{ elapsed: number; lights: string[] }> = [];
+const lightLog: Array<{ elapsed: number; tx: number; at: number; lights: string[] }> = [];
 let participants: Participant[] = [];
 let selectedComponent: ComponentSpec | null = null;
 let currentRoomCode = initialRoomCode;
@@ -869,6 +869,8 @@ function enterWorkspace(): void {
       },
       /** On-screen rectangle of the snap base and carrier, and of the free view between panels. */
       benchRect: () => workbench?.benchScreenRect() ?? null,
+      /** Bolt's per-part build outcomes (claim granted/refused/timeout, release accepted/refused). */
+      bolt: () => (aiTeammate ? aiTeammate.buildLog.map((entry) => ({ ...entry })) : null),
       /** Camera presets and where the camera is (framing checks). */
       preset: (name: "bench" | "top" | "table" | "receiver") => workbench?.viewPreset(name),
       camera: () => workbench?.cameraState() ?? null,
@@ -2533,7 +2535,7 @@ function createEpisode(): void {
       inspector?.refresh();
     },
     // QA (?qa): what the bench showed on each driven frame, to check it against the timeline.
-    ...(params.has("qa") ? { probe: (elapsed: number) => { lightLog.push({ elapsed, lights: workbench?.snapinoRunning() ?? [] }); if (lightLog.length > 2000) lightLog.shift(); } } : {}),
+    ...(params.has("qa") ? { probe: (elapsed: number, tx: number) => { lightLog.push({ elapsed, tx, at: Date.now(), lights: workbench?.snapinoRunning() ?? [] }); if (lightLog.length > 2000) lightLog.shift(); } } : {}),
   });
   episode.bind();
   if (workbench) workbench.beforeFrame = () => episode?.driveFrame();

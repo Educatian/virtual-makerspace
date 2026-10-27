@@ -71,7 +71,7 @@ export interface EpisodeHost {
   /** The panel appeared (workshop opened in the Snapino studio) or went away. */
   shown?(visible: boolean): void;
   /** QA only: called every driven frame with the elapsed transmission time. */
-  probe?(elapsedMs: number): void;
+  probe?(elapsedMs: number, tx: number): void;
 }
 
 const escape = (value: string): string =>
@@ -298,7 +298,7 @@ export class RescueEpisode {
       const input = analyzeSnapino(round.bench, LOW_PINS).inputHigh;
       const pins = pinsAt(round.program, input, elapsed, transmissionEnd(round));
       this.drive(pins, true);
-      this.host.probe?.(elapsed);
+      this.host.probe?.(elapsed, round.tx);
     } else {
       this.drive({ ...LOW_PINS }, false);
     }

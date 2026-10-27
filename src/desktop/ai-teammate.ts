@@ -302,6 +302,18 @@ export class AiTeammate {
     }
   }
 
+  /**
+   * What each build did with each part (bounded): whether the claim was granted, refused or timed
+   * out, whether the release was accepted, and why a build ended. Read by QA tests; it changes
+   * nothing Bolt does.
+   */
+  readonly buildLog: Array<{ run: number; at: number; part?: string; claim?: "granted" | "refused" | "timeout" | "held-by-other"; release?: "accepted" | "refused"; event?: string }> = [];
+
+  private logBuild(entry: Omit<AiTeammate["buildLog"][number], "at">): void {
+    this.buildLog.push({ ...entry, at: Date.now() });
+    if (this.buildLog.length > 200) this.buildLog.shift();
+  }
+
   private async runBuild(run: number, superseding: boolean): Promise<void> {
     if (this.host.studio() !== "circuit" || this.room.participant.role !== "builder") return;
     const current = this.placements();
@@ -341,9 +353,14 @@ export class AiTeammate {
     this.room.setActivity("moving", "Building its plan");
 
     let skipped = 0;
+    this.logBuild({ run, event: `build started (${moves.length} moves${superseding ? ", superseding" : ""})` });
     for (const move of moves) {
-      if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") return;
+      if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") {
+        this.logBuild({ run, event: this.disposed ? "ended: disposed" : run !== this.buildRun ? "ended: superseded by a newer build" : "ended: studio changed" });
+        return;
+      }
       if (this.host.isHeldByOther(move.id)) {
+        this.logBuild({ run, part: move.id, claim: "held-by-other" });
         skipped += 1;
         continue;
       }
@@ -351,9 +368,14 @@ export class AiTeammate {
       this.host.yieldComponent(move.id);
       // Grab (the host renders Bolt's hand on the part), carry, then let go. Bolt follows the
       // room's claim rules like anyone: a refused claim means someone got there first.
-      const granted = await Promise.race([this.room.claim(move.id), sleep(4000).then(() => false)]);
+      const claim = await Promise.race([
+        this.room.claim(move.id).then((granted) => (granted ? "granted" : "refused") as "granted" | "refused"),
+        sleep(4000).then(() => "timeout" as const),
+      ]);
+      const granted = claim === "granted";
       if (this.disposed) return;
       if (!granted) {
+        this.logBuild({ run, part: move.id, claim });
         this.room.abandon(move.id);
         skipped += 1;
         continue;
@@ -362,6 +384,7 @@ export class AiTeammate {
       await sleep(650);
       if (this.disposed) return;
       if (run !== this.buildRun) {
+        this.logBuild({ run, part: move.id, claim: "granted", event: "ended: superseded by a newer build (released)" });
         void this.room.release(move.id);
         return;
       }
@@ -369,12 +392,17 @@ export class AiTeammate {
       await sleep(900);
       if (this.disposed) return;
       const accepted = await this.room.release(move.id);
+      this.logBuild({ run, part: move.id, claim: "granted", release: accepted ? "accepted" : "refused" });
       if (this.disposed) return;
       if (accepted) this.trace("move", { objectId: move.id, objectName: name });
       else skipped += 1;
       await sleep(350);
     }
-    if (this.disposed || run !== this.buildRun) return;
+    if (this.disposed || run !== this.buildRun) {
+      this.logBuild({ run, event: "ended: superseded after its last move" });
+      return;
+    }
+    this.logBuild({ run, event: `built (${skipped} skipped)` });
 
     this.said.add("built");
     this.buildAnnounced = false;

@@ -122,24 +122,30 @@ async function enter(page) {
   await ready(page, `${page.e2eLabel} entered`);
   return page;
 }
-/** Frames the transmission drove since the last call (the probe log is drained). */
-async function drivenFrames(page, round) {
+/**
+ * Frames the transmission drove since the last call (the probe log is drained). Only frames of
+ * THIS transmission (its tx) count, and with `since` (the page's own Date.now()) only frames
+ * rendered after that moment: an earlier round of the same program, or frames from before a
+ * reconnect, can never satisfy a later check.
+ */
+async function drivenFrames(page, round, since = null) {
   const pulses = pulsesOf(round, null);
   const end = round.stoppedAtMs ?? round.durationMs;
   const log = await page.evaluate(() => window.__vmQa.lightLog());
-  const frames = log.filter((frame) => frame.elapsed >= 0 && frame.elapsed < end);
+  const frames = log.filter((frame) => frame.tx === round.tx && (since === null || frame.at > since) && frame.elapsed >= 0 && frame.elapsed < end);
   const lit = frames.filter((frame) => frame.lights.includes("sno-l1"));
   const wrong = frames.filter((frame) => frame.lights.includes("sno-l1") !== litIn(pulses, frame.elapsed));
   return { frames: frames.length, lit: lit.length, dark: frames.length - lit.length, wrong: wrong.length, wrongAt: wrong.slice(0, 3).map((frame) => Math.round(frame.elapsed)) };
 }
 /** Collects driven frames until the page has logged at least one lit and one dark agreeing frame. */
-async function observeLitAndDark(page, label, timeoutMs) {
-  const total = { frames: 0, lit: 0, dark: 0, wrong: 0, wrongAt: [] };
+async function observeLitAndDark(page, label, timeoutMs, since = null) {
+  const total = { frames: 0, lit: 0, dark: 0, wrong: 0, wrongAt: [], tx: null, since };
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const { state } = await episode(page);
     if (!state?.round) break;
-    const part = await drivenFrames(page, state.round);
+    const part = await drivenFrames(page, state.round, since);
+    total.tx = state.round.tx;
     for (const key of ["frames", "lit", "dark", "wrong"]) total[key] += part[key];
     total.wrongAt.push(...part.wrongAt);
     if (total.lit > 0 && total.dark > 0) break;
@@ -389,8 +395,12 @@ const hostClock = await episode(host);
 const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
 check("after reconnecting, the receiver is back in the running transmission", rejoined.state.round.n === 6 && !rejoined.state.round.stopReason && rejoined.elapsed < rejoined.state.round.durationMs, `${Math.round(rejoined.elapsed)} of ${rejoined.state.round.durationMs} ms`);
 check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
-const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (rejoined.state.round.durationMs - rejoined.elapsed) - 15_000));
-check("after reconnecting, the receiver's driven frames again include lit AND dark, all agreeing", afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
+// Fresh frames only: drain the log now, and count only frames of round 6's transmission rendered
+// after this moment (the page's own clock), i.e. after the reconnect and the retaken role.
+await member.evaluate(() => window.__vmQa.lightLog());
+const reconnectBoundary = await member.evaluate(() => Date.now());
+const afterReconnect = await observeLitAndDark(member, "receiver after reconnect", Math.max(5_000, (rejoined.state.round.durationMs - rejoined.elapsed) - 15_000), reconnectBoundary);
+check("after reconnecting, the receiver's FRESH driven frames (round 6's tx, rendered after the reconnect) include lit AND dark, all agreeing", afterReconnect.tx === rejoined.state.round.tx && afterReconnect.lit > 0 && afterReconnect.dark > 0 && afterReconnect.wrong === 0, JSON.stringify(afterReconnect));
 const r6 = await episode(host);
 if (r6.state.round && !r6.state.round.stopReason && r6.elapsed < r6.state.round.durationMs) await tap(host, '[data-episode="stop"]');
 await waitEnded(member);
@@ -482,26 +492,18 @@ await tap(member, '[data-episode="intent-add"][data-word="SAFE"]');
 await until(() => episode(host), (state) => state.state?.intent.join() === "SAFE");
 await member.evaluate((program) => window.__vmQa.editDraft(program), BEACON);
 
-// The late joiner waits in the lobby (page loaded) so its join happens while the light runs.
+// The late joiner's page is loaded and waiting in the lobby BEFORE the recurring light starts, so
+// its join happens early in the 108 s light and it has time to render lit and dark phases.
+const phoneContext = await maker("phone@example.test", { width: 390, height: 844 });
+const phoneLobby = await lobby(phoneContext, "phone");
 await host.evaluate(() => window.__vmQa.lightLog());
 await tap(member, '[data-episode="transmit"]');
 const afterReset = await until(() => episode(host), (state) => state.state?.round?.n === 1);
 check("after the reset, the next transmission reaches the other client (round 1 again, a new tx)", afterReset.state.round.tx > beforeReset.state.rev, `tx ${afterReset.state.round.tx}`);
 
-// ── Leaving mid-transmission ─────────────────────────────────────────────────────────────────
-const exitButton = await host.evaluate(() => { const button = [...document.querySelectorAll("button")].find((b) => /leave|exit/i.test(b.getAttribute("aria-label") ?? "")); button?.click(); return button?.getAttribute("aria-label") ?? null; });
-await host.waitForSelector("#enter-room", { state: "attached", timeout: 120_000 });
-check("leaving during a transmission returns to the lobby without page errors", exitButton && host.errors.length === 0 && !(await host.evaluate(() => document.querySelector("#episode-panel"))), `${exitButton} · ${host.errors.join(" | ")}`);
-const afterLeave = await until(() => episode(member), (state) => state.state?.roles.receiver === null, 60_000);
-check("the leaver's receiver role is freed; the sender keeps theirs", afterLeave.state.roles.receiver === null && afterLeave.role === "sender");
-await hostContext.close();
-
 // ── Late join during the running recurring light (phone-width page) ──────────────────────────
-const phoneContext = await maker("phone@example.test", { width: 390, height: 844 });
-const phoneLobby = await lobby(phoneContext, "phone");
 await tap(phoneLobby, "#enter-room");
 const joined = await until(() => episode(phoneLobby), (state) => Boolean(state.state?.round), 300_000);
-const senderNow = await episode(member);
 check("the late joiner joined while the transmission was running (state at join)", joined.state.round.n === 1 && !joined.state.round.stopReason && joined.elapsed < joined.state.round.durationMs, `${Math.round(joined.elapsed)} of ${joined.state.round.durationMs} ms`);
 // The first clock samples of a page busy with its first draws have long round trips; the client
 // keeps sampling until one is short. The bound applies to that estimate (error ≤ rtt / 2).
@@ -512,19 +514,28 @@ check("its room-clock estimate agrees with the sender's within 250 ms (same mach
 const phone = phoneLobby;
 await phone.waitForFunction(() => { const panel = document.querySelector("#episode-panel"); return Boolean(panel) && !panel.hidden; }, null, { timeout: 300_000, polling: 500 });
 await ready(phone, "late joiner entered");
-const lateFrames = await observeLitAndDark(phone, "late joiner", 60_000);
-const stillRunning = await episode(phone);
-if (stillRunning.state.round && !stillRunning.state.round.stopReason && stillRunning.elapsed < stillRunning.state.round.durationMs || lateFrames.frames > 0) {
-  check("the late joiner's driven frames agree with the timeline", lateFrames.frames >= 1 && lateFrames.wrong === 0, JSON.stringify(lateFrames));
-} else {
-  console.log(`  [note] the late joiner finished rendering after the light ended (${JSON.stringify(lateFrames)}); its join itself happened mid-transmission (checked above)`);
-}
+const lateFrames = await observeLitAndDark(phone, "late joiner", Math.max(5_000, joined.state.round.durationMs - (await episode(phone)).elapsed - 5_000));
+check("the late joiner's own driven frames (this tx) include lit AND dark, all agreeing with the timeline", lateFrames.tx === joined.state.round.tx && lateFrames.lit > 0 && lateFrames.dark > 0 && lateFrames.wrong === 0, JSON.stringify(lateFrames));
 await shot(phone, "09-phone-late-joiner");
 const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
 check("phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)", layout.left >= 0 && layout.right <= layout.width && layout.overflow <= 0, JSON.stringify(layout));
+
+// ── Leaving mid-transmission ─────────────────────────────────────────────────────────────────
+const beforeLeave = await episode(host);
+check("(the transmission is still running when the host leaves)", Boolean(beforeLeave.state.round) && !beforeLeave.state.round.stopReason && beforeLeave.elapsed < beforeLeave.state.round.durationMs, `${Math.round(beforeLeave.elapsed)} of ${beforeLeave.state.round?.durationMs} ms`);
+const exitButton = await host.evaluate(() => { const button = [...document.querySelectorAll("button")].find((b) => /leave|exit/i.test(b.getAttribute("aria-label") ?? "")); button?.click(); return button?.getAttribute("aria-label") ?? null; });
+await host.waitForSelector("#enter-room", { state: "attached", timeout: 120_000 });
+check("leaving during a transmission returns to the lobby without page errors", exitButton && host.errors.length === 0 && !(await host.evaluate(() => document.querySelector("#episode-panel"))), `${exitButton} · ${host.errors.join(" | ")}`);
+const afterLeave = await until(() => episode(member), (state) => state.state?.roles.receiver === null, 60_000);
+check("the leaver's receiver role is freed; the sender keeps theirs", afterLeave.state.roles.receiver === null && afterLeave.role === "sender");
+await hostContext.close();
+
 check("no page errors on the pages that stayed", member.errors.length === 0 && phone.errors.length === 0, [...member.errors, ...phone.errors].join(" | "));
 await phoneContext.close();
 
+// Every check above is unconditional: a run that skipped one is a failure, not a smaller pass.
+const EXPECTED_CHECKS = 59;
+check(`the run executed all ${EXPECTED_CHECKS} checks`, results.length === EXPECTED_CHECKS, `${results.length} executed`);
 await browser.close();
 writeFileSync(`${artifacts}/results.json`, JSON.stringify({ room, results }, null, 1));
 const failed = results.filter((result) => !result.ok);
