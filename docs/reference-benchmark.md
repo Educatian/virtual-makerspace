@@ -91,7 +91,7 @@ The parent browsed the site and recorded the observations below. They are the pa
 
 | # | Criterion | How we test it |
 |---|---|---|
-| 1 | **Composition.** The 3D bench is the main thing on screen, with one side column, not two. Panels collapse. There are camera views and fit-part. It works on desktop, laptop and phone. Collaboration stays one click away. | Projected-bench metric (`benchRect`): share of the free view the bench fills. Layout checks at 1440, 1280 and 390 px: no page scroll, Chat tab present, targets ≥ 44 px. |
+| 1 | **Composition.** The 3D bench is the main thing on screen, with one side column, not two. Panels collapse. There are camera views and fit-part. It works on desktop, laptop and phone. Collaboration stays one click away. | Projected-bench metric (`benchRect`): share of the free view the bench fills. Layout checks at 1440, 1280 and 390 px: no horizontal overflow (the phone page scrolls vertically by design), Chat tab present, targets ≥ 44 px. |
 | 2 | **Microdetail.** Legible board markings, depth at the sockets, connection highlighting, and no fake glow. | Same-camera before/after renders, with draw calls and triangles for each shot. |
 | 3 | **Semantic cross-link.** Selecting a part shows it in the inspector, rings its terminals and nets in 3D, and marks its rung and nets on the diagram. Edits go through the room: accepted, declined or stale. A dirty draft is never overwritten. | Two-client end-to-end test with real pointer and keyboard input. 3D rings are compared to a diagram rebuilt independently from the reported bench. |
 | 4 | **Live diagram.** Derived from the actual connections. Wrong wiring is drawn as built. Fault notes follow the PF/DI rule. | 66,886 oracle checks (an independent BFS over the placements, 4,000 random benches), including tones and the drive overlay. Browser check of a bypassed lamp under PF and DI. |
@@ -151,6 +151,12 @@ The diagram is a ladder schematic built in `src/circuit/snapino-diagram.ts`:
 - **PF condition:** the notes are withheld, with the reason shown, until the team's first compared round.
 - **DI condition:** shown at once.
 - The wiring itself is always drawn as built.
+
+**Logical drive** (the diagram's "Show logical drive" toggle, off by default):
+- It draws a dashed path with an arrowhead from the driving row to the sink row, on rungs whose load runs.
+- It is labelled on screen as **logical source-to-load state, not measured current**. Snapino has no current model.
+- Only running loads get a path. On a shorted bench nothing runs, and the note says so. By the bench rule a load runs only with one end on GND and the other end high, so a running load always has a known direction. A part with both ends on one net, or with no end (or both ends) on GND, never runs and is never drawn as driven; the drawing code also refuses to draw a direction it cannot determine.
+- Every random bench in `snapino-diagram-check` compares the drawn paths with the independent oracle.
 
 ### Bench inspector
 

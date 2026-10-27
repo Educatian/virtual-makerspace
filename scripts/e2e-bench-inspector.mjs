@@ -32,10 +32,18 @@ const room = `I${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[
 assert.notEqual(room, "7K3M");
 const artifacts = process.argv[3] ?? `${tmpdir()}/vm-e2e-inspector-${room}`;
 mkdirSync(artifacts, { recursive: true });
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
-  args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
-});
+// Each maker gets its own browser process: contexts of one browser share one GPU process, where
+// SwiftShader renders their WebGL one after another (a run on the shared browser hit the 40 min limit).
+const browsers = [];
+const launch = async () => {
+  const own = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || undefined,
+    args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
+  });
+  browsers.push(own);
+  return own;
+};
+const browser = { close: () => Promise.all(browsers.map((own) => own.close())) };
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
 const ready = (page, label) => settled(page, label, { diagnostics: artifacts });
@@ -53,7 +61,7 @@ const seatOf = (snapshot, id) => JSON.stringify(snapshot?.parts?.[id]?.sockets ?
 const LOW = { D3: false, D5: false, D6: false };
 
 async function maker(email, viewport) {
-  const context = await browser.newContext({ viewport, reducedMotion: "reduce" });
+  const context = await (await launch()).newContext({ viewport, reducedMotion: "reduce" });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
   await instrument(context);
   // http://vm.test is not a secure origin, where Chromium has no crypto.randomUUID (as in the other e2e tests).

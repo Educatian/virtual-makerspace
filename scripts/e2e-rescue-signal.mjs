@@ -28,10 +28,17 @@ const room = `R${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[
 assert.notEqual(room, "7K3M");
 const artifacts = process.argv[3] ?? `${tmpdir()}/vm-e2e-rescue-${room}`;
 mkdirSync(artifacts, { recursive: true });
-const browser = await chromium.launch({
+const launchOptions = {
   executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
-});
+};
+// Every maker gets its own browser process, as on real separate machines. Contexts of one browser
+// share one GPU process, and SwiftShader in it renders their WebGL one after another: a second page
+// then needed ~200 s and a third over 700 s to load next to a drawing page (a probe measured 16 s
+// and 41 s with separate processes). The analysis page uses a browser of its own too.
+const browsers = [];
+const launch = async () => { const own = await chromium.launch(launchOptions); browsers.push(own); return own; };
+const browser = await launch();
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
 const ready = (page, label) => settled(page, label, { diagnostics: artifacts });
@@ -96,7 +103,7 @@ const pulsesOf = (round, stopped = round.stoppedAtMs) => lightPulses({ program: 
 const litIn = (pulses, ms) => pulses.some((pulse) => ms >= pulse.start && ms < pulse.end);
 
 async function maker(email, viewport = { width: 1000, height: 680 }) {
-  const context = await browser.newContext({ viewport, acceptDownloads: true });
+  const context = await (await launch()).newContext({ viewport, acceptDownloads: true });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
   await instrument(context);
   await context.addInitScript(() => {
@@ -506,7 +513,7 @@ await until(() => episode(host), (state) => state.state?.intent.join() === "SAFE
 await member.evaluate((program) => window.__vmQa.editDraft(program), IRREGULAR);
 
 // The late joiner's page is loaded and waiting in the lobby BEFORE the recurring light starts, so
-// its join happens early in the 108 s light and it has time to render lit and dark phases.
+// its join happens early in the 107.5 s light.
 const phoneContext = await maker("phone@example.test", { width: 390, height: 844 });
 const phoneLobby = await lobby(phoneContext, "phone");
 await host.evaluate(() => window.__vmQa.lightLog());
@@ -516,24 +523,33 @@ check("after the reset, the next transmission reaches the other client (round 1 
 
 // ── Late join during the running recurring light (phone-width page) ──────────────────────────
 await tap(phoneLobby, "#enter-room");
-const joined = await until(() => episode(phoneLobby), (state) => Boolean(state.state?.round), 300_000);
-check("the late joiner joined while the transmission was running (state at join)", joined.state.round.n === 1 && !joined.state.round.stopReason && joined.elapsed < joined.state.round.durationMs, `${Math.round(joined.elapsed)} of ${joined.state.round.durationMs} ms`);
+const joined = await until(() => episode(phoneLobby), (state) => Boolean(state.state?.round), 240_000);
+const joinedRound = joined.state?.round ?? null;
+check("the late joiner joined while the transmission was running (state at join)", joinedRound?.n === 1 && !joinedRound.stopReason && joined.elapsed < joinedRound.durationMs && joinedRound.tx === afterReset.state.round.tx,
+  joinedRound ? `${Math.round(joined.elapsed)} of ${joinedRound.durationMs} ms, tx ${joinedRound.tx}` : "no room state on the joiner within 240 s");
+const phone = phoneLobby;
+await phone.waitForFunction(() => { const panel = document.querySelector("#episode-panel"); return Boolean(panel) && !panel.hidden; }, null, { timeout: 240_000, polling: 500 });
+await ready(phone, "late joiner entered");
+const lateFrames = await observeLitAndDark(phone, "late joiner", Math.max(5_000, (joinedRound?.durationMs ?? 0) - (await episode(phone)).elapsed - 2_000));
+check("the late joiner's own driven frames (this tx) include lit AND dark, all agreeing with the timeline", joinedRound !== null && lateFrames.tx === joinedRound.tx && lateFrames.lit > 0 && lateFrames.dark > 0 && lateFrames.wrong === 0, JSON.stringify(lateFrames));
 // The first clock samples of a page busy with its first draws have long round trips; the client
-// keeps sampling until one is short. The bound applies to that estimate (error ≤ rtt / 2).
-const joinClock = await until(() => episode(phoneLobby), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
+// keeps sampling until one is short. The bound applies to that estimate (error <= rtt / 2).
+const joinClock = await until(() => episode(phone), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
 const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 1000, 180_000);
 const joinSkew = Math.abs(joinClock.clockOffset - senderClock.clockOffset);
 check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", joinSkew <= 250, `Δ ${Math.round(joinSkew)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms`);
-const phone = phoneLobby;
-await phone.waitForFunction(() => { const panel = document.querySelector("#episode-panel"); return Boolean(panel) && !panel.hidden; }, null, { timeout: 300_000, polling: 500 });
-await ready(phone, "late joiner entered");
-const lateFrames = await observeLitAndDark(phone, "late joiner", Math.max(5_000, joined.state.round.durationMs - (await episode(phone)).elapsed - 5_000));
-check("the late joiner's own driven frames (this tx) include lit AND dark, all agreeing with the timeline", lateFrames.tx === joined.state.round.tx && lateFrames.lit > 0 && lateFrames.dark > 0 && lateFrames.wrong === 0, JSON.stringify(lateFrames));
 await shot(phone, "09-phone-late-joiner");
 const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
 check("phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)", layout.left >= 0 && layout.right <= layout.width && layout.overflow <= 0, JSON.stringify(layout));
 
 // ── Leaving mid-transmission ─────────────────────────────────────────────────────────────────
+// Always on a fresh transmission: the late-join light may have ended by now. The sender abandons
+// the round once it has ended and transmits again; the host leaves while that one runs.
+await waitEnded(member);
+await tap(member, '[data-episode="close-round"]');
+await until(() => episode(host), (state) => state.state?.round === null);
+await tap(member, '[data-episode="transmit"]');
+await until(() => episode(host), (state) => state.state?.round?.n === 2 && !state.state.round.stopReason);
 const beforeLeave = await episode(host);
 check("(the transmission is still running when the host leaves)", Boolean(beforeLeave.state.round) && !beforeLeave.state.round.stopReason && beforeLeave.elapsed < beforeLeave.state.round.durationMs, `${Math.round(beforeLeave.elapsed)} of ${beforeLeave.state.round?.durationMs} ms`);
 const exitButton = await host.evaluate(() => { const button = [...document.querySelectorAll("button")].find((b) => /leave|exit/i.test(b.getAttribute("aria-label") ?? "")); button?.click(); return button?.getAttribute("aria-label") ?? null; });
@@ -549,7 +565,7 @@ await phoneContext.close();
 // Every check above is unconditional: a run that skipped one is a failure, not a smaller pass.
 const EXPECTED_CHECKS = 59;
 check(`the run executed all ${EXPECTED_CHECKS} checks`, results.length === EXPECTED_CHECKS, `${results.length} executed`);
-await browser.close();
+await Promise.all(browsers.map((own) => own.close()));
 writeFileSync(`${artifacts}/results.json`, JSON.stringify({ room, results }, null, 1));
 const failed = results.filter((result) => !result.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed · room ${room} · artifacts ${artifacts}`);
