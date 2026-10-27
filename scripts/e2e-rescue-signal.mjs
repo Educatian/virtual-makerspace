@@ -81,8 +81,11 @@ const until = async (read, test, timeout = 120_000) => {
 };
 const D5 = (value) => ({ op: "write", pin: "D5", value });
 const flash = (ms, after) => [D5(true), { op: "wait", ms }, D5(false), ...(after ? [{ op: "wait", ms: after }] : [])];
-// INJURED · NORTH at the slow end of every band (~18 s, still exactly that message under the protocol).
-const SLOW_INJURED_NORTH = [...flash(1450, 550), ...flash(1450, 4000), { op: "wait", ms: 4000 }, ...flash(1450, 550), ...flash(420, 550), ...flash(420, 0)];
+// INJURED · NORTH at the slow end of every band (14.8 s of flashes; still exactly that message under the protocol),
+const SLOW_INJURED_NORTH = [...flash(1450, 550), ...flash(1450, 4000), { op: "wait", ms: 4000 }, ...flash(1450, 550), ...flash(420, 550), ...flash(420, 0),
+  // ...then 30 s dark: the message is unchanged (checked below), and a page that draws a frame every
+  // ~11 s here has frames of this transmission to check (the final run's receiver had none in 15 s).
+  ...Array.from({ length: 6 }, () => ({ op: "wait", ms: 5000 }))];
 // SAFE followed by 60 s of silence: still running when a teammate acts on it.
 const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 }))];
 // A recurring light (not a protocol word) with irregular on/off lengths. Long phases let
