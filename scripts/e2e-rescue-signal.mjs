@@ -237,7 +237,10 @@ await tap(host, '[data-episode="claim-role"][data-role="sender"]');
 await until(() => episode(member), (state) => state.state?.roles.sender);
 await tap(member, '[data-episode="claim-role"][data-role="receiver"]');
 const roles = await until(() => episode(host), (state) => state.state?.roles.receiver);
-check("sender and receiver are taken by different makers", roles.role === "sender" && (await episode(member)).role === "receiver");
+// Each client reports its own role from the room state it has applied; a slow page may apply the
+// claim later than the host sees it, so wait (bounded) for the member's own view too.
+const memberRoles = await until(() => episode(member), (state) => state.role === "receiver", 60_000);
+check("sender and receiver are taken by different makers", roles.role === "sender" && memberRoles.role === "receiver", JSON.stringify({ host: roles.role, member: memberRoles.role }));
 await tap(host, "#load-field-test");
 await until(() => host.evaluate(() => window.__vmQa.bench().parts["sno-l1"]?.sockets), Boolean);
 await ready(host, "host after the lamp was placed");
