@@ -311,6 +311,10 @@ check("the receiver's panel does not show the intended message", !/Intended mess
 // holds the GPU process both pages share, so one taken inside the 18 s round left the sender with no
 // frame at all in attempts 4 and 6.
 await shot(member, "02-receiver-view");
+// Both pages settle after the design steps (the sender's editor was just rewritten) before the
+// short first round, whose 18 s must be drawn by both.
+await ready(host, "host before round 1");
+await ready(member, "member before round 1");
 // ── Round 1: a working message, read correctly ───────────────────────────────────────────────
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
@@ -322,6 +326,7 @@ const round1 = (await episode(member)).state.round;
 check("the round's light under the protocol is INJURED · NORTH", decode(pulsesOf(round1)).words.join() === "INJURED,NORTH");
 for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
   const frames = await drivenFrames(page, round1);
+  if (frames.frames === 0) await dumpDiagnostics(page, artifacts, `round-1-${label}-no-frames`);
   check(`round 1: every driven frame of the ${label}'s lamp agrees with the timeline (and there were some)`, frames.frames >= 1 && frames.wrong === 0, JSON.stringify(frames));
 }
 check("unread round: the header shows the reading step", (await until(() => header(member), (value) => value.pill === "Reading", 60_000)).pill === "Reading");
@@ -515,6 +520,7 @@ const cut = await until(() => episode(host), (state) => state.state?.round?.stop
 check("a teammate's bench edit ends the running transmission for everyone", cut.state.round.stopReason === "bench-changed" && (await episode(member)).state.round.stopReason === "bench-changed");
 for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
   const frames = summarize(await drain(page, logs8.get(page)), cut.state.round);
+  if (frames.frames === 0) await dumpDiagnostics(page, artifacts, `round-8-${label}-no-frames`);
   check(`round 8: the ${label}'s driven frames before the cut-off agree with the timeline (and there were some)`, frames.frames >= 1 && frames.wrong === 0, JSON.stringify(frames));
 }
 await notDelivered(host, "cut-off round 8");
