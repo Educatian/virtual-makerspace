@@ -314,6 +314,14 @@ export class AiTeammate {
     if (this.buildLog.length > 200) this.buildLog.shift();
   }
 
+  /**
+   * One part at a time, across builds: a newer build waits until the move an older one is making
+   * (claim, carry, release) has finished. The room client keeps one hold per part, so two holds of
+   * the same part by Bolt (an old build's and the new one's) made one release come back refused:
+   * Bolt then counted a part it had placed as skipped and said someone was holding it.
+   */
+  private partLock: Promise<void> = Promise.resolve();
+
   private async runBuild(run: number, superseding: boolean): Promise<void> {
     if (this.host.studio() !== "circuit" || this.room.participant.role !== "builder") return;
     const current = this.placements();
@@ -359,43 +367,19 @@ export class AiTeammate {
         this.logBuild({ run, event: this.disposed ? "ended: disposed" : run !== this.buildRun ? "ended: superseded by a newer build" : "ended: studio changed" });
         return;
       }
-      if (this.host.isHeldByOther(move.id)) {
-        this.logBuild({ run, part: move.id, claim: "held-by-other" });
-        skipped += 1;
-        continue;
+      let unlock!: () => void;
+      const previous = this.partLock;
+      this.partLock = new Promise<void>((resolve) => { unlock = resolve; });
+      // A move that never settles (a lost connection) must not stall every later build.
+      await Promise.race([previous, sleep(15_000)]);
+      let outcome: "moved" | "skipped" | "stop";
+      try {
+        outcome = await this.movePart(run, move);
+      } finally {
+        unlock();
       }
-      const name = partLabel(move.id);
-      this.host.yieldComponent(move.id);
-      // Grab (the host renders Bolt's hand on the part), carry, then let go. Bolt follows the
-      // room's claim rules like anyone: a refused claim means someone got there first.
-      const claim = await Promise.race([
-        this.room.claim(move.id).then((granted) => (granted ? "granted" : "refused") as "granted" | "refused"),
-        sleep(4000).then(() => "timeout" as const),
-      ]);
-      const granted = claim === "granted";
-      if (this.disposed) return;
-      if (!granted) {
-        this.logBuild({ run, part: move.id, claim });
-        this.room.abandon(move.id);
-        skipped += 1;
-        continue;
-      }
-      this.trace("claim", { objectId: move.id, objectName: name });
-      await sleep(650);
-      if (this.disposed) return;
-      if (run !== this.buildRun) {
-        this.logBuild({ run, part: move.id, claim: "granted", event: "ended: superseded by a newer build (released)" });
-        void this.room.release(move.id);
-        return;
-      }
-      this.room.sendTransform(move.id, move.transform);
-      await sleep(900);
-      if (this.disposed) return;
-      const accepted = await this.room.release(move.id);
-      this.logBuild({ run, part: move.id, claim: "granted", release: accepted ? "accepted" : "refused" });
-      if (this.disposed) return;
-      if (accepted) this.trace("move", { objectId: move.id, objectName: name });
-      else skipped += 1;
+      if (outcome === "stop") return;
+      if (outcome === "skipped") skipped += 1;
       await sleep(350);
     }
     if (this.disposed || run !== this.buildRun) {
@@ -412,6 +396,48 @@ export class AiTeammate {
     void this.say(skipped
       ? "Someone was holding a part, so I left it. Have a look, then we can test."
       : "Done. Have a look, then we can test.");
+  }
+
+  /** Claim, carry and release one part (inside the part lock). "stop" ends the build. */
+  private async movePart(run: number, move: { id: string; transform: SharedTransform }): Promise<"moved" | "skipped" | "stop"> {
+    if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") {
+      this.logBuild({ run, event: this.disposed ? "ended: disposed" : run !== this.buildRun ? "ended: superseded by a newer build" : "ended: studio changed" });
+      return "stop";
+    }
+    if (this.host.isHeldByOther(move.id)) {
+      this.logBuild({ run, part: move.id, claim: "held-by-other" });
+      return "skipped";
+    }
+    const name = partLabel(move.id);
+    this.host.yieldComponent(move.id);
+    // Grab (the host renders Bolt's hand on the part), carry, then let go. Bolt follows the
+    // room's claim rules like anyone: a refused claim means someone got there first.
+    const claim = await Promise.race([
+      this.room.claim(move.id).then((granted) => (granted ? "granted" : "refused") as "granted" | "refused"),
+      sleep(4000).then(() => "timeout" as const),
+    ]);
+    if (this.disposed) return "stop";
+    if (claim !== "granted") {
+      this.logBuild({ run, part: move.id, claim });
+      this.room.abandon(move.id);
+      return "skipped";
+    }
+    this.trace("claim", { objectId: move.id, objectName: name });
+    await sleep(650);
+    if (this.disposed) return "stop";
+    if (run !== this.buildRun) {
+      this.logBuild({ run, part: move.id, claim: "granted", event: "ended: superseded by a newer build (released)" });
+      await this.room.release(move.id);
+      return "stop";
+    }
+    this.room.sendTransform(move.id, move.transform);
+    await sleep(900);
+    if (this.disposed) return "stop";
+    const accepted = await this.room.release(move.id);
+    this.logBuild({ run, part: move.id, claim: "granted", release: accepted ? "accepted" : "refused" });
+    if (this.disposed) return "stop";
+    if (accepted) this.trace("move", { objectId: move.id, objectName: name });
+    return accepted ? "moved" : "skipped";
   }
 
   private maybeReady(): void {
