@@ -32,10 +32,12 @@ const launchOptions = {
   executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
 };
-// Every maker gets its own browser process, as on real separate machines. Contexts of one browser
-// share one GPU process, and SwiftShader in it renders their WebGL one after another: a second page
-// then needed ~200 s and a third over 700 s to load next to a drawing page (a probe measured 16 s
-// and 41 s with separate processes). The analysis page uses a browser of its own too.
+// The host and the member share one browser, as in every earlier run. The late joiner gets a browser
+// process of its own: contexts of one browser share one GPU process, where SwiftShader renders their
+// WebGL one after another, and a third page there got no room state within 300 s (two runs), longer
+// than any transmission. With its own process a probe measured 41 s. Giving EVERY maker its own
+// process was tried and is not used: two software GPU processes on 2 cores made each drawing page
+// take 17-22 s per frame (the member then missed a 120 s button deadline).
 const browsers = [];
 const launch = async () => { const own = await chromium.launch(launchOptions); browsers.push(own); return own; };
 const browser = await launch();
@@ -102,8 +104,8 @@ const { lightPulses, decode } = await import("../src/episodes/rescue-signal.ts")
 const pulsesOf = (round, stopped = round.stoppedAtMs) => lightPulses({ program: round.program, bench: round.bench, durationMs: round.durationMs, stoppedAtMs: stopped });
 const litIn = (pulses, ms) => pulses.some((pulse) => ms >= pulse.start && ms < pulse.end);
 
-async function maker(email, viewport = { width: 1000, height: 680 }) {
-  const context = await (await launch()).newContext({ viewport, acceptDownloads: true });
+async function maker(email, viewport = { width: 1000, height: 680 }, { ownBrowser = false } = {}) {
+  const context = await (ownBrowser ? await launch() : browser).newContext({ viewport, acceptDownloads: true });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
   await instrument(context);
   await context.addInitScript(() => {
@@ -514,7 +516,7 @@ await member.evaluate((program) => window.__vmQa.editDraft(program), IRREGULAR);
 
 // The late joiner's page is loaded and waiting in the lobby BEFORE the recurring light starts, so
 // its join happens early in the 107.5 s light.
-const phoneContext = await maker("phone@example.test", { width: 390, height: 844 });
+const phoneContext = await maker("phone@example.test", { width: 390, height: 844 }, { ownBrowser: true });
 const phoneLobby = await lobby(phoneContext, "phone");
 await host.evaluate(() => window.__vmQa.lightLog());
 await tap(member, '[data-episode="transmit"]');
@@ -541,6 +543,8 @@ check("its room-clock estimate agrees with the sender's within 250 ms (same mach
 await shot(phone, "09-phone-late-joiner");
 const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
 check("phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)", layout.left >= 0 && layout.right <= layout.width && layout.overflow <= 0, JSON.stringify(layout));
+// The joiner's checks are done: close its page so the leave below runs at the usual CPU budget.
+await phoneContext.close();
 
 // ── Leaving mid-transmission ─────────────────────────────────────────────────────────────────
 // Always on a fresh transmission: the late-join light may have ended by now. The sender abandons
@@ -560,7 +564,6 @@ check("the leaver's receiver role is freed; the sender keeps theirs", afterLeave
 await hostContext.close();
 
 check("no page errors on the pages that stayed", member.errors.length === 0 && phone.errors.length === 0, [...member.errors, ...phone.errors].join(" | "));
-await phoneContext.close();
 
 // Every check above is unconditional: a run that skipped one is a failure, not a smaller pass.
 const EXPECTED_CHECKS = 59;
