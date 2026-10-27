@@ -15,6 +15,7 @@
  * Pure functions, no DOM: unit-checked in `scripts/snapino-diagram-check.mjs`.
  */
 import { OUTPUT_PINS, type PinStates, type SnapinoPin } from "../desktop/snapino.ts";
+import { NET_TONES, toneCssVariables, type NetTone } from "../desktop/selection-style.ts";
 import {
   analyzeSnapino,
   snapinoNets,
@@ -90,6 +91,8 @@ export interface DiagramRung {
   studs: [number, number];
   /** Load running right now, or switch closed. */
   active: boolean;
+  /** Which end reaches GND electrically (through wires or a closed switch), if exactly one does. */
+  sink: 0 | 1 | null;
 }
 
 export type FaultKind = "short" | "pin-ground" | "pin-supply" | "pins-joined" | "bypassed" | "no-ground" | "no-source" | "always-on";
@@ -217,6 +220,10 @@ export function buildSnapinoDiagram(bench: SnapinoBench, pins: PinStates): Snapi
       ends,
       studs: [sockets[0], sockets[1]],
       active: id === SNAPINO_SWITCH ? bench[id]?.on === true : state.running.has(id),
+      sink: (() => {
+        const grounded = [nets.net(sockets[0]) === nets.gnd, nets.net(sockets[1]) === nets.gnd];
+        return grounded[0] === grounded[1] ? null : grounded[0] ? 0 : 1;
+      })(),
     });
   }
 
@@ -292,6 +299,21 @@ export interface DiagramRenderOptions {
   showFaults: boolean;
   /** A highlighted row (net) key. */
   focusRow?: string | null;
+  /**
+   * Logical drive view: each running load's rung carries a moving dash from its source net (5V
+   * or a HIGH pin) to GND. It shows the bench model's on/off decision, not measured current.
+   */
+  showDrive?: boolean;
+}
+
+/**
+ * The tone of each highlighted row: end A's net "a", end B's "b", one net for both ends "fault"
+ * (see `selection-style.ts`); a chosen row without a selection is "a".
+ */
+export function hotRowTones(diagram: SnapinoDiagram, selected: string | null | undefined, focusRow: string | null | undefined): Map<string, NetTone> {
+  const rung = diagram.rungs.find((entry) => entry.id === selected) ?? null;
+  if (rung) return rung.ends[0] === rung.ends[1] ? new Map([[rung.ends[0], "fault" as const]]) : new Map([[rung.ends[0], "a" as const], [rung.ends[1], "b" as const]]);
+  return focusRow ? new Map([[focusRow, "a" as const]]) : new Map();
 }
 
 const ROW_GAP = 36;
@@ -305,21 +327,22 @@ export function renderSnapinoDiagramSvg(diagram: SnapinoDiagram, options: Diagra
   const width = Math.max(RUNG_X0 + diagram.rungs.length * RUNG_GAP + 8, 300);
   const height = TOP + Math.max(diagram.rows.length - 1, 0) * ROW_GAP + 26;
   const y = new Map(diagram.rows.map((row, index) => [row.key, TOP + index * ROW_GAP]));
-  const selected = diagram.rungs.find((rung) => rung.id === options.selected) ?? null;
-  const hotRows = new Set<string>(selected ? selected.ends : options.focusRow ? [options.focusRow] : []);
+  const tones = hotRowTones(diagram, options.selected, options.focusRow);
   const faultParts = new Set(options.showFaults ? diagram.faults.flatMap((fault) => (fault.part ? [fault.part] : [])) : []);
   const faultRows = new Set(options.showFaults ? diagram.faults.flatMap((fault) => (fault.row ? [fault.row] : [])) : []);
 
   const rowSvg = diagram.rows.map((row) => {
     const rowY = y.get(row.key)!;
-    const classes = ["dg-row", `is-${row.level}`, hotRows.has(row.key) ? "is-hot" : "", faultRows.has(row.key) ? "is-fault" : ""].filter(Boolean).join(" ");
+    const tone = tones.get(row.key);
+    const classes = ["dg-row", `is-${row.level}`, tone ? `is-hot is-hot-${tone}` : "", faultRows.has(row.key) ? "is-fault" : ""].filter(Boolean).join(" ");
     const studs = row.studs.map((stud) => padAt(stud) ? `${padAt(stud)} pad (${studLabel(stud)})` : studLabel(stud)).join(", ");
-    const label = `Net ${row.label}: ${LEVEL_COPY[row.level]}${row.via.length ? `, joined by ${row.via.join(", ")}` : ""}; studs ${studs}`;
+    const label = `${tone ? `${tone === "fault" ? "Both ends' net" : `End ${NET_TONES[tone].letter}'s net`} (${NET_TONES[tone].description}): ` : ""}Net ${row.label}: ${LEVEL_COPY[row.level]}${row.via.length ? `, joined by ${row.via.join(", ")}` : ""}; studs ${studs}`;
     return `<g class="${classes}" data-row="${escapeXml(row.key)}" tabindex="0" role="button" aria-label="${escapeXml(label)}">
       <rect class="dg-hit" x="0" y="${rowY - 14}" width="${width}" height="28" />
       <line class="dg-net" x1="${LABEL_W - 6}" y1="${rowY}" x2="${width - 6}" y2="${rowY}" />
       <text class="dg-label" x="4" y="${rowY + 4}">${escapeXml(row.label)}</text>
-      <text class="dg-level" x="${LABEL_W - 10}" y="${rowY - 5}" text-anchor="end">${escapeXml(LEVEL_COPY[row.level])}</text>
+      ${tone ? `<g class="dg-badge is-${tone}"><circle cx="${LABEL_W - 7}" cy="${rowY}" r="6.5" /><text x="${LABEL_W - 7}" y="${rowY + 3.5}" text-anchor="middle">${NET_TONES[tone].letter}</text></g>` : ""}
+      <text class="dg-level" x="${LABEL_W - 15}" y="${rowY - 6}" text-anchor="end">${escapeXml(LEVEL_COPY[row.level])}</text>
       ${row.via.length ? `<text class="dg-via" x="4" y="${rowY + 15}">${escapeXml(viaLabel(row.via))}</text>` : ""}
     </g>`;
   }).join("");
@@ -328,7 +351,8 @@ export function renderSnapinoDiagramSvg(diagram: SnapinoDiagram, options: Diagra
     const x = RUNG_X0 + index * RUNG_GAP;
     const [a, b] = [y.get(rung.ends[0])!, y.get(rung.ends[1])!];
     const fault = faultParts.has(rung.id);
-    const classes = ["dg-rung", `is-${rung.kind}`, rung.active ? "is-active" : "", rung.id === options.selected ? "is-selected" : "", fault ? "is-fault" : ""].filter(Boolean).join(" ");
+    const driving = Boolean(options.showDrive) && rung.kind !== "switch" && rung.active && a !== b;
+    const classes = ["dg-rung", `is-${rung.kind}`, rung.active ? "is-active" : "", rung.id === options.selected ? "is-selected" : "", fault ? "is-fault" : "", driving ? "is-driving" : ""].filter(Boolean).join(" ");
     const [label0, label1] = rung.studs.map((stud) => padAt(stud) ?? studLabel(stud));
     const rows = diagram.rows;
     const rowName = (key: string): string => rows.find((row) => row.key === key)?.label ?? key;
@@ -355,6 +379,7 @@ export function renderSnapinoDiagramSvg(diagram: SnapinoDiagram, options: Diagra
       <rect class="dg-hit" x="${x - 22}" y="${Math.min(a, b) - (a === b ? 34 : 6)}" width="44" height="${Math.max(Math.abs(b - a) + 12, 44)}" />
       <path class="dg-lead" d="${path}" />
       ${a === b ? `<circle class="dg-dot" cx="${x - 14}" cy="${a}" r="3" /><circle class="dg-dot" cx="${x + 14}" cy="${a}" r="3" />` : `<circle class="dg-dot" cx="${x}" cy="${a}" r="3" /><circle class="dg-dot" cx="${x}" cy="${b}" r="3" />`}
+      ${driving ? driveOverlay(rung, x, a, b) : ""}
       ${symbol(rung, mid)}
       <text class="dg-name" x="${mid[0] + 15}" y="${mid[1] + 4}">${escapeXml(rung.short)}</text>
       <text class="dg-stud" x="${a === b ? x - 14 : x + 5}" y="${a + 12}"${a === b ? ' text-anchor="middle"' : ""}>${escapeXml(label0)}</text>
@@ -363,7 +388,19 @@ export function renderSnapinoDiagramSvg(diagram: SnapinoDiagram, options: Diagra
     </g>`;
   }).join("");
 
-  return `<svg class="snapino-diagram" viewBox="0 0 ${width} ${height}" width="100%" role="group" aria-label="Live circuit diagram of the Snapino bench">${rowSvg}${rungSvg}</svg>`;
+  return `<svg class="snapino-diagram" viewBox="0 0 ${width} ${height}" width="100%" style="${toneCssVariables()}" role="group" aria-label="Live circuit diagram of the Snapino bench">${rowSvg}${rungSvg}</svg>`;
+}
+
+/**
+ * A dashed path from the running load's source end to its GND end, with a static arrowhead at
+ * the GND end (the dash moves only when motion is allowed, see the stylesheet).
+ */
+function driveOverlay(rung: DiagramRung, x: number, a: number, b: number): string {
+  // The end on the GND net is the sink; the other is the source. Unknown: no direction drawn.
+  if (rung.sink === null) return "";
+  const [fromY, toY] = rung.sink === 1 ? [a, b] : [b, a];
+  const dir = toY > fromY ? 1 : -1;
+  return `<path class="dg-drive" d="M ${x + 9} ${fromY} L ${x + 9} ${toY - dir * 6}" /><path class="dg-drive-head" d="M ${x + 5} ${toY - dir * 10} L ${x + 9} ${toY - dir * 3} L ${x + 13} ${toY - dir * 10} Z" />`;
 }
 
 /** The wires forming a net, short enough for the label column (the full list is in the row's label). */

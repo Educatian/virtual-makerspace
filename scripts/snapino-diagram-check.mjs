@@ -123,6 +123,10 @@ function verify(name, bench, pins) {
   const partFaults = diagram.faults.some((fault) => fault.part);
   check(`${name}: fault flags drawn when shown`, !partFaults || svg.includes("dg-flag"));
   check(`${name}: no fault marks when withheld`, !hidden.includes("dg-flag") && !hidden.includes("is-fault"));
+  // Logical drive: exactly the loads the independent oracle says run get an overlay.
+  const driveSvg = renderSnapinoDiagramSvg(diagram, { showFaults: false, showDrive: true });
+  const drivenIds = [...driveSvg.matchAll(/class="dg-rung[^"]*is-driving[^"]*" data-part="([^"]+)"/g)].map((m) => m[1]).sort();
+  check(`${name}: drive overlay = running loads only`, JSON.stringify(drivenIds) === JSON.stringify([...truth.running].sort()), `${drivenIds} vs ${[...truth.running]}`);
   return diagram;
 }
 
@@ -176,6 +180,47 @@ check("stud labels", studLabel(0) === "A-1" && studLabel(12) === "B-4" && studLa
   const rowY = [...svg.matchAll(/class="dg-net" x1="[^"]+" y1="([\d.]+)"/g)].map((m) => Number(m[1]));
   const symbolY = Number(svg.match(/data-part="sno-l1"[\s\S]*?<circle cx="[\d.]+" cy="([\d.]+)" r="9"/)?.[1]);
   check("the lamp symbol is not drawn on any row line", Number.isFinite(symbolY) && !rowY.includes(symbolY), `${symbolY} vs rows ${rowY}`);
+}
+
+// ── Selection tones (one contract with the 3D rings) and the logical drive overlay ──
+{
+  const { hotRowTones } = await import("../src/circuit/snapino-diagram.ts");
+  const { NET_TONES } = await import("../src/desktop/selection-style.ts");
+  const lamp = buildSnapinoDiagram(demo, { ...LOW, D5: true });
+  const tones = hotRowTones(lamp, "sno-l1", null);
+  check("selected lamp: end A's row is tone a, end B's row tone b", tones.get("D5") === "a" && tones.get("GND") === "b", JSON.stringify([...tones]));
+  const svg = renderSnapinoDiagramSvg(lamp, { selected: "sno-l1", showFaults: true });
+  check("rows carry the tone classes and letter badges", /data-row="D5"[^>]*|class="dg-row[^"]*is-hot-a[^"]*" data-row="D5"/.test(svg) && /class="dg-row[^"]*is-hot-a[^"]*" data-row="D5"/.test(svg) && /class="dg-row[^"]*is-hot-b[^"]*" data-row="GND"/.test(svg) && />A<\/text><\/g>/.test(svg) && />B<\/text><\/g>/.test(svg));
+  check("the contract's colours reach the SVG as CSS variables", svg.includes(`--tone-a:${NET_TONES.a.css}`) && svg.includes(`--tone-b:${NET_TONES.b.css}`));
+  check("tone cues are not colour-only (letters and patterns differ)", NET_TONES.a.letter !== NET_TONES.b.letter && NET_TONES.a.pattern !== NET_TONES.b.pattern && NET_TONES.fault.pattern !== NET_TONES.a.pattern);
+  const bypass = buildSnapinoDiagram({ "sno-l1": { sockets: [12, 30] }, "sno-w2a": { sockets: [12, 30] } }, LOW);
+  check("a bypassed selection is one 'fault' row", JSON.stringify([...hotRowTones(bypass, "sno-l1", null)]) === JSON.stringify([[bypass.rungs[0].ends[0], "fault"]]));
+  check("a chosen row without a selection is tone a", JSON.stringify([...hotRowTones(lamp, null, "D5")]) === '[["D5","a"]]');
+  // Drive overlay: only on a running load, pointing at its GND end.
+  const driven = renderSnapinoDiagramSvg(lamp, { showFaults: true, showDrive: true });
+  check("drive overlay drawn for the running lamp", /data-part="sno-l1"[^>]*is-driving|class="dg-rung[^"]*is-driving[^"]*" data-part="sno-l1"/.test(driven) && driven.includes("dg-drive-head"));
+  const idle = renderSnapinoDiagramSvg(buildSnapinoDiagram(demo, LOW), { showFaults: true, showDrive: true });
+  check("no drive overlay when the lamp is not running (pin LOW)", !idle.includes("dg-drive"));
+  const shorted = renderSnapinoDiagramSvg(buildSnapinoDiagram({ ...demo, "sno-w4a": { sockets: [14, 15] } }, { ...LOW, D5: true }), { showFaults: true, showDrive: true });
+  check("no drive overlay through a short (5V = GND: nothing runs)", !shorted.includes("dg-drive"));
+  const open = renderSnapinoDiagramSvg(buildSnapinoDiagram({ "sno-l1": { sockets: [12, 13] } }, { ...LOW, D5: true }), { showFaults: true, showDrive: true });
+  check("no drive overlay on an open path (no GND)", !open.includes("dg-drive"));
+  const bypassDriven = renderSnapinoDiagramSvg(buildSnapinoDiagram({ "sno-l1": { sockets: [12, 30] }, "sno-w2a": { sockets: [12, 30] }, "sno-w3": { sockets: [30, 33] } }, { ...LOW, D5: true }), { showFaults: true, showDrive: true });
+  check("no drive overlay on a bypassed lamp", !bypassDriven.includes("dg-drive"));
+  // Direction: the arrowhead sits at the GND row's end of the rung.
+  const rowY = Object.fromEntries([...driven.matchAll(/data-row="([^"]+)"[\s\S]*?class="dg-net" x1="[^"]+" y1="([\d.]+)"/g)].map((m) => [m[1], Number(m[2])]));
+  const head = driven.match(/class="dg-drive-head" d="M [\d.]+ ([\d.]+) L [\d.]+ ([\d.]+)/);
+  check("the drive arrow points at GND (its tip is next to the GND row)", head && Math.abs(Number(head[2]) - rowY.GND) <= 4, `${head?.[2]} vs GND ${rowY.GND}`);
+  // A lamp drawn upside down (GND row above? never: GND sorts last), so also check a 5V-driven lamp.
+  const fiveV = renderSnapinoDiagramSvg(buildSnapinoDiagram({ "sno-l1": { sockets: [14, 32] }, "sno-w3": { sockets: [32, 15] } }, LOW), { showFaults: true, showDrive: true });
+  check("an always-on 5V lamp is drawn as driven (it does run)", fiveV.includes("dg-drive-head"));
+}
+
+// A lamp whose GND end is reached only through a closed S1: still driven, arrow toward that end.
+{
+  const viaSwitch = buildSnapinoDiagram({ "sno-l1": { sockets: [12, 30] }, "sno-s1": { sockets: [30, 15], on: true } }, { ...LOW, D5: true });
+  check("lamp grounded through closed S1 runs and gets a drive overlay", viaSwitch.rungs.find((r) => r.id === "sno-l1").active && renderSnapinoDiagramSvg(viaSwitch, { showFaults: true, showDrive: true }).includes("dg-drive-head"));
+  check("its sink is the end that reaches GND through the switch", viaSwitch.rungs.find((r) => r.id === "sno-l1").sink === 1);
 }
 
 // ── Random benches ──────────────────────────────────────────────────────────────

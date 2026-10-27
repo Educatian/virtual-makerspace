@@ -66,6 +66,7 @@ import {
   palette,
 } from "./bench-models.js";
 import { RemoteHands, type HandOwner } from "./remote-hands.js";
+import { NET_TONES, type NetTone, type NetToneStyle } from "./selection-style.ts";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
 import { analyzeSnapino, SNAPINO_LOADS, SNAPINO_PADS, type SnapinoBench } from "../circuit/snapino-circuit.ts";
 
@@ -145,14 +146,22 @@ export interface SceneEvents {
 /** A stud the Snapino inspector highlights: tone "a"/"b" for a part's two nets, "fault" for a bypass. */
 export interface StudHighlight {
   socket: number;
-  tone: "a" | "b" | "fault";
+  tone: NetTone;
   /** One of the selected part's own two studs (drawn larger). */
   terminal: boolean;
 }
 
 export type CameraPreset = "bench" | "top" | "table" | "receiver";
 
-const HIGHLIGHT_COLORS: Record<StudHighlight["tone"], number> = { a: 0xf59e0b, b: 0x06b6d4, fault: 0xef4444 };
+/** Ring geometry per tone pattern: a solid ring, eight dashes, or two concentric rings. */
+function ringPattern(pattern: NetToneStyle["pattern"]): BufferGeometry {
+  if (pattern === "solid") return new RingGeometry(0.068, 0.104, 32, 1);
+  if (pattern === "dashed") {
+    const dashes = Array.from({ length: 8 }, (_, index) => new RingGeometry(0.068, 0.104, 6, 1, (index * Math.PI) / 4, Math.PI / 6.5));
+    return mergeGeometries(dashes, false) ?? new RingGeometry(0.068, 0.104, 32, 1);
+  }
+  return mergeGeometries([new RingGeometry(0.06, 0.078, 32, 1), new RingGeometry(0.092, 0.11, 32, 1)], false) ?? new RingGeometry(0.068, 0.104, 32, 1);
+}
 /** Top of the snap base plate (procedural and GLB alike), where stud collars and rings sit. */
 const SNAP_PLATE_TOP = 0.26;
 
@@ -316,7 +325,8 @@ export class DesktopWorkbenchScene {
   private readonly flexMotion = new Map<string, { previous: Vector3; sway: number; velocity: number }>();
   private readonly selectionBox = new BoxHelper(new Group(), COLORS.blue);
   /** Snapino inspector: rings on the selected part's terminals and on every stud of its nets. */
-  private studHighlights: InstancedMesh | null = null;
+  /** One instanced mesh per tone (each with its own ring pattern), see selection-style.ts. */
+  private studHighlights: Record<NetTone, InstancedMesh> | null = null;
   private lastStudHighlights: StudHighlight[] = [];
   /** Smooth camera moves for the view presets (instant with reduced motion). */
   private cameraTween: { fromPosition: Vector3; fromTarget: Vector3; toPosition: Vector3; toTarget: Vector3; start: number; duration: number } | null = null;
@@ -461,7 +471,7 @@ export class DesktopWorkbenchScene {
     this.orbit.target.set(studio === "circuit" ? 0.1 : 0, studio === "circuit" ? 0.2 : 0.55, studio === "circuit" ? 0 : -0.1);
     this.orbit.update();
     this.cameraTween = null;
-    if (this.studHighlights) this.studHighlights.visible = false;
+    if (this.studHighlights) for (const mesh of Object.values(this.studHighlights)) mesh.visible = false;
     // The Snapino bench fills the free view (the panels' insets are applied by then).
     if (studio === "snapino") requestAnimationFrame(() => this.activeStudio === "snapino" && this.viewPreset("bench"));
     this.evaluateCurrentSystem();
@@ -621,31 +631,32 @@ export class DesktopWorkbenchScene {
    */
   /** QA: the studs highlighted right now. */
   studHighlightState(): StudHighlight[] {
-    return this.studHighlights?.visible ? this.lastStudHighlights.map((entry) => ({ ...entry })) : [];
+    const shown = this.studHighlights && Object.values(this.studHighlights).some((mesh) => mesh.visible);
+    return shown ? this.lastStudHighlights.map((entry) => ({ ...entry })) : [];
   }
 
   setStudHighlights(highlights: StudHighlight[]): void {
     this.lastStudHighlights = highlights.filter((entry) => this.snapSockets[entry.socket]).map((entry) => ({ ...entry }));
-    const mesh = this.studHighlights;
-    if (!mesh) return;
+    const meshes = this.studHighlights;
+    if (!meshes) return;
     const dummy = new Object3D();
-    const color = new Color();
-    let count = 0;
-    for (const highlight of highlights) {
-      const socket = this.snapSockets[highlight.socket];
-      if (!socket) continue;
-      dummy.position.set(socket.x, SNAP_PLATE_TOP + 0.012, socket.z);
-      dummy.rotation.set(-Math.PI / 2, 0, 0);
-      dummy.scale.setScalar(highlight.terminal ? 1.3 : 1);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(count, dummy.matrix);
-      mesh.setColorAt(count, color.setHex(HIGHLIGHT_COLORS[highlight.tone]));
-      count += 1;
+    for (const tone of Object.keys(meshes) as NetTone[]) {
+      const mesh = meshes[tone];
+      let count = 0;
+      for (const highlight of highlights) {
+        const socket = this.snapSockets[highlight.socket];
+        if (!socket || highlight.tone !== tone) continue;
+        dummy.position.set(socket.x, SNAP_PLATE_TOP + 0.012, socket.z);
+        dummy.rotation.set(-Math.PI / 2, 0, 0);
+        dummy.scale.setScalar(highlight.terminal ? 1.3 : 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(count, dummy.matrix);
+        count += 1;
+      }
+      mesh.count = count;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.visible = count > 0 && this.activeStudio === "snapino";
     }
-    mesh.count = count;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.visible = count > 0 && this.activeStudio === "snapino";
   }
 
   /**
@@ -1893,19 +1904,22 @@ export class DesktopWorkbenchScene {
     collars.userData.noPick = true;
     this.snapBaseGroup.add(collars);
 
-    const rings = new InstancedMesh(
-      new RingGeometry(0.068, 0.104, 32, 1),
-      new MeshBasicMaterial({ name: "stud_highlight", color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-      SNAP_COLS * SNAP_ROWS,
-    );
-    rings.name = "stud_highlights";
-    rings.count = 0;
-    rings.visible = false;
-    rings.renderOrder = 3;
-    rings.userData.noPick = true;
-    rings.setColorAt(0, new Color(0xffffff));
-    this.studHighlights = rings;
-    this.snapBaseGroup.add(rings);
+    const ring = (tone: NetTone): InstancedMesh => {
+      const style = NET_TONES[tone];
+      const mesh = new InstancedMesh(
+        ringPattern(style.pattern),
+        new MeshBasicMaterial({ name: `stud_highlight_${tone}`, color: style.hex, transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+        SNAP_COLS * SNAP_ROWS,
+      );
+      mesh.name = `stud_highlights_${tone}`;
+      mesh.count = 0;
+      mesh.visible = false;
+      mesh.renderOrder = 3;
+      mesh.userData.noPick = true;
+      this.snapBaseGroup.add(mesh);
+      return mesh;
+    };
+    this.studHighlights = { a: ring("a"), b: ring("b"), fault: ring("fault") };
   }
 
   /**

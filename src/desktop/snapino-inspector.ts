@@ -11,7 +11,8 @@
  * the room accepts it; a refused or stale edit leaves everything as it was. The code editor's
  * draft is never touched.
  */
-import { buildSnapinoDiagram, padAt, renderSnapinoDiagramSvg, SNAPINO_SHORT_NAMES, studLabel, type SnapinoDiagram } from "../circuit/snapino-diagram.ts";
+import { buildSnapinoDiagram, hotRowTones, padAt, renderSnapinoDiagramSvg, SNAPINO_SHORT_NAMES, studLabel, type SnapinoDiagram } from "../circuit/snapino-diagram.ts";
+import { NET_TONES, toneCssVariables, type NetTone } from "./selection-style.ts";
 import { SNAPINO_CONDUCTORS, SNAPINO_SWITCH } from "../circuit/snapino-circuit.ts";
 import type { DesktopWorkbenchScene, StudHighlight } from "./scene.js";
 import type { PinStates } from "./snapino.ts";
@@ -58,6 +59,8 @@ export class SnapinoInspector {
   private awaitingUntil = 0;
   private pending = false;
   private disposed = false;
+  /** Logical drive overlay on the diagram (off by default; a viewer's own choice, not shared). */
+  private showDrive = false;
 
   constructor(private readonly host: InspectorHost) {}
 
@@ -72,7 +75,10 @@ export class SnapinoInspector {
           <h3 id="si-diagram-title">Live circuit diagram</h3>
           <small>Drawn from the parts as seated</small>
         </div>
+        <label class="si-drive-toggle"><input type="checkbox" id="si-drive" /> Show logical drive (source → GND, not current)</label>
         <div class="si-diagram" id="si-diagram"></div>
+        <p class="si-legend" id="si-legend" hidden></p>
+        <p class="si-drive-note" id="si-drive-note" role="status" hidden></p>
         <ul class="si-connections sr-only" id="si-connections" aria-label="Connections, as text"></ul>
         <div class="si-faults" id="si-faults"></div>
         <p class="si-tray" id="si-tray"></p>
@@ -84,6 +90,12 @@ export class SnapinoInspector {
   bind(): void {
     const root = document.querySelector<HTMLElement>("#snapino-inspector");
     if (!root) return;
+    root.setAttribute("style", toneCssVariables());
+    root.querySelector<HTMLInputElement>("#si-drive")?.addEventListener("change", (event) => {
+      this.showDrive = (event.target as HTMLInputElement).checked;
+      this.lastDiagramKey = "";
+      this.refresh();
+    });
     root.addEventListener("click", (event) => this.onActivate(event.target as Element));
     root.addEventListener("keydown", (event) => {
       const target = event.target as Element;
@@ -128,7 +140,7 @@ export class SnapinoInspector {
     if (selected && !SNAPINO_SHORT_NAMES[selected]) this.focusRow = null;
     if (this.focusRow && !diagram.rows.some((row) => row.key === this.focusRow)) this.focusRow = null;
     const showFaults = this.host.showFaults();
-    const diagramKey = JSON.stringify([diagram, selected, this.focusRow, showFaults]);
+    const diagramKey = JSON.stringify([diagram, selected, this.focusRow, showFaults, this.showDrive]);
     if (diagramKey !== this.lastDiagramKey) {
       this.lastDiagramKey = diagramKey;
       this.renderDiagram(diagram, selected, showFaults);
@@ -154,7 +166,24 @@ export class SnapinoInspector {
     // Keep keyboard focus on the same row/rung across a re-render.
     const active = document.activeElement as Element | null;
     const focusKey = active && host.contains(active) ? (active.getAttribute("data-part") ? `[data-part="${active.getAttribute("data-part")}"]` : active.getAttribute("data-row") ? `[data-row="${active.getAttribute("data-row")}"]` : null) : null;
-    host.innerHTML = renderSnapinoDiagramSvg(diagram, { selected, showFaults, focusRow: this.focusRow });
+    const wireRow = selected && (SNAPINO_CONDUCTORS as readonly string[]).includes(selected) ? [...this.rowTones(diagram, selected).keys()][0] ?? null : null;
+    host.innerHTML = renderSnapinoDiagramSvg(diagram, { selected, showFaults, focusRow: wireRow ?? this.focusRow, showDrive: this.showDrive });
+    const legend = document.querySelector<HTMLElement>("#si-legend");
+    const tones = this.rowTones(diagram, selected);
+    if (legend) {
+      legend.hidden = tones.size === 0;
+      legend.innerHTML = [...tones.values()].map((tone) => `<span><i class="si-tone is-${tone}" aria-hidden="true">${NET_TONES[tone].letter}</i>${escape(tone === "fault" ? `Both ends on one net: ${NET_TONES.fault.description}` : `${selected && !wireRow ? `End ${NET_TONES[tone].letter}'s net` : "Chosen net"}: ${NET_TONES[tone].description} in 3D`)}</span>`).join("");
+    }
+    const driveNote = document.querySelector<HTMLElement>("#si-drive-note");
+    if (driveNote) {
+      const driven = diagram.rungs.filter((rung) => rung.kind !== "switch" && rung.active).map((rung) => rung.short);
+      driveNote.hidden = !this.showDrive;
+      driveNote.textContent = !this.showDrive ? "" : diagram.short
+        ? "Nothing is driven: 5V is shorted to GND."
+        : driven.length
+          ? `Driven now: ${driven.join(", ")}, from its source net to GND. This is the bench model's on/off decision, not measured current or amperage.`
+          : "No load is driven right now. This view shows the bench model's on/off decision, not measured current.";
+    }
     if (focusKey) host.querySelector<HTMLElement>(focusKey)?.focus();
     const rowName = (key: string): string => diagram.rows.find((row) => row.key === key)?.label ?? key;
     list.innerHTML = diagram.rungs.map((rung) =>
@@ -226,7 +255,12 @@ export class SnapinoInspector {
     const panel = this.tab === "overview"
       ? `<p>${escape(reference?.overview ?? SNAP_WIRE_REFERENCE.overview)}</p>${driverLine ? `<p class="si-driver">${escape(driverLine)}</p>` : ""}`
       : this.tab === "pinout"
-        ? `<dl class="si-pinout">${[0, 1].map((index) => `<div><dt>${escape(ends[index])}</dt><dd>${escape(rowOf(sockets?.[index]))}</dd></div>`).join("")}</dl>
+        ? `<dl class="si-pinout">${[0, 1].map((index) => {
+            const toneOf = sockets?.[index] === null || sockets?.[index] === undefined ? undefined : [...this.rowTones(diagram, selected)].find(([key]) => diagram.rows.find((row) => row.key === key)?.studs.includes(sockets[index] as number))?.[1];
+            const badge = toneOf ? `<i class="si-tone is-${toneOf}" aria-hidden="true">${NET_TONES[toneOf].letter}</i> ` : "";
+            const cue = toneOf ? ` (${NET_TONES[toneOf].description} in 3D)` : "";
+            return `<div><dt>${badge}${escape(ends[index])}</dt><dd>${escape(rowOf(sockets?.[index]) + cue)}</dd></div>`;
+          }).join("")}</dl>
            ${sockets ? sockets.map((socket) => (padAt(socket as number) ? `<p class="si-pad"><strong>${padAt(socket as number)}</strong> ${escape(SNAPINO_PAD_REFERENCE[padAt(socket as number)!])}</p>` : "")).join("") : ""}`
         : `<h4>On this bench</h4><ul>${(reference?.behavior ?? SNAP_WIRE_REFERENCE.behavior).map((line) => `<li>${escape(line)}</li>`).join("")}</ul>
            <h4>Real hardware</h4><ul>${(reference?.limits ?? SNAP_WIRE_REFERENCE.limits).map((line) => `<li>${escape(line)}</li>`).join("")}</ul>`;
@@ -325,25 +359,28 @@ export class SnapinoInspector {
   }
 
   /** Terminal and net studs of the selection (or of the chosen row) in the 3D bench. */
+  /**
+   * The row tones for this selection, exactly as the diagram draws them (`hotRowTones`). A snap
+   * wire IS one net, so a selected wire highlights that net as "a", never as a fault.
+   */
+  private rowTones(diagram: SnapinoDiagram, selected: string | null): Map<string, NetTone> {
+    if (selected && (SNAPINO_CONDUCTORS as readonly string[]).includes(selected)) {
+      const stud = this.host.workbench()?.snapinoBench()[selected]?.sockets?.[0];
+      const row = typeof stud === "number" ? diagram.rows.find((entry) => entry.studs.includes(stud)) : undefined;
+      return row ? new Map([[row.key, "a" as const]]) : new Map();
+    }
+    return hotRowTones(diagram, selected, this.focusRow);
+  }
+
   private updateHighlights(diagram: SnapinoDiagram, selected: string | null): void {
     const workbench = this.host.workbench();
     if (!workbench) return;
     const highlights: StudHighlight[] = [];
-    const bench = workbench.snapinoBench();
-    const sockets = selected ? bench[selected]?.sockets : null;
-    if (selected && sockets && sockets[0] !== null && sockets[1] !== null && sockets[0] !== undefined && sockets[1] !== undefined) {
-      const rowA = diagram.rows.find((row) => row.studs.includes(sockets[0] as number));
-      const rowB = diagram.rows.find((row) => row.studs.includes(sockets[1] as number));
-      const same = rowA && rowA === rowB;
-      for (const [row, tone] of [[rowA, "a"], [rowB, "b"]] as const) {
-        for (const stud of row?.studs ?? []) {
-          if (highlights.some((entry) => entry.socket === stud)) continue;
-          highlights.push({ socket: stud, tone: same ? "fault" : tone, terminal: stud === sockets[0] || stud === sockets[1] });
-        }
+    const sockets = selected ? workbench.snapinoBench()[selected]?.sockets ?? null : null;
+    for (const [key, tone] of this.rowTones(diagram, selected)) {
+      for (const stud of diagram.rows.find((row) => row.key === key)?.studs ?? []) {
+        if (!highlights.some((entry) => entry.socket === stud)) highlights.push({ socket: stud, tone, terminal: Boolean(sockets?.includes(stud)) });
       }
-    } else if (this.focusRow) {
-      const row = diagram.rows.find((entry) => entry.key === this.focusRow);
-      for (const stud of row?.studs ?? []) highlights.push({ socket: stud, tone: "a", terminal: false });
     }
     const key = JSON.stringify(highlights);
     if (key === this.lastHighlightKey) return;

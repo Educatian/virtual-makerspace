@@ -2340,3 +2340,27 @@ textarea:focus-visible {
 .si-net p, .si-net ul { margin: 0; }
 .si-net ul { padding-left: 16px; }
 .si-edit[data-tone="neutral"] { color: #dbe5f3; background: rgba(255, 255, 255, 0.06); }
+
+/* Selection tones: one contract (selection-style.ts) for 3D rings, diagram rows and text. */
+.snapino-diagram .dg-row.is-hot-a .dg-net { stroke: var(--tone-a); stroke-width: 4; stroke-dasharray: none; }
+.snapino-diagram .dg-row.is-hot-b .dg-net { stroke: var(--tone-b); stroke-width: 4; stroke-dasharray: 7 4; }
+.snapino-diagram .dg-row.is-hot-fault .dg-net { stroke: var(--tone-fault); stroke-width: 4; stroke-dasharray: 2 3; }
+.snapino-diagram .dg-badge circle { stroke: #0b1220; stroke-width: 1.5; }
+.snapino-diagram .dg-badge.is-a circle { fill: var(--tone-a); }
+.snapino-diagram .dg-badge.is-b circle { fill: var(--tone-b); }
+.snapino-diagram .dg-badge.is-fault circle { fill: var(--tone-fault); }
+.snapino-diagram .dg-badge text { fill: #0b1220; font-size: 8.5px; font-weight: 800; }
+/* Logical drive (bench model's on/off decision, not current): dash from source to GND. */
+.snapino-diagram .dg-drive { fill: none; stroke: #fde68a; stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; animation: dg-drive 0.9s linear infinite; }
+.snapino-diagram .dg-drive-head { fill: #fde68a; }
+@keyframes dg-drive { to { stroke-dashoffset: -16; } }
+@media (prefers-reduced-motion: reduce) { .snapino-diagram .dg-drive { animation: none; } }
+.si-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: #c4cfe0; font-size: 0.66rem; }
+.si-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.si-tone { display: inline-grid; width: 16px; height: 16px; place-items: center; color: #0b1220; border-radius: 50%; font-size: 0.6rem; font-weight: 800; }
+.si-tone.is-a { background: var(--tone-a); }
+.si-tone.is-b { background: var(--tone-b); }
+.si-tone.is-fault { background: var(--tone-fault); }
+.si-drive-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; color: #dbe5f3; font-size: 0.7rem; cursor: pointer; }
+.si-drive-toggle input { width: 18px; height: 18px; accent-color: #fde68a; }
+.si-drive-note { margin: 0; color: #c4cfe0; font-size: 0.64rem; line-height: 1.4; }
