@@ -96,9 +96,13 @@ const T = [{ op: "write", pin: "D6", value: true }, { op: "wait", ms: 300 }];
 const qParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: id === "sno-l1" && part.sockets ? [part.sockets[1], part.sockets[0]] : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
 const projectQT = { format: "virtual-makerspace.project", version: 1, solver: "dc-mna-1.0.0", studio: "snapino", savedAt: new Date().toISOString(), parts: qParts, program: T };
 await importProject(host, projectQT);
-const afterImport = await until(() => bench(member), (state) => programKey(state) === JSON.stringify(T));
+// Each page's own view, bounded (a slow software-rendered page applies the room's state late; the
+// first re-review run read the views at a 60 s limit and failed without saying which).
+const afterImport = await until(() => bench(member), (state) => programKey(state) === JSON.stringify(T) && partsKey(state) !== PS.parts, 180_000);
 const QT = { parts: partsKey(afterImport), program: JSON.stringify(T) };
-check("import Q/T reaches both peers", QT.parts !== PS.parts && partsKey(await bench(host)) === QT.parts && programKey(await bench(host)) === QT.program);
+const hostQT = await until(() => bench(host), (state) => partsKey(state) === QT.parts && programKey(state) === QT.program, 180_000);
+check("import Q/T reaches both peers", QT.parts !== PS.parts && programKey(afterImport) === QT.program && partsKey(hostQT) === QT.parts && programKey(hostQT) === QT.program,
+  `member ${QT.parts} ${programKey(afterImport)} · host ${partsKey(hostQT)} ${programKey(hostQT)} · before ${PS.parts}`);
 check("an imported program is loaded stopped (policy)", !afterImport.running && !(await bench(host)).running);
 check("the import is one undo step for the importer", (await bench(host)).canUndo);
 
