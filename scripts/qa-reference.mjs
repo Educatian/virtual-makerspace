@@ -90,18 +90,13 @@ try {
 
   if (build === "after") {
     // ── Inspector with a selection, three widths ──
-    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }]) {
       const p = await open(viewport);
       await place(p, LAYOUT);
       await p.evaluate(() => window.__vmQa.preset("bench"));
       await settled(p, "placed");
       const rect = await p.evaluate(() => window.__vmQa.partScreenRect("sno-l1"));
-      if (viewport.width > 600) {
-        await p.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
-      } else {
-        await p.evaluate(() => document.querySelector('.discussion-tab[data-tab="inspect"]')?.click());
-        await p.evaluate(() => document.querySelector('#si-diagram [data-part="sno-l1"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-      }
+      await p.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
       await p.waitForFunction(() => document.querySelector("#si-part-title")?.textContent === "Lamp L1", null, { polling: 500 });
       const layout = await p.evaluate(() => {
         const dock = document.querySelector("#discussion-dock").getBoundingClientRect();
@@ -109,7 +104,7 @@ try {
         const targets = [...document.querySelectorAll("#snapino-inspector button, .discussion-tab:not([hidden])")].map((element) => { const r = element.getBoundingClientRect(); return Math.min(r.width, r.height); }).filter((size) => size > 0);
         return { dock: { left: Math.round(dock.left), width: Math.round(dock.width) }, presets, smallest: Math.min(...targets), overflow: document.documentElement.scrollWidth > window.innerWidth, chatTab: Boolean(document.querySelector('.discussion-tab[data-tab="chat"]:not([hidden])')) };
       });
-      check(`${viewport.width}px: no horizontal page scroll; chat tab reachable`, !layout.overflow && layout.chatTab, JSON.stringify(layout.dock));
+      check(`${viewport.width}px: no horizontal overflow; chat tab present`, !layout.overflow && layout.chatTab, JSON.stringify(layout.dock));
       check(`${viewport.width}px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px`, layout.smallest >= 44 && layout.presets.every(([w, h]) => w >= 44 && h >= 44), `smallest ${layout.smallest} px`);
       await shot(p, `after-inspector-${viewport.width}`, "lamp selected: rung, nets and stud rings");
       if (viewport.width === 1440) {
@@ -122,6 +117,143 @@ try {
       }
       check(`${viewport.width}px: no page errors`, p.errors.length === 0, p.errors.join(" | "));
       await p.context().close();
+    }
+
+    // ── Phone 390×844: compact chrome, and the inspector reached by real scrolling, pointer and keys ──
+    {
+      const p = await open({ width: 390, height: 844 });
+      await place(p, LAYOUT);
+      await settled(p, "phone placed");
+      const chrome = await p.evaluate(() => {
+        const top = (selector) => Math.round(document.querySelector(selector).getBoundingClientRect().top + scrollY);
+        return { frameTop: top("#scene-frame"), dockTop: top("#discussion-dock"), tabsTop: top(".discussion-tabs"), innerHeight, scrollHeight: document.documentElement.scrollHeight };
+      });
+      check("phone: the 3D bench starts within the first 260 px (compact chrome)", chrome.frameTop <= 260, JSON.stringify(chrome));
+      check("phone: the dock's tab row is on the first screen", chrome.tabsTop + 44 <= chrome.innerHeight, JSON.stringify(chrome));
+      await shot(p, "after-phone-first-screen", "390×844 first screen: header, one row of studios and parts, one row of tools, the bench, the dock's tabs");
+      // Real wheel scrolling over the dock (not the canvas, whose wheel zooms the 3D view).
+      const tabs = await p.locator(".discussion-tabs").boundingBox();
+      await p.mouse.move(tabs.x + tabs.width / 2, tabs.y + tabs.height / 2);
+      await p.mouse.wheel(0, 520);
+      await p.waitForFunction(() => scrollY > 200, null, { polling: 200, timeout: 30_000 });
+      const scrolled = await p.evaluate(() => Math.round(scrollY));
+      // Pointer: open the Inspector tab, then select the lamp on the diagram.
+      await p.locator('.discussion-tab[data-tab="inspect"]').click();
+      await p.locator('#si-diagram [data-part="sno-l1"] .dg-hit').click();
+      await p.waitForFunction(() => document.querySelector("#si-part-title")?.textContent === "Lamp L1", null, { polling: 300 });
+      // Keyboard: Pinout tab, then ArrowRight to Behaviour & limits.
+      await p.locator('#si-part [data-tab="pinout"]').click();
+      await p.keyboard.press("ArrowRight");
+      const reached = await p.evaluate(() => {
+        const part = document.querySelector("#si-part").getBoundingClientRect();
+        const tabs = document.querySelector(".discussion-tabs").getBoundingClientRect();
+        return {
+          scrollY: Math.round(scrollY),
+          tab: document.querySelector(".discussion-tab.is-active")?.dataset.tab ?? null,
+          selectedTab: document.querySelector('#si-part [role="tab"][aria-selected="true"]')?.dataset.tab ?? null,
+          focused: document.activeElement?.dataset.tab ?? null,
+          partVisible: part.top < innerHeight && part.bottom > 0,
+          tabsVisible: tabs.top >= 0 && tabs.bottom <= innerHeight,
+          highlights: window.__vmQa.highlights().length,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      check("phone: wheel scrolling reaches the dock; the Inspector tab and a diagram rung work with the pointer", scrolled > 200 && reached.tab === "inspect" && reached.partVisible && reached.highlights > 0, JSON.stringify({ scrolled, ...reached }));
+      check("phone: the inspector's reference tabs work from the keyboard (ArrowRight moves to Behaviour & limits)", reached.selectedTab === "behavior" && reached.focused === "behavior", JSON.stringify(reached));
+      check("phone: no horizontal overflow (vertical scrolling is the intended way to the dock)", !reached.overflow);
+      await shot(p, "after-phone-inspector-selected", "390×844 scrolled to the dock: Inspector tab, lamp selected from the diagram, Behaviour & limits");
+      // Back up to the 3D bench: the selection's rings are on the studs.
+      await p.mouse.move(195, 30);
+      await p.mouse.wheel(0, -2000);
+      await p.waitForFunction(() => scrollY < 10, null, { polling: 200, timeout: 30_000 });
+      await shot(p, "after-phone-3d-selected", "390×844 back at the bench: the lamp's terminal and net rings in 3D");
+      check("phone: no page errors", p.errors.length === 0, p.errors.join(" | "));
+      await p.context().close();
+    }
+    // Phone with the workshop: its tab folded by the learner's own toggle.
+    {
+      const p = await open({ width: 390, height: 844 }, { episode: true });
+      await settled(p, "phone workshop");
+      const tabs = await p.locator(".discussion-tabs").boundingBox();
+      await p.mouse.move(tabs.x + tabs.width / 2, tabs.y + 10);
+      await p.mouse.wheel(0, 500);
+      await p.waitForFunction(() => scrollY > 200, null, { polling: 200, timeout: 30_000 });
+      await p.locator("#episode-toggle").click();
+      const folded = await p.evaluate(() => ({ collapsed: document.querySelector("#episode-panel")?.classList.contains("is-collapsed") ?? false, expanded: document.querySelector("#episode-toggle")?.getAttribute("aria-expanded") }));
+      check("phone: the workshop folds with its own toggle (pointer)", folded.collapsed && folded.expanded === "false", JSON.stringify(folded));
+      await shot(p, "after-phone-workshop-folded", "390×844 workshop tab folded");
+      await p.context().close();
+    }
+
+    // ── Circuit Bench: the meter in the dock inspector, real value edit + Undo, solved-current flow ──
+    {
+      const FLOW = { "battery-9v": [21, 23], "led-red": [53, 52], "resistor-1k": [41, 44], "wire-blue": [68, 73], "wire-yellow": [76, 71] };
+      for (const reducedMotion of ["reduce", "no-preference"]) {
+        const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, reducedMotion });
+        await instrument(context);
+        const p = await context.newPage();
+        p.setDefaultTimeout(600_000);
+        p.errors = [];
+        p.on("pageerror", (error) => p.errors.push(error.message));
+        await p.goto(`${base}/?room=Q${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[01IO]/g, "Z")}&quality=low&qa&studio=circuit`);
+        await p.waitForSelector("#enter-room", { state: "attached" });
+        await p.locator("#enter-room").click();
+        await p.waitForFunction(() => Boolean(window.__vmQa?.flow), null, { polling: 500 });
+        await place(p, FLOW);
+        await settled(p, `circuit ${reducedMotion}`);
+        if (reducedMotion === "reduce") {
+          // Real pointer on the resistor in 3D: the meter in the dock's Inspector tab shows it.
+          const rect = await p.evaluate(() => window.__vmQa.partScreenRect("resistor-1k"));
+          await p.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          await p.waitForFunction(() => Boolean(document.querySelector('.value-editor[data-part="resistor-1k"]')), null, { polling: 300 });
+          const docked = await p.evaluate(() => ({ tab: document.querySelector(".discussion-tab.is-active")?.dataset.tab, inDock: Boolean(document.querySelector("#discussion-dock #inspector")), visible: document.querySelector("#inspector").getClientRects().length > 0 }));
+          check("Circuit Bench: selecting a part in 3D opens the meter in the dock's Inspector tab", docked.tab === "inspect" && docked.inDock && docked.visible, JSON.stringify(docked));
+          await p.locator('.value-editor[data-part="resistor-1k"] .preset[data-value="470"]').click();
+          await p.waitForFunction(() => window.__vmQa.bench().parts["resistor-1k"]?.props?.ohms === 470, null, { polling: 300 });
+          const edited = await p.evaluate(() => document.querySelector("#inspector-readings")?.textContent ?? "");
+          await p.locator("#undo-edit").click();
+          await p.waitForFunction(() => window.__vmQa.bench().parts["resistor-1k"]?.props?.ohms === 1000, null, { polling: 300 });
+          check("Circuit Bench: a preset click edits the real resistor value through the room, and Undo restores it", /470/.test(edited), edited.slice(0, 120));
+          await shot(p, "after-circuit-meter-docked", "Circuit Bench: meter in the dock Inspector tab, resistor selected");
+        }
+        await p.evaluate(() => document.querySelector('.discussion-tab[data-tab="inspect"]')?.click());
+        await p.locator("#inspector-flow").check();
+        await settled(p, `flow on ${reducedMotion}`);
+        const flow = await p.evaluate(() => ({ state: window.__vmQa.flow(), blue: window.__vmQa.wireEnds("wire-blue"), note: document.querySelector("#inspector-flow-note")?.textContent ?? "" }));
+        const blue = flow.state.wires.find((wire) => wire.id === "wire-blue");
+        check(`flow (${reducedMotion}): a valid solve shows arrows on both carrying jumpers, in the solved direction`, flow.state.reason === "solved" && flow.state.arrows === 8 && blue && blue.amps > 0 && blue.direction === 1, JSON.stringify(flow.state).slice(0, 300));
+        // The first arrow belongs to wire-blue; its axis must point from end A toward end B horizontally.
+        const ab = [flow.blue[1][0] - flow.blue[0][0], flow.blue[1][2] - flow.blue[0][2]];
+        const along = flow.state.firstPointsTo[0] * ab[0] + flow.state.firstPointsTo[2] * ab[1];
+        check(`flow (${reducedMotion}): the 3D arrow points from the wire's end A toward end B (positive solved current)`, along > 0, `dot ${along.toFixed(3)}`);
+        check(`flow (${reducedMotion}): the note states the solved current and that speed is not to scale`, /mA/.test(flow.note) && /not to scale/.test(flow.note), flow.note);
+        const firstA = flow.state.first;
+        await settled(p, `flow frames ${reducedMotion}`);
+        const firstB = (await p.evaluate(() => window.__vmQa.flow())).first;
+        const moved = Math.hypot(firstA[0] - firstB[0], firstA[1] - firstB[1], firstA[2] - firstB[2]);
+        if (reducedMotion === "reduce") check("flow with reduced motion: the arrows stand still", moved < 1e-6 && flow.state.moving === false, `moved ${moved}`);
+        else check("flow without reduced motion: the arrows glide along the wire", moved > 1e-4 && flow.state.moving === true, `moved ${moved}`);
+        if (reducedMotion === "reduce") {
+          await shot(p, "after-circuit-flow", "Circuit Bench: solved-current arrows on the two jumpers (reduced motion: still)");
+          // A short across the battery: no flow drawn, and the note says why.
+          await place(p, { "wire-red": [85, 87] });
+          await settled(p, "flow short");
+          const shorted = await p.evaluate(() => ({ state: window.__vmQa.flow(), note: document.querySelector("#inspector-flow-note")?.textContent ?? "" }));
+          check("flow: a short circuit draws no arrows and says so", shorted.state.arrows === 0 && shorted.state.reason === "short circuit" && /short circuit/.test(shorted.note), JSON.stringify(shorted));
+          // Open the loop (the red short removed, the yellow jumper out): no flow.
+          // Both jumpers moved to dead spots (red: two unused bottom columns; yellow: both ends on
+          // the bottom rail), so the resistor's far end no longer reaches the battery.
+          await place(p, { "wire-red": [100, 101], "wire-yellow": [176, 177] });
+          await settled(p, "flow open");
+          const opened = await p.evaluate(() => window.__vmQa.flow());
+          check("flow: an open circuit draws no arrows", opened.arrows === 0 && opened.reason !== "solved", JSON.stringify(opened));
+          await p.locator("#inspector-flow").uncheck();
+          const off = await p.evaluate(() => window.__vmQa.flow());
+          check("flow off: no arrows remain", off.arrows === 0 && off.enabled === false, JSON.stringify(off));
+        }
+        check(`circuit (${reducedMotion}): no page errors`, p.errors.length === 0, p.errors.join(" | "));
+        await context.close();
+      }
     }
 
     // ── PF withholds fault notes; DI shows them; both draw the wiring as built ──

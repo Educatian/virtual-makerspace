@@ -141,6 +141,13 @@ try {
   const hostBench1 = await bench(host);
   const expected1 = expectedHighlights(hostBench1, "sno-l1");
   check("3D highlights = the studs of the lamp's two nets (independent rebuild), terminals marked", JSON.stringify(sorted(afterClick.highlights)) === JSON.stringify(expected1), `${afterClick.highlights.length} rings`);
+  // One tone contract: every ringed stud's 3D tone equals the tone class of its row on the diagram,
+  // and every toned row shows its letter badge (colour is not the only cue).
+  const domTones = await host.evaluate(() => Object.fromEntries([...document.querySelectorAll("#si-diagram .dg-row.is-hot")].map((row) => [row.dataset.row, ["a", "b", "fault"].find((tone) => row.classList.contains(`is-hot-${tone}`)) ?? null, ])));
+  const badges = await host.evaluate(() => [...document.querySelectorAll("#si-diagram .dg-badge text")].map((text) => text.textContent));
+  const rowsByStud = new Map(buildSnapinoDiagram(hostBench1.parts, LOW).rows.flatMap((row) => row.studs.map((stud) => [stud, row.key])));
+  const toneMismatch = afterClick.highlights.filter((ring) => domTones[rowsByStud.get(ring.socket)] !== ring.tone);
+  check("3D ring tones = diagram row tones (A amber/solid, B cyan/dashed), with letter badges", toneMismatch.length === 0 && Object.keys(domTones).length === 2 && badges.sort().join() === "A,B", JSON.stringify({ domTones, badges, toneMismatch }));
   check("the click did not move the lamp (both clients)", seatOf(hostBench1, "sno-l1") === "[12,30]" && seatOf(await bench(member), "sno-l1") === "[12,30]");
   await host.screenshot({ path: `${artifacts}/01-host-lamp-selected.png` });
 
