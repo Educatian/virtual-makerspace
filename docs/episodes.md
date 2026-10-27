@@ -127,6 +127,10 @@ An earlier version let a HIGH pin wired to GND make the GND net "HIGH". A lamp b
 - The decoder treats it as a flash with no measurable end, which makes the signal ambiguous.
 - The diagnosis says it was still lit. It never says "switched off".
 - A D-pin light that the blocks left on really does go out when the pins go LOW, and is reported that way.
+- **Cut off by a bench change while lit.** The record holds the bench as it was when the transmission started, so it cannot know what the changed bench did next. For example, the edit may have removed the lamp.
+  - The last stretch is marked **recorded up to the cut** (open right edge), not continuing.
+  - The diagnosis says the light was still on when the change cut the transmission off, and that what followed is not part of the recording.
+- A Stop, a program change, an emptied room or a reset leave the bench as it was, so a 5V light there is still reported as continuing.
 
 **Simplifications**
 - The light follows the pin with no filament warm-up.

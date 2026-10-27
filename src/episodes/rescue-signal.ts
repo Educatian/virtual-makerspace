@@ -121,6 +121,12 @@ export interface LightPulse {
    * from 5V, not by a D pin): `end` is where the recording stops, not a falling edge.
    */
   continues?: boolean;
+  /**
+   * The light was still on when a bench change cut the transmission off. The recording ends
+   * there and what the changed bench did next is not part of it: neither a falling edge nor a
+   * known continuation.
+   */
+  unrecorded?: boolean;
 }
 
 export interface Transmission {
@@ -129,6 +135,12 @@ export interface Transmission {
   durationMs: number;
   /** Where it was cut short (stop, or the bench/program changed), or null if it ran out. */
   stoppedAtMs: number | null;
+  /**
+   * Why it was cut short. "bench-changed" matters for a light still on at the cut: the record
+   * holds the bench as it was when the transmission started, so it cannot say what the changed
+   * bench did afterwards.
+   */
+  stopReason?: string | null;
 }
 
 /** When the transmission's light actually ended (its program end or where it was stopped). */
@@ -168,7 +180,11 @@ export function lightPulses(transmission: Transmission): LightPulse[] {
   const last = merged[merged.length - 1];
   if (last && last.end === end) {
     const after = analyzeSnapino(transmission.bench, LOW_PINS).running;
-    if (SNAPINO_LIGHTS.some((id) => after.has(id))) last.continues = true;
+    if (SNAPINO_LIGHTS.some((id) => after.has(id))) {
+      const cutByBench = transmission.stopReason === "bench-changed" && transmission.stoppedAtMs !== null && transmission.stoppedAtMs < transmission.durationMs;
+      if (cutByBench) last.unrecorded = true;
+      else last.continues = true;
+    }
   }
   return merged;
 }
@@ -256,7 +272,7 @@ export function decode(pulses: readonly LightPulse[]): Decoded {
   const flashes: DecodedFlash[] = pulses.map((pulse) => ({
     start: pulse.start,
     duration: pulse.end - pulse.start,
-    ...(pulse.continues ? { kind: "?" as const, reason: "unended" as const } : classifyFlash(pulse.end - pulse.start)),
+    ...(pulse.continues || pulse.unrecorded ? { kind: "?" as const, reason: "unended" as const } : classifyFlash(pulse.end - pulse.start)),
   }));
   const gaps: DecodedGap[] = [];
   for (let index = 1; index < pulses.length; index += 1) {
@@ -359,9 +375,12 @@ export function diagnose(transmission: Transmission, intent: readonly Word[], re
   }
   const input = analyzeSnapino(transmission.bench, LOW_PINS).inputHigh;
   const continuing = pulses.some((pulse) => pulse.continues);
+  const unrecorded = pulses.some((pulse) => pulse.unrecorded);
   const litAtEnd = SNAPINO_LIGHTS.some((id) => analyzeSnapino(transmission.bench, finalPins(transmission.program, input)).running.has(id));
   if (continuing) {
     findings.push({ code: "still-lit", message: "The light was still on when the transmission ended and stays on afterwards (it is powered from 5V, not switched by a D pin), so its last flash has no end to measure." });
+  } else if (unrecorded) {
+    findings.push({ code: "lit-at-cutoff", message: `The light was still on (powered from 5V) when a change to the bench cut the transmission off at ${seconds(transmissionEnd(transmission))}. The recording ends there; what the changed bench did next is not part of it, so the last flash has no measured end.` });
   } else if (litAtEnd && pulses.length && transmission.stoppedAtMs === null) {
     findings.push({ code: "on-at-end", message: "The blocks left a D pin HIGH when they finished; the transmitter set its pins LOW at the end of the transmission, which is where the last flash ended." });
   }

@@ -86,8 +86,32 @@ ok(diagnose(always, intent, null).some((finding) => finding.code === "always-on"
   eq([decoded.flashes[0].kind, decoded.flashes[0].reason, decoded.ambiguous], ["?", "unended", true], "a light with no end has no measurable length: ambiguous");
   const codes = diagnose(fiveVolt, ["HELP"], null).map((finding) => finding.code);
   ok(codes.includes("always-on") && codes.includes("still-lit") && !codes.includes("on-at-end"), `still lit, never 'switched off' (${codes})`);
-  // Cut off while a 5V lamp shines: the same, the stop is not a falling edge of that light.
-  ok(lightPulses({ ...always, stoppedAtMs: 1000 }).at(-1).continues === true, "a stopped transmission with a 5V lamp still continues");
+  // Cut off by Stop (bench unchanged) while a 5V lamp shines: the stop is not a falling edge.
+  ok(lightPulses({ ...always, stoppedAtMs: 1000, stopReason: "stopped" }).at(-1).continues === true, "a stopped transmission with a 5V lamp still continues");
+  // Re-review counterexample: a bench edit that REMOVES the 5V lamp cuts the transmission at
+  // 300 ms. The record holds the old bench, so it must not claim the light stayed on afterwards.
+  {
+    const before = { "sno-l1": { sockets: [14, 32] }, "sno-w3": { sockets: [32, 15] } };
+    const after = { "sno-w3": { sockets: [32, 15] } };
+    ok(analyzeSnapino(after, { D3: false, D5: false, D6: false }).running.size === 0, "(after the edit the bench really is dark)");
+    const cut = { program: [{ op: "wait", ms: 1000 }], bench: before, durationMs: 1000, stoppedAtMs: 300, stopReason: "bench-changed" };
+    const cutPulses = lightPulses(cut);
+    eq(cutPulses, [{ start: 0, end: 300, sources: ["sno-l1"], unrecorded: true }], "cut by a bench change while lit: recorded up to the cut, neither continuing nor a falling edge");
+    const cutDecoded = decode(cutPulses);
+    eq([cutDecoded.flashes[0].kind, cutDecoded.flashes[0].reason], ["?", "unended"], "its length is not measurable (unended), as before");
+    const cutFindings = diagnose(cut, ["HELP"], null);
+    const cutCodes = cutFindings.map((finding) => finding.code);
+    ok(cutCodes.includes("lit-at-cutoff") && cutCodes.includes("stopped") && !cutCodes.includes("still-lit") && !cutCodes.includes("on-at-end"), `bench-change cut: 'lit at the cut', never 'stays on afterwards' nor 'switched off' (${cutCodes})`);
+    ok(!cutFindings.some((finding) => /stays on afterwards|switched it off|set its pins LOW at the end/.test(finding.message)), "no finding asserts what the changed bench did after the cut");
+    // The same bench change on a D-pin lamp: the transmitter's pins go LOW at the cut (a real end).
+    const dCut = { program: [{ op: "write", pin: "D5", value: true }, { op: "wait", ms: 1000 }], bench: benchFor("D5"), durationMs: 1000, stoppedAtMs: 300, stopReason: "bench-changed" };
+    const dPulses = lightPulses(dCut);
+    ok(dPulses.length === 1 && dPulses[0].end === 300 && !dPulses[0].continues && !dPulses[0].unrecorded, "a D-pin lamp cut by a bench change ends at the cut (pins LOW), no open end");
+    // Unchanged 5V wiring reaching its natural end still continues (the earlier fix stands).
+    ok(lightPulses({ program: [{ op: "wait", ms: 1000 }], bench: before, durationMs: 1000, stoppedAtMs: null, stopReason: null }).at(-1).continues === true, "unchanged 5V wiring at the natural end continues");
+    // A program change or an emptied room does not change the bench: the 5V light continues.
+    for (const reason of ["program-changed", "room-empty", "reset"]) ok(lightPulses({ ...cut, stopReason: reason }).at(-1).continues === true, `cut by ${reason} (bench unchanged): the 5V light continues`);
+  }
   // A D-pin lamp left HIGH by the blocks is really switched off at the end (pins go LOW).
   const dLeft = run([{ op: "write", pin: "D5", value: true }, { op: "wait", ms: 300 }], benchFor("D5"));
   ok(!lightPulses(dLeft).at(-1).continues && diagnose(dLeft, ["HELP"], null).some((finding) => finding.code === "on-at-end"), "a D-pin light left on ends where the pins go LOW, and is reported as such");
@@ -530,6 +554,18 @@ eq([wiredPin(benchFor("D6")), wiredPin({})], ["D6", null], "the helper finds the
     eq(/Worked example/.test(protocol), condition === "DI", `${condition}: worked example ${condition === "DI" ? "shown" : "hidden"}`);
     eq(/data-episode="write-blocks"/.test(panel.designHtml(state)), condition === "DI", `${condition}: block-writing helper ${condition === "DI" ? "shown" : "hidden"}`);
     panel.dispose();
+  }
+  // The recorded-light strip of a round cut by a bench change while a 5V lamp shone: open right
+  // edge, and a title that does not claim the light stayed on.
+  {
+    const { roundView } = await import("../src/episodes/rescue-panel.ts");
+    const round = { n: 1, tx: 5, mission: "ridge", intent: ["HELP"], program: [{ op: "wait", ms: 1000 }], bench: { "sno-l1": { sockets: [14, 32] }, "sno-w3": { sockets: [32, 15] } }, startedAt: 0, durationMs: 1000, stoppedAtMs: 300, stopReason: "bench-changed", transmissions: 1, sentBy: [], reading: null, explanation: "" };
+    const view = roundView(round);
+    ok(view.pulses.at(-1)?.unrecorded === true, "roundView hands the stop reason to the recorder");
+    const strip = panelFor("DI").stripHtml(view, true, null);
+    ok(/is-continuing/.test(strip) && /bench change cut the recording off/.test(strip) && !/still lit after the transmission ended/.test(strip), "the strip marks the open end and says the recording was cut, not that the light stayed on");
+    const natural = panelFor("DI").stripHtml(roundView({ ...round, stoppedAtMs: null, stopReason: null }), true, null);
+    ok(/still lit after the transmission ended/.test(natural), "unchanged 5V wiring at the natural end: 'still lit after the transmission ended'");
   }
 }
 

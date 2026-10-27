@@ -118,7 +118,7 @@ export interface RoundView {
 
 /** Everything derived from one round (pure). */
 export function roundView(round: RescueRound): RoundView {
-  const transmission: Transmission = { program: round.program, bench: round.bench, durationMs: round.durationMs, stoppedAtMs: round.stoppedAtMs };
+  const transmission: Transmission = { program: round.program, bench: round.bench, durationMs: round.durationMs, stoppedAtMs: round.stoppedAtMs, stopReason: round.stopReason };
   const pulses = lightPulses(transmission);
   return { transmission, pulses, decoded: decode(pulses) };
 }
@@ -504,8 +504,12 @@ export class RescueEpisode {
       const flash = view.decoded.flashes[index];
       const label = labelled ? `<b>${flashGlyph(flash.kind)}</b>` : "";
       // A light still on when the recording ended has an open right edge (no falling edge).
-      const title = pulse.continues ? `${pulse.end - pulse.start} ms recorded; still lit after the transmission ended` : `${pulse.end - pulse.start} ms`;
-      return `<span class="strip-flash${labelled && flash.kind === "?" ? " is-ambiguous" : ""}${pulse.continues ? " is-continuing" : ""}" style="left:${(pulse.start / end) * 100}%;width:${Math.max(0.6, ((pulse.end - pulse.start) / end) * 100)}%" title="${title}">${label}</span>`;
+      const title = pulse.continues
+        ? `${pulse.end - pulse.start} ms recorded; still lit after the transmission ended`
+        : pulse.unrecorded
+          ? `${pulse.end - pulse.start} ms recorded; still lit when a bench change cut the recording off (not recorded after that)`
+          : `${pulse.end - pulse.start} ms`;
+      return `<span class="strip-flash${labelled && flash.kind === "?" ? " is-ambiguous" : ""}${pulse.continues || pulse.unrecorded ? " is-continuing" : ""}" style="left:${(pulse.start / end) * 100}%;width:${Math.max(0.6, ((pulse.end - pulse.start) / end) * 100)}%" title="${title}">${label}</span>`;
     }).join("");
     // At most about eight labels, whatever the length (1, 2, 5, 10, 20, 30 or 60 s apart).
     const step = [1, 2, 5, 10, 20, 30, 60].find((candidate) => end / (candidate * 1000) <= 8) ?? 60;
