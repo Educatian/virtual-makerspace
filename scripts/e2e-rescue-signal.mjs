@@ -75,6 +75,16 @@ const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length:
 // A recurring light (not a protocol word): 4 s on, 5 s off, 12 times = 108 s (under the 120 s cap).
 // Long phases let seconds-per-frame clients log both states and let a screenshot finish inside one.
 const BEACON = Array.from({ length: 12 }, () => flash(4000, 5000)).flat();
+// The same kind of light with irregular on/off lengths. A software renderer can take a
+// steady ~9 s per frame; sampling a strictly periodic 9 s light at that rate can land on the same
+// phase every time (aliasing: a first fresh-frames run after reconnect saw 7 frames, all lit).
+// Irregular phases cannot lock to a frame period, so fresh frames must see both states.
+// (Each wait block is at most 5 s, so every phase is 2.5–5 s; 107.5 s in all, under the 120 s cap,
+// long enough for a late joiner that needs minutes to render its first frames.)
+const ON = [5, 3.5, 5, 4, 2.5, 3, 4.5, 5, 5, 3.5, 5, 4.5];
+const OFF = [5, 5, 4.5, 5, 4, 5, 5, 4.5, 5, 5, 4, 5];
+const IRREGULAR = ON.flatMap((on, index) => flash(on * 1000, OFF[index] * 1000));
+const IRREGULAR_MS = (ON.reduce((a, b) => a + b, 0) + OFF.reduce((a, b) => a + b, 0)) * 1000;
 // One steady 60 s light, then 55 s dark (115 s): a headless screenshot takes ~40 s under SwiftShader,
 // so a pixel sample needs a phase that outlasts the capture.
 const STEADY = [D5(true), ...Array.from({ length: 12 }, () => ({ op: "wait", ms: 5000 })), D5(false), ...Array.from({ length: 11 }, () => ({ op: "wait", ms: 5000 }))];
@@ -379,10 +389,11 @@ await notDelivered(member, "stopped, unread round 5");
 await tap(host, '[data-episode="close-round"]'); // abandon the unread beacon round
 await until(() => episode(member), (state) => state.state?.round === null && state.state.history.length === 5);
 
-// ── Round 6: the same recurring light; a network drop and reconnect while it runs ────────────
+// ── Round 6: a recurring light (irregular phases); a network drop and reconnect while it runs ──
+await host.evaluate((program) => window.__vmQa.editDraft(program), IRREGULAR);
 await tap(host, '[data-episode="transmit"]');
 const beacon6 = await until(() => episode(member), (state) => state.state?.round?.n === 6);
-check("(round 6 runs the recurring light again)", beacon6.state.round.durationMs === 108_000 && !beacon6.state.round.stopReason);
+check("(round 6 runs a recurring light with irregular phases)", beacon6.state.round.durationMs === IRREGULAR_MS && !beacon6.state.round.stopReason, `${beacon6.state.round.durationMs} ms`);
 // Network drop mid-transmission: the room frees the role; the client reconnects on its own.
 check("(the receiver's socket is dropped mid-transmission)", await member.evaluate(() => window.__vmQa.dropConnection()));
 const released = await until(() => episode(host), (state) => state.state?.roles.receiver === null, 60_000);
@@ -490,7 +501,7 @@ const resetHost = await until(() => episode(host), (state) => state.state?.histo
 check("reset reaches both connected clients immediately, with a higher revision", resetMember.state.history.length === 0 && resetHost.state.history.length === 0 && resetHost.state.rev === resetMember.state.rev && resetHost.state.rev > beforeReset.state.rev, JSON.stringify({ before: beforeReset.state.rev, host: resetHost.state.rev, member: resetMember.state.rev }));
 await tap(member, '[data-episode="intent-add"][data-word="SAFE"]');
 await until(() => episode(host), (state) => state.state?.intent.join() === "SAFE");
-await member.evaluate((program) => window.__vmQa.editDraft(program), BEACON);
+await member.evaluate((program) => window.__vmQa.editDraft(program), IRREGULAR);
 
 // The late joiner's page is loaded and waiting in the lobby BEFORE the recurring light starts, so
 // its join happens early in the 108 s light and it has time to render lit and dark phases.
