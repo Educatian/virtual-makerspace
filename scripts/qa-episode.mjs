@@ -109,7 +109,10 @@ async function shot(page, name, view) {
 async function design(page) {
   await tap(page, '[data-episode="claim-role"][data-role="sender"]');
   await until(() => episode(page), (state) => state.role === "sender");
-  await tap(page, "#load-field-test");
+  // The field-test button is hidden at phone width (since before this branch); there the same
+  // layout goes through the room as one edit, exactly what the button submits.
+  if (await page.evaluate(() => (document.querySelector("#load-field-test")?.getClientRects().length ?? 0) > 0)) await tap(page, "#load-field-test");
+  else await page.evaluate(() => window.__vmQa.seatShared({ "sno-l1": [12, 30], "sno-w3": [30, 33], "sno-w2a": [33, 15] }));
   await until(() => page.evaluate(() => window.__vmQa.bench().parts["sno-l1"]?.sockets), Boolean);
   await tap(page, '[data-episode="mission"][data-mission="ridge"]');
   await until(() => episode(page), (state) => state.state?.mission === "ridge");
