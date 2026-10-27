@@ -529,7 +529,8 @@ const moved = Object.entries(memberBench.parts).map(([id, part]) => ({ id, socke
 await importProject(member, { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "snapino", savedAt: new Date().toISOString(), parts: moved });
 const cut = await until(() => episode(host), (state) => state.state?.round?.stopReason);
 await drawing([host, member], true);
-check("a teammate's bench edit ends the running transmission for everyone", cut.state.round.stopReason === "bench-changed" && (await episode(member)).state.round.stopReason === "bench-changed");
+const cutMember = await until(() => episode(member), (state) => Boolean(state.state?.round?.stopReason), 60_000); // the member's own view (bounded)
+check("a teammate's bench edit ends the running transmission for everyone", cut.state.round.stopReason === "bench-changed" && cutMember.state.round.stopReason === "bench-changed", JSON.stringify({ host: cut.state.round.stopReason, member: cutMember.state?.round?.stopReason ?? null }));
 for (const [page, label] of [[member, "receiver"], [host, "sender"]]) {
   const frames = summarize(await drain(page, logs8.get(page)), cut.state.round);
   if (frames.frames === 0) await dumpDiagnostics(page, artifacts, `round-8-${label}-no-frames`);
@@ -568,7 +569,8 @@ await until(() => episode(member), (state) => state.role === "receiver");
 // ── Swap roles; export by the new sender (allowed keys only) ────────────────────────────────
 await tap(member, '[data-episode="swap-roles"]');
 const swapped = await until(() => episode(host), (state) => state.role === "receiver");
-check("roles swap between rounds, on both screens", swapped.role === "receiver" && (await episode(member)).role === "sender");
+const swappedMember = await until(() => episode(member), (state) => state.role === "sender", 60_000); // each client's own view (bounded)
+check("roles swap between rounds, on both screens", swapped.role === "receiver" && swappedMember.role === "sender", JSON.stringify({ host: swapped.role, member: swappedMember.role }));
 await tap(member, "#project-menu-button");
 const [download] = await Promise.all([member.waitForEvent("download"), tap(member, "#export-project")]);
 const exported = JSON.parse(readFileSync(await download.path(), "utf8"));
