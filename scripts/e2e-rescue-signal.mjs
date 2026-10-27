@@ -283,13 +283,16 @@ const receiverBefore = await panelText(member);
 // (The shared vocabulary lists every word with its flashes; the INTENT is the sender's choice.)
 check("the receiver's panel does not show the intended message", !/Intended message|INJURED ▬ ▬ NORTH|INJURED · NORTH/.test(receiverBefore) && !(await member.evaluate(() => document.querySelector('#episode-body [aria-label="Intended words"]'))), receiverBefore.slice(0, 100));
 
+// The receiver's framing, captured before the round: a SwiftShader screenshot takes tens of seconds and
+// holds the GPU process both pages share, so one taken inside the 18 s round left the sender with no
+// frame at all in attempts 4 and 6.
+await shot(member, "02-receiver-view");
 // ── Round 1: a working message, read correctly ───────────────────────────────────────────────
 await host.evaluate(() => window.__vmQa.lightLog());
 await member.evaluate(() => window.__vmQa.lightLog());
 await tap(host, '[data-episode="transmit"]');
 const running1 = await until(() => episode(member), (state) => state.state?.round?.n === 1);
 check("the transmission reaches the receiver as room state", running1.state?.round?.intent.join() === "INJURED,NORTH");
-await shot(member, "02-receiver-watching");
 await waitEnded(member);
 const round1 = (await episode(member)).state.round;
 check("the round's light under the protocol is INJURED · NORTH", decode(pulsesOf(round1)).words.join() === "INJURED,NORTH");
