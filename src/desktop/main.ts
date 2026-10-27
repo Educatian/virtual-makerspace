@@ -730,7 +730,7 @@ function enterWorkspace(): void {
       renderSelection();
       tools?.refreshPart();
       inspector?.refresh();
-      if (component && activeStudio === "snapino") focusInspectorTab();
+      if (component && (activeStudio === "snapino" || activeStudio === "circuit")) focusInspectorTab();
       updatePresetButtons();
     },
     onSnapinoChange: () => inspector?.refresh(),
@@ -871,6 +871,9 @@ function enterWorkspace(): void {
       benchRect: () => workbench?.benchScreenRect() ?? null,
       /** Bolt's per-part build outcomes (claim granted/refused/timeout, release accepted/refused). */
       bolt: () => (aiTeammate ? aiTeammate.buildLog.map((entry) => ({ ...entry })) : null),
+      /** Circuit Bench current-flow view: what it draws, or why not. */
+      flow: () => workbench?.currentFlowState() ?? null,
+      wireEnds: (id: string) => workbench?.wireEnds(id) ?? null,
       /** Camera presets and where the camera is (framing checks). */
       preset: (name: "bench" | "top" | "table" | "receiver") => workbench?.viewPreset(name),
       camera: () => workbench?.cameraState() ?? null,
@@ -1088,7 +1091,7 @@ function renderWorkspace(): void {
         <aside class="discussion-dock" id="discussion-dock" aria-label="Discussion">
           <div class="discussion-tabs" role="tablist">
             <button class="discussion-tab" data-tab="episode" data-tooltip="Rescue Signal Workshop" aria-label="Rescue Signal Workshop" type="button" hidden><i class="ph ph-broadcast"></i><span class="sr-only">Workshop</span></button>
-            <button class="discussion-tab" data-tab="inspect" data-tooltip="Bench inspector and live diagram" aria-label="Bench inspector" type="button" hidden><i class="ph ph-circuitry"></i><span class="sr-only">Inspector</span></button>
+            <button class="discussion-tab" data-tab="inspect" data-tooltip="Inspector: the selected part, readings and the live diagram" aria-label="Inspector" type="button" hidden><i class="ph ph-circuitry"></i><span class="sr-only">Inspector</span></button>
             <button class="discussion-tab is-active" data-tab="chat" data-tooltip="Text chat" aria-label="Text chat" type="button"><i class="ph ph-chat-circle-text"></i><span class="sr-only">Chat</span></button>
             <button class="discussion-tab" data-tab="voice" data-tooltip="Voice chat" aria-label="Voice chat" type="button"><i class="ph ph-waveform"></i><span class="sr-only">Voice</span></button>
             <button class="discussion-tab" data-tab="team" data-tooltip="Shared activity" aria-label="Shared activity" type="button"><i class="ph ph-users-three"></i><span class="sr-only">Shared activity</span></button>
@@ -1113,6 +1116,7 @@ function renderWorkspace(): void {
           </div>
 
           <div class="discussion-panel" data-panel="inspect">
+            ${WorkbenchTools.meterMarkup()}
             ${SnapinoInspector.markup()}
           </div>
 
@@ -1326,6 +1330,8 @@ function bindWorkspaceEvents(): void {
     if (!menu || !menuButton) return;
     menu.hidden = !open;
     menuButton.setAttribute("aria-expanded", String(open));
+    // Phones: the menu is position:fixed (the tool row scrolls); open it just under its button.
+    if (open && getComputedStyle(menu).position === "fixed") menu.style.top = `${Math.round(menuButton.getBoundingClientRect().bottom + 6)}px`;
     if (open) menu.querySelector<HTMLButtonElement>("button")?.focus();
   };
   menuButton?.addEventListener("click", () => setMenu(Boolean(menu?.hidden)));
@@ -1516,11 +1522,15 @@ function updateStudioUi(): void {
   const codeTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="code"]');
   if (codeTab) codeTab.hidden = activeStudio !== "snapino";
   const inspectTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="inspect"]');
-  if (inspectTab) inspectTab.hidden = activeStudio !== "snapino";
+  // One contextual inspector column: the circuit meter on the Circuit Bench, the bench inspector
+  // and live diagram on Snapino.
+  if (inspectTab) inspectTab.hidden = activeStudio !== "snapino" && activeStudio !== "circuit";
+  const snapinoInspector = document.querySelector<HTMLElement>("#snapino-inspector");
+  if (snapinoInspector) snapinoInspector.hidden = activeStudio !== "snapino";
   const presets = document.querySelector<HTMLElement>("#view-presets");
   if (presets) presets.hidden = activeStudio !== "snapino";
   if (activeStudio !== "snapino") workbench?.setStudHighlights([]);
-  if (activeStudio !== "snapino" && (codeTab?.classList.contains("is-active") || inspectTab?.classList.contains("is-active"))) switchDiscussionTab("chat");
+  if ((activeStudio !== "snapino" && codeTab?.classList.contains("is-active")) || (inspectTab?.hidden && inspectTab.classList.contains("is-active"))) switchDiscussionTab("chat");
   inspector?.refresh();
   updatePresetButtons();
   renderCodePanel();

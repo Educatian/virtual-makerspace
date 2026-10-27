@@ -98,13 +98,17 @@ export class WorkbenchTools {
 
   constructor(host: ToolsHost) {
     this.host = host;
-    this.collapsed = readPreference("vm-inspector-collapsed", window.matchMedia?.("(max-width: 900px)").matches ?? false);
+    // The meter sits in the dock tab now: open unless this viewer folded it.
+    this.collapsed = readPreference("vm-inspector-collapsed", false);
   }
 
   // ── Inspector ───────────────────────────────────────────────────────────────
 
-  /** Markup for the floating inspector; `bind()` wires it up after it is in the DOM. */
-  static markup(): string {
+  /**
+   * The circuit meter: the Circuit Bench's contextual inspector. It lives in the dock's
+   * Inspector tab (one side column), next to the Snapino bench inspector.
+   */
+  static meterMarkup(): string {
     return `
       <section class="inspector" id="inspector" aria-labelledby="inspector-title" hidden>
         <button class="inspector-toggle" id="inspector-toggle" type="button" aria-expanded="true" aria-controls="inspector-body">
@@ -118,9 +122,16 @@ export class WorkbenchTools {
           <div class="inspector-readings" id="inspector-readings"></div>
           <div class="inspector-part" id="inspector-part"></div>
           <label class="inspector-tags"><input type="checkbox" id="inspector-tags" checked /> Show readings on parts</label>
+          <label class="inspector-tags"><input type="checkbox" id="inspector-flow" /> Show current flow on the jumper wires</label>
+          <p class="inspector-flow-note" id="inspector-flow-note" role="status" aria-live="polite"></p>
           <p class="inspector-foot">Educational DC model · <span title="Modified nodal analysis with piecewise-linear LEDs and a 1 Ω battery; not SPICE and not datasheet-exact">${SOLVER_VERSION}</span></p>
         </div>
-      </section>
+      </section>`;
+  }
+
+  /** Scene overlays and dialogs the tools use (measure tags, recovery banner, confirm dialog). */
+  static markup(): string {
+    return `
       <div class="measure-tags" id="measure-tags" aria-hidden="true"></div>
       <div class="recovery-banner" id="recovery-banner" role="region" aria-label="Recover saved bench" hidden></div>
       <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
@@ -137,6 +148,10 @@ export class WorkbenchTools {
   bind(): void {
     document.querySelector("#inspector-toggle")?.addEventListener("click", () => this.setCollapsed(!this.collapsed));
     document.querySelector("#inspector-tags")?.addEventListener("change", () => this.updateTagLoop());
+    document.querySelector<HTMLInputElement>("#inspector-flow")?.addEventListener("change", (event) => {
+      this.host.workbench()?.setCurrentFlow((event.target as HTMLInputElement).checked);
+      this.renderFlowNote();
+    });
     document.querySelector("#inspector-part")?.addEventListener("click", (event) => this.onPartClick(event as MouseEvent));
     document.querySelector("#inspector-part")?.addEventListener("submit", (event) => this.onPartSubmit(event as SubmitEvent));
     document.querySelector<HTMLInputElement>("#project-file-input")?.addEventListener("change", (event) => {
@@ -210,6 +225,7 @@ export class WorkbenchTools {
     pill.textContent = verdict.pill;
     pill.dataset.tone = verdict.tone;
     if (diagnosis.textContent !== verdict.explanation) diagnosis.textContent = verdict.explanation;
+    this.renderFlowNote();
     const html = this.readingsHtml(analysis);
     if (html !== this.lastReadingsHtml) {
       readings.innerHTML = html;
@@ -436,10 +452,22 @@ export class WorkbenchTools {
   }
 
   /** Right edge of the expanded meter (client px), for framing the bench beside it; 0 when hidden. */
+  /** The meter no longer floats over the scene (it is a dock tab), so it never narrows the view. */
   inspectorRight(): number {
-    const inspector = document.querySelector<HTMLElement>("#inspector");
-    if (!inspector || inspector.hidden || this.collapsed) return 0;
-    return inspector.getBoundingClientRect().right;
+    return 0;
+  }
+
+  /** What the flow view shows, in words: solved currents, or why nothing is drawn. */
+  private renderFlowNote(): void {
+    const note = document.querySelector<HTMLElement>("#inspector-flow-note");
+    const flow = this.host.workbench()?.currentFlowState();
+    if (!note || !flow) return;
+    const text = !flow.enabled
+      ? "Arrows show the solved conventional current on each jumper wire (the DC model above). Their speed is not to scale."
+      : flow.wires.length
+        ? `Solved current: ${flow.wires.map((wire) => `${PART_NAMES[wire.id] ?? wire.id} ${formatAmps(Math.abs(wire.amps))}`).join(", ")}. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above.${flow.moving ? "" : " (Still arrows: reduced motion.)"}`
+        : `No flow drawn: ${flow.reason}.`;
+    if (note.textContent !== text) note.textContent = text;
   }
 
   // ── Shared edits ──────────────────────────────────────────────────────────────

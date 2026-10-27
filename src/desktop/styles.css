@@ -2364,3 +2364,51 @@ textarea:focus-visible {
 .si-drive-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; color: #dbe5f3; font-size: 0.7rem; cursor: pointer; }
 .si-drive-toggle input { width: 18px; height: 18px; accent-color: #fde68a; }
 .si-drive-note { margin: 0; color: #c4cfe0; font-size: 0.64rem; line-height: 1.4; }
+
+/* The circuit meter is the Circuit Bench's contextual inspector, in the dock's Inspector tab. */
+.discussion-dock .inspector {
+  position: static;
+  z-index: auto;
+  width: auto;
+  max-height: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.discussion-dock .inspector-toggle { border-radius: 0; border-bottom: 1px solid var(--glass-line, var(--border)); }
+.discussion-dock .inspector-body { padding-top: 10px; overflow: visible; }
+.snapino-inspector[hidden] { display: none; }
+.inspector-tags { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.inspector-flow-note { margin: 0; color: #c4cfe0; font-size: 0.66rem; line-height: 1.45; }
+
+/* ── Phone chrome: one compact row each for studios + parts and for tools, so the 3D bench
+   starts high on the first screen; the dock (workshop, inspector, chat) follows below. ───── */
+@media (max-width: 620px) {
+  .workspace-header { min-height: 52px; }
+  .component-rail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .studio-switch { display: flex; flex: none; gap: 4px; padding: 0; background: transparent; border: 0; }
+  .studio-switch[hidden] { display: none; }
+  .studio-tab { width: 44px; min-height: 44px; padding: 0; }
+  .component-rail .rail-heading { display: none; }
+  .component-list { display: flex; flex: 1; min-width: 0; gap: 6px; padding: 0; overflow-x: auto; overflow-y: hidden; }
+  .component-card { flex: none; width: 48px; min-width: 48px; height: 48px; }
+  .component-symbol { width: 36px; height: 36px; font-size: 1.15rem; }
+  .component-rail .rail-footer-button { flex: none; margin: 0; }
+  .viewport-column { height: auto; grid-template-rows: auto minmax(420px, 62svh) auto; }
+  .viewport-toolbar { gap: 8px; min-height: 52px; padding: 4px 8px; }
+  /* One scrollable row of tools; the project menu opens fixed so the row cannot clip it. */
+  .toolbar-actions { flex-wrap: nowrap; justify-content: flex-start; max-width: 100%; overflow-x: auto; }
+  .toolbar-actions .tool-button { flex: none; }
+  .viewport-title { flex: none; }
+  .project-menu { position: fixed; top: 132px; right: 12px; left: auto; width: min(260px, calc(100vw - 24px)); z-index: 60; }
+}

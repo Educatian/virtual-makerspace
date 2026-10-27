@@ -7,6 +7,7 @@ import {
   BufferGeometry,
   CatmullRomCurve3,
   CircleGeometry,
+  ConeGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -19,6 +20,7 @@ import {
   InstancedMesh,
   Material,
   MathUtils,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
@@ -328,6 +330,17 @@ export class DesktopWorkbenchScene {
   /** One instanced mesh per tone (each with its own ring pattern), see selection-style.ts. */
   private studHighlights: Record<NetTone, InstancedMesh> | null = null;
   private lastStudHighlights: StudHighlight[] = [];
+  /**
+   * Circuit Bench "current flow" view: arrowheads along each jumper wire in the direction of the
+   * solved conventional current (dc-engine element reading: positive = endpoint A → B). Shown
+   * only for a valid solve (no short, open, missing supply or unsolvable circuit).
+   */
+  private flowEnabled = false;
+  private flowMarkers: InstancedMesh | null = null;
+  private flowWires: Array<{ id: string; amps: number; direction: 1 | -1; speed: number }> = [];
+  private flowReason = "off";
+  private flowPhase = 0;
+  private readonly flowTemp = { point: new Vector3(), tangent: new Vector3(), up: new Vector3(0, 1, 0), quaternion: new Quaternion(), worldQuaternion: new Quaternion(), dummy: new Object3D() };
   /** Smooth camera moves for the view presets (instant with reduced motion). */
   private cameraTween: { fromPosition: Vector3; fromTarget: Vector3; toPosition: Vector3; toTarget: Vector3; start: number; duration: number } | null = null;
   private readonly hoverBox = new BoxHelper(new Group(), 0xe2e8f0);
@@ -472,6 +485,7 @@ export class DesktopWorkbenchScene {
     this.orbit.update();
     this.cameraTween = null;
     if (this.studHighlights) for (const mesh of Object.values(this.studHighlights)) mesh.visible = false;
+    if (this.flowMarkers) this.flowMarkers.visible = this.flowEnabled && this.flowWires.length > 0 && studio === "circuit";
     // The Snapino bench fills the free view (the panels' insets are applied by then).
     if (studio === "snapino") requestAnimationFrame(() => this.activeStudio === "snapino" && this.viewPreset("bench"));
     this.evaluateCurrentSystem();
@@ -629,6 +643,121 @@ export class DesktopWorkbenchScene {
    * Snapino inspector cross-link: rings around the given studs (both nets of the selected part,
    * its own two studs larger). Plain printed-style rings, depth-tested, no additive glow.
    */
+  /** QA: a jumper's two ends in world space (end A = the element's lead a). */
+  wireEnds(id: string): [[number, number, number], [number, number, number]] | null {
+    const component = this.components.get(id);
+    const spec = component?.userData.spec as ComponentSpec | undefined;
+    if (!component || spec?.kind !== "wire") return null;
+    const [a, b] = this.getEndpointWorldPositions(component);
+    return [[a.x, a.y, a.z], [b.x, b.y, b.z]];
+  }
+
+  /** Circuit Bench: show or hide the solved-current arrows on the jumper wires. */
+  setCurrentFlow(enabled: boolean): void {
+    this.flowEnabled = enabled;
+    if (enabled && !this.flowMarkers) {
+      const geometry = new ConeGeometry(0.034, 0.1, 12);
+      const material = new MeshBasicMaterial({ name: "current_flow_arrow", color: 0xfbbf24, depthWrite: true });
+      this.flowMarkers = new InstancedMesh(geometry, material, 12);
+      this.flowMarkers.name = "current_flow_arrows";
+      this.flowMarkers.count = 0;
+      this.flowMarkers.userData.noPick = true;
+      this.flowMarkers.frustumCulled = false;
+      this.circuitGroup.add(this.flowMarkers);
+    }
+    if (!enabled && this.flowMarkers) {
+      this.flowMarkers.count = 0;
+      this.flowMarkers.visible = false;
+    }
+    this.flowPhase = 0;
+    this.recomputeFlow();
+  }
+
+  /** What the flow view shows (inspector note and QA). */
+  currentFlowState(): { enabled: boolean; reason: string; wires: Array<{ id: string; amps: number; direction: 1 | -1 }>; arrows: number; moving: boolean; first: [number, number, number] | null; firstPointsTo: [number, number, number] | null } {
+    let first: [number, number, number] | null = null;
+    let firstPointsTo: [number, number, number] | null = null;
+    if (this.flowMarkers?.visible && this.flowMarkers.count > 0) {
+      const matrix = new Matrix4();
+      this.flowMarkers.getMatrixAt(0, matrix);
+      const position = new Vector3().setFromMatrixPosition(matrix);
+      const axis = new Vector3(0, 1, 0).applyQuaternion(new Quaternion().setFromRotationMatrix(matrix));
+      first = [position.x, position.y, position.z];
+      firstPointsTo = [axis.x, axis.y, axis.z];
+    }
+    return {
+      first,
+      firstPointsTo,
+      enabled: this.flowEnabled,
+      reason: this.flowReason,
+      wires: this.flowWires.map(({ id, amps, direction }) => ({ id, amps, direction })),
+      arrows: this.flowMarkers?.visible ? this.flowMarkers.count : 0,
+      moving: this.flowEnabled && this.flowWires.length > 0 && !(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false),
+    };
+  }
+
+  private recomputeFlow(): void {
+    this.flowWires = [];
+    const analysis = this.circuitAnalysis;
+    if (!this.flowEnabled) this.flowReason = "off";
+    else if (!analysis) this.flowReason = "not solved yet";
+    else {
+      const status = analysis.board.result.status;
+      if (analysis.short || status === "short-circuit") this.flowReason = "short circuit";
+      else if (status === "open-circuit") this.flowReason = "open circuit";
+      else if (status === "no-source") this.flowReason = "no supply in the circuit";
+      else if (status !== "ok" && status !== "unsafe") this.flowReason = "the circuit could not be solved";
+      else {
+        for (const id of ["wire-red", "wire-blue", "wire-yellow"]) {
+          const reading = analysis.board.result.elements[id];
+          if (!reading?.connected || Math.abs(reading.amps) < 1e-4) continue;
+          const speed = MathUtils.clamp(0.12 + 0.1 * Math.log10(Math.abs(reading.amps) / 1e-4), 0.12, 0.5);
+          this.flowWires.push({ id, amps: reading.amps, direction: reading.amps > 0 ? 1 : -1, speed });
+        }
+        this.flowReason = this.flowWires.length ? "solved" : "no current through any jumper wire";
+      }
+    }
+    if (this.flowMarkers) {
+      this.flowMarkers.count = this.flowWires.length * 4;
+      this.flowMarkers.visible = this.flowEnabled && this.flowWires.length > 0 && this.activeStudio === "circuit";
+      this.placeFlowMarkers(0);
+    }
+  }
+
+  /** Arrowheads along each wire's curve, pointing with the current; they glide unless reduced motion. */
+  private placeFlowMarkers(seconds: number): void {
+    const markers = this.flowMarkers;
+    if (!markers || !markers.visible) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (!reduced) this.flowPhase = (this.flowPhase + seconds) % 1000;
+    const { point, tangent, up, quaternion, worldQuaternion, dummy } = this.flowTemp;
+    let index = 0;
+    for (const wire of this.flowWires) {
+      const component = this.components.get(wire.id);
+      const curve = component?.userData.wireCurve as CatmullRomCurve3 | undefined;
+      if (!component || !curve) continue;
+      component.updateMatrixWorld();
+      component.getWorldQuaternion(worldQuaternion);
+      for (let k = 0; k < 4; k += 1) {
+        const along = (k / 4 + (reduced ? 0.125 : this.flowPhase * wire.speed)) % 1;
+        const t = 0.08 + 0.84 * (wire.direction === 1 ? along : 1 - along);
+        curve.getPointAt(t, point);
+        curve.getTangentAt(t, tangent).multiplyScalar(wire.direction);
+        component.localToWorld(point);
+        tangent.applyQuaternion(worldQuaternion).normalize();
+        quaternion.setFromUnitVectors(up, tangent);
+        // Lift the arrow just outside the insulation so it reads against the wire.
+        dummy.position.copy(point).addScaledVector(up, 0.045);
+        dummy.quaternion.copy(quaternion);
+        dummy.updateMatrix();
+        markers.setMatrixAt(index, dummy.matrix);
+        index += 1;
+      }
+    }
+    markers.count = index;
+    markers.instanceMatrix.needsUpdate = true;
+  }
+
   /** QA: the studs highlighted right now. */
   studHighlightState(): StudHighlight[] {
     const shown = this.studHighlights && Object.values(this.studHighlights).some((mesh) => mesh.visible);
@@ -1212,6 +1341,12 @@ export class DesktopWorkbenchScene {
   dispose(): void {
     this.remoteHands.dispose();
     this.remoteTweens.clear();
+    if (this.flowMarkers) {
+      this.flowMarkers.geometry.dispose();
+      (this.flowMarkers.material as Material).dispose();
+      this.flowMarkers.removeFromParent();
+      this.flowMarkers = null;
+    }
     this.resizeObserver.disconnect();
     this.renderer.setAnimationLoop(null);
     this.renderer.domElement.removeEventListener("pointerdown", this.onPointerDown, true);
@@ -2781,6 +2916,7 @@ export class DesktopWorkbenchScene {
         end.clone(),
       ]);
     }
+    component.userData.wireCurve = curve;
     body.geometry.dispose();
     body.geometry = new TubeGeometry(curve, spec.kind === "hose" ? 52 : 64, spec.kind === "hose" ? 0.075 : WIRE_RADIUS, spec.kind === "hose" ? 14 : 12, false);
     const tipOffset = spec.kind === "hose" ? -0.14 : WIRE_TIP_CENTER;
@@ -2853,6 +2989,7 @@ export class DesktopWorkbenchScene {
       this.applyLedGlow(led, brightness, burnt ? 0 : 1);
     }
     const powered = analysis.powered;
+    this.recomputeFlow();
     this.events.onCircuitState(powered);
     this.events.onCircuitAnalysis?.(analysis);
     if (announce) {
@@ -3276,6 +3413,7 @@ export class DesktopWorkbenchScene {
     if (this.remoteTweens.size) this.stepRemoteTweens(frameSeconds);
     this.remoteHands.update(this.camera);
     if (this.ledFlashes.size) this.stepLedFlashes(now);
+    if (this.flowEnabled && this.flowWires.length && this.activeStudio === "circuit") this.placeFlowMarkers(frameSeconds);
     if (this.selected) {
       const indicators = (this.selected.userData.endpointIndicators ?? []) as Mesh[];
       const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.09;
