@@ -63,6 +63,21 @@ async function say(page, text) {
   }, text);
 }
 const powered = (page) => page.evaluate(() => document.querySelector("#check-circuit")?.classList.contains("is-valid") ?? false);
+const meter = (page) => page.evaluate(() => document.querySelector("#inspector-pill")?.textContent?.trim() ?? "");
+async function waitForMeter(page, pattern, timeout = 20_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    const text = await meter(page);
+    if (pattern.test(text)) return text;
+    await page.waitForTimeout(300);
+  }
+  return meter(page);
+}
+const traceCounts = (page) => page.evaluate(() => {
+  const traces = JSON.parse(localStorage.getItem(`vm-trace:${new URLSearchParams(location.search).get("room")}`) ?? "[]");
+  const count = (action) => traces.filter((trace) => trace.action === action).length;
+  return { claim: count("claim"), move: count("move"), edit: count("edit") };
+});
 async function markReady(page) {
   await page.evaluate(() => {
     document.querySelector('.discussion-tab[data-tab="team"]')?.click();
@@ -122,15 +137,17 @@ await say(learner, "The path has to come back to the other side of the battery b
 check("Bolt learns the complete loop", Boolean(await waitForBolt(learner, /come back to the battery\. Got it/)));
 check("Bolt rebuilds again", await waitForBoltCount(learner, /^Done\./, 3));
 await learner.waitForTimeout(1000);
-check("loop + strips light the LED", await powered(learner));
+check("loop + strips without a resistor is not a success (LED straight across 9 V)", !(await powered(learner)));
+check("the meter reports the LED burning out, from the circuit engine", /burns out/i.test(await waitForMeter(learner, /burns out/i)), await meter(learner));
 await readyAndTest(learner);
-check("Bolt notices nothing protects the LED? (not yet taught)", Boolean(await waitForBolt(learner, /fine right on the battery|done\?/)));
+check("Bolt sees the burnout and voices its naive idea (not yet taught)", Boolean(await waitForBolt(learner, /burn out\. So it wasn't fine right on the battery|burn out at about/)));
 
 await say(learner, "Add a resistor because it limits the current so the LED doesn't burn out.");
 check("Bolt learns the series resistor", Boolean(await waitForBolt(learner, /too much current from reaching the LED\. Got it/)));
 check("Bolt rebuilds with the resistor", await waitForBoltCount(learner, /^Done\./, 4));
 await learner.waitForTimeout(1000);
-check("Bolt's rebuild stays lit with the resistor", await powered(learner));
+check("Bolt's rebuild with the 1 kΩ resistor is a safe success", await powered(learner));
+check("the meter shows a safe LED current (~7 mA)", /Safe · 7\.\d mA/.test(await waitForMeter(learner, /Safe/)), await meter(learner));
 if (shots) await learner.screenshot({ path: `${shots}/2-taught-build.png` });
 
 await tap(learner, '.discussion-tab[data-tab="team"]');
@@ -153,6 +170,57 @@ check("a second maker sees Bolt in the room", await partner.locator(".team-membe
 check("only one Bolt is offered per room", await partner.locator("#invite-ai").count() === 0);
 await partner.waitForTimeout(2000);
 check("a late joiner receives Bolt's working circuit", await powered(partner));
+check("the late joiner's meter agrees", /Safe · 7\.\d mA/.test(await waitForMeter(partner, /Safe/)), await meter(partner));
+
+// Electrical values are shared edits: the learner sets the 1 kΩ resistor to 220 Ω.
+const before = await traceCounts(learner);
+await learner.evaluate(() => document.querySelector('.component-card[data-component-id="resistor-1k"]')?.click());
+await learner.waitForSelector('.value-editor[data-part="resistor-1k"]');
+await learner.evaluate(() => document.querySelector('.value-editor[data-part="resistor-1k"] .preset[data-value="220"]')?.click());
+check("220 Ω at 9 V overdrives the LED on the editor's bench", /Overdriven/.test(await waitForMeter(learner, /Overdriven/)), await meter(learner));
+check("the teammate sees the same overdriven circuit", /Overdriven/.test(await waitForMeter(partner, /Overdriven/)), await meter(partner));
+const afterEdit = await traceCounts(learner);
+check("a value edit is traced as 'edit', never as claim/move", afterEdit.claim === before.claim && afterEdit.move === before.move && afterEdit.edit === before.edit + 1, JSON.stringify({ before, afterEdit }));
+
+// Typed input outside the allowed range is refused and changes nothing.
+await learner.evaluate(() => {
+  const input = document.querySelector('.value-editor[data-part="resistor-1k"] input');
+  input.value = "5";
+  input.closest("form").requestSubmit();
+});
+await learner.waitForTimeout(500);
+check("an out-of-range value is refused with an explanation", /Enter a resistance/.test(await learner.evaluate(() => document.querySelector("#value-error")?.textContent ?? "")));
+
+// Undo is a shared edit too: both benches go back to the safe 1 kΩ circuit.
+await learner.evaluate(() => document.querySelector("#undo-edit")?.click());
+check("undo restores the safe circuit for the editor", /Safe/.test(await waitForMeter(learner, /Safe/)), await meter(learner));
+check("undo reaches the teammate", /Safe/.test(await waitForMeter(partner, /Safe/)), await meter(partner));
+
+// A teammate's newer change is never undone by someone else's older history.
+await partner.evaluate(() => document.querySelector('.component-card[data-component-id="resistor-1k"]')?.click());
+await partner.waitForSelector('.value-editor[data-part="resistor-1k"]');
+await partner.evaluate(() => document.querySelector('.value-editor[data-part="resistor-1k"] .preset[data-value="470"]')?.click());
+await waitForMeter(learner, /Safe · 14/);
+await learner.evaluate(() => document.querySelector("#redo-edit")?.click());
+await learner.waitForTimeout(800);
+check("a stale redo is refused instead of overwriting the teammate's 470 Ω", /Safe · 14/.test(await meter(learner)) && /Safe · 14/.test(await meter(partner)), `${await meter(learner)} / ${await meter(partner)}`);
+
+// Project export holds the build, not people.
+const [download] = await Promise.all([
+  learner.waitForEvent("download"),
+  learner.evaluate(() => document.querySelector("#export-project")?.click()),
+]);
+const exported = JSON.parse(await (await import("node:fs/promises")).readFile(await download.path(), "utf8"));
+const exportedText = JSON.stringify(exported);
+check("export is a versioned project with the edited value", exported.format === "virtual-makerspace.project" && exported.version === 1 && exported.parts.find((part) => part.id === "resistor-1k")?.props?.ohms === 470);
+check("export holds no names, ids, chat or traces", !/Ana|Ben|Bolt|participant|chat|trace|teach/i.test(exportedText));
+
+// Import refuses hostile files and leaves the bench alone.
+const hostile = { ...exported, parts: [{ id: "<img src=x onerror=alert(1)>", sockets: [1, 2] }] };
+await learner.setInputFiles("#project-file-input", { name: "evil.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(hostile)) });
+await learner.waitForTimeout(600);
+check("a hostile project is refused without touching the bench", /Import refused/.test(await learner.evaluate(() => document.querySelector("#scene-status-copy")?.textContent ?? "")) && /Safe · 14/.test(await meter(learner)));
+check("nothing from the file is rendered as HTML", await learner.evaluate(() => !document.querySelector("img[src='x']")));
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

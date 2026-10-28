@@ -73,7 +73,8 @@ export function spawnLed(
       snapThreshold: SNAP_THRESHOLD,
       spawnPos: position,
     })
-    .addComponent(CircuitNode)
+    // Lead A (−x) is the anode. Forward voltage by color: green ≈ 2.1 V, otherwise red ≈ 1.9 V.
+    .addComponent(CircuitNode, { forwardVolts: (color & 0xff0000) >> 16 < 0x80 && (color & 0x00ff00) >> 8 > 0x80 ? 2.1 : 1.9 })
     .addComponent(LedState);
   if (gazeName) entity.addComponent(GazeTarget, { name: gazeName });
   return entity;
@@ -84,6 +85,7 @@ export function spawnResistor(
   position: [number, number, number],
   bandColor = 0xc8a060,
   gazeName?: string,
+  ohms = 220,
 ) {
   const group = new Group();
 
@@ -121,7 +123,7 @@ export function spawnResistor(
       snapThreshold: SNAP_THRESHOLD,
       spawnPos: position,
     })
-    .addComponent(CircuitNode);
+    .addComponent(CircuitNode, { ohms });
   if (gazeName) entity.addComponent(GazeTarget, { name: gazeName });
   return entity;
 }

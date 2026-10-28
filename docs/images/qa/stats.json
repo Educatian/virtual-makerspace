@@ -1,0 +1,257 @@
+{
+  "renderer": "SwiftShader (software WebGL) in headless Chromium 1194, deviceScaleFactor 1, default quality tier",
+  "before": "base 8e1378f (PR #2) build with the same ?qa camera/placement hook",
+  "after": "feat/circuit-workbench-upgrade working tree for commit (the commit that adds docs/images/qa)",
+  "views": {
+    "1-overview": {
+      "before": {
+        "calls": 508,
+        "triangles": 78968,
+        "geometries": 280,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 271,
+        "triangles": 40904,
+        "geometries": 259,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "2-overview-collapsed": {
+      "before": {
+        "calls": 364,
+        "triangles": 71504,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 164,
+        "triangles": 36192,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "3-breadboard-close": {
+      "before": {
+        "calls": 192,
+        "triangles": 53952,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 88,
+        "triangles": 26264,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "4-led-resistor-close": {
+      "before": {
+        "calls": 133,
+        "triangles": 40480,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 64,
+        "triangles": 19230,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "5-cable-ends-close": {
+      "before": {
+        "calls": 208,
+        "triangles": 55080,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 103,
+        "triangles": 27112,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "6-battery-close": {
+      "before": {
+        "calls": 189,
+        "triangles": 47968,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 86,
+        "triangles": 22094,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "7-rails-close": {
+      "before": {
+        "calls": 150,
+        "triangles": 41768,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 71,
+        "triangles": 16032,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "8-snapino-overview": {
+      "before": {
+        "calls": 1220,
+        "triangles": 96056,
+        "geometries": 725,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 1229,
+        "triangles": 96826,
+        "geometries": 625,
+        "textures": 13,
+        "pixelRatio": 1
+      }
+    },
+    "9-pcb-close": {
+      "before": {
+        "calls": 448,
+        "triangles": 29504,
+        "geometries": 725,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 457,
+        "triangles": 30274,
+        "geometries": 625,
+        "textures": 13,
+        "pixelRatio": 1
+      }
+    },
+    "10-laptop": {
+      "before": {
+        "calls": 534,
+        "triangles": 77040,
+        "geometries": 293,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 266,
+        "triangles": 37878,
+        "geometries": 255,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "11-led-powered": {
+      "before": {
+        "calls": 140,
+        "triangles": 42192,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 67,
+        "triangles": 19970,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "12-led-unpowered": {
+      "before": {
+        "calls": 178,
+        "triangles": 52600,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 83,
+        "triangles": 24968,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "13-occupied-sockets": {
+      "before": {
+        "calls": 160,
+        "triangles": 42344,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 76,
+        "triangles": 18790,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "14-cable-tip-macro": {
+      "before": {
+        "calls": 157,
+        "triangles": 43056,
+        "geometries": 281,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 69,
+        "triangles": 17830,
+        "geometries": 260,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "15-meter-editor": {
+      "before": null,
+      "after": {
+        "calls": 178,
+        "triangles": 38112,
+        "geometries": 268,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    },
+    "16-phone": {
+      "before": {
+        "calls": 293,
+        "triangles": 59424,
+        "geometries": 187,
+        "textures": 13,
+        "pixelRatio": 1
+      },
+      "after": {
+        "calls": 131,
+        "triangles": 29018,
+        "geometries": 123,
+        "textures": 16,
+        "pixelRatio": 1
+      }
+    }
+  }
+}

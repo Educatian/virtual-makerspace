@@ -6,7 +6,7 @@ import {
   clampMs,
   describeStatement,
   sanitizeProgram,
-  toArduino,
+  toArduinoSketch,
   type PinStates,
   type SnapinoPin,
   type SnapinoStatement,
@@ -27,6 +27,9 @@ import {
   type RoomChatMessage,
 } from "./collaboration.js";
 import { AI_TEAMMATE_NAME, AiTeammate, TYPING_DETAIL, forgetAiTeammate } from "./ai-teammate.js";
+import { WorkbenchTools } from "./workbench-tools.js";
+import { sameProgram, sameTransform } from "./edit-history.ts";
+import type { SharedTransform } from "./collaboration.js";
 import {
   DesktopWorkbenchScene,
   type ComponentSpec,
@@ -77,6 +80,8 @@ let aiTeammate: AiTeammate | null = null;
 /** The learner asked for Bolt (lobby switch or `?teammate=ai`); invited on entering a room. */
 let bringBolt = params.get("teammate") === "ai";
 let workbench: DesktopWorkbenchScene | null = null;
+/** Inspector/meter, undo/redo, project files and recovery around the shared scene. */
+let tools: WorkbenchTools | null = null;
 let participants: Participant[] = [];
 let selectedComponent: ComponentSpec | null = null;
 let currentRoomCode = initialRoomCode;
@@ -85,7 +90,10 @@ let powered = false;
 let activeStudio: StudioKind = toStudio(params.get("studio"));
 let speechEnabled = false;
 let lobbyStudio: StudioKind = activeStudio;
+/** The local code editor's program (may hold unsaved edits). */
 let program: SnapinoStatement[] = EXAMPLES.blink.program.map((statement) => ({ ...statement }));
+/** The program the room runs (shared): changed only by accepted room edits. */
+let roomProgram: SnapinoStatement[] = program.map((statement) => ({ ...statement }));
 let programRunning = false;
 let programDirty = false;
 let pinLevels: PinStates = { D3: false, D5: false, D6: false };
@@ -126,17 +134,17 @@ interface StudioCopy {
 
 const STUDIO_COPY: Record<StudioKind, StudioCopy> = {
   circuit: {
-    subtitle: "Motherboard Circuit Lab",
-    heading: "Motherboard",
+    subtitle: "Breadboard LED Circuit Lab",
+    heading: "Circuit Bench",
     caption: "Diagnose and rebuild the LED power path",
-    testTooltip: "Test motherboard power path",
+    testTooltip: "Test the LED power path",
     challenge: "Restore power: battery → resistor → LED",
     challengeAction: "Load a diagnostic reference circuit",
     challengeLabel: "Load diagnostic circuit",
     hypothesis: "A resistor in series with the LED will limit current and allow the LED to light safely.",
     chat: "Discuss your circuit…",
-    seed: "Trace the motherboard power path from battery to resistor to LED. Compare both sides of the center channel before connecting each lead.",
-    goal: "Co-diagnose and rebuild a safe LED power path on the shared motherboard.",
+    seed: "Trace the power path from battery to resistor to LED. Compare both sides of the center channel before connecting each lead, and check the meter: a safe LED stays under 20 mA.",
+    goal: "Co-diagnose and rebuild a safe LED power path on the shared breadboard.",
     opened: "Circuit Bench opened",
     testActivity: "Power-path test",
     testTrace: "Ran motherboard power-path test",
@@ -543,6 +551,20 @@ async function testMicrophone(): Promise<void> {
   }
 }
 
+/**
+ * Someone else holding `resourceId` or a resource it conflicts with: a whole part conflicts
+ * with either cable end, an end with the whole part (and itself). Mirrors the room's rule.
+ */
+function conflictingOwner(resourceId: string): { id: string; name: string } | null {
+  const [partId, end] = resourceId.split("::");
+  const keys = end ? [partId, resourceId] : [partId, `${partId}::endpoint-0`, `${partId}::endpoint-1`];
+  for (const key of keys) {
+    const owner = owners.get(key);
+    if (owner && owner.id !== room?.participant.id) return owner;
+  }
+  return null;
+}
+
 function enterWorkspace(): void {
   params.set("room", currentRoomCode);
   params.set("studio", activeStudio);
@@ -570,8 +592,45 @@ function enterWorkspace(): void {
       renderTeamPanel();
     },
     onChat: appendChatMessage,
-    onTransform: (componentId, transform) => {
-      workbench?.applyRemoteTransform(componentId, transform);
+    onApply: (componentId, transform, { force, propsOnly }) => {
+      workbench?.applyRemoteTransform(componentId, transform, true, { force, propsOnly });
+      tools?.noteChange();
+    },
+    onRevert: (componentId, transform, { superseded, holderName }) => {
+      workbench?.revertPart(componentId, transform, superseded);
+      if (!superseded) showSceneStatus(holderName ? `${holderName} is holding this part · the room's position was kept` : "The room did not accept that move · the shared position was kept", "warning");
+      tools?.noteChange();
+    },
+    onClaimDenied: (resourceId, holderName) => {
+      workbench?.abortDragOf(resourceId.split("::")[0]);
+      showSceneStatus(`${holderName || "A teammate"} is already moving this component`, "warning");
+    },
+    onRoomState: ({ fresh, componentIds, ownMovesInFlight }) => {
+      if (!workbench || !room) return;
+      const ids = Object.keys(workbench.getSharedTransforms());
+      if (fresh) {
+        // The room has no bench (new, or everyone left): this bench seeds it, as one edit.
+        const seed: Array<{ id: string; transform: SharedTransform }> = [];
+        const current = workbench.getSharedTransforms();
+        for (const id of ids) {
+          const defaults = workbench.defaultTransform(id);
+          if (defaults && !sameTransform(current[id], defaults)) seed.push({ id, transform: current[id] });
+        }
+        if (seed.length) {
+          console.info(`[room] the room has no bench yet; seeding it with ${seed.length} changed part(s): ${seed.map((change) => change.id).join(", ")}`);
+          void room.submitEdit(seed).then((result) => {
+            if (!result.ok) room?.requestRoomState();
+          });
+        }
+        return;
+      }
+      // Parts the room does not list were never changed there: they are at their defaults.
+      for (const id of ids) {
+        if (componentIds.includes(id) || ownMovesInFlight.includes(id)) continue;
+        const defaults = workbench.defaultTransform(id);
+        if (defaults) workbench.applyRemoteTransform(id, defaults, false, { force: true });
+      }
+      tools?.noteChange();
     },
     onClaim: (componentId, owner) => {
       if (owner) owners.set(componentId, owner);
@@ -583,22 +642,28 @@ function enterWorkspace(): void {
           : null,
       );
       renderSelection();
+      tools?.refreshPart();
     },
     onVoiceStatus: updateVoiceStatus,
     onRemoteAudio: attachRemoteAudio,
     onStateRequest: (targetId) => {
-      if (workbench && room) room.sendState(targetId, workbench.getSharedTransforms());
+      if (workbench && room) room.sendState(targetId, workbench.getSharedTransforms(), { program: roomProgram, running: programRunning });
     },
-    onState: (transforms) => {
+    onState: (transforms, sharedProgram) => {
       if (workbench) workbench.applySharedState(transforms);
       else queuedSharedState = transforms;
+      const sanitized = sharedProgram ? sanitizeProgram(sharedProgram.program) : null;
+      if (sanitized && typeof sharedProgram?.running === "boolean") applyRoomProgram(sanitized, sharedProgram.running);
     },
     onProgram: (next, running, participantId) => {
       const sanitized = sanitizeProgram(next);
       if (!sanitized) return;
-      const author = participants.find((participant) => participant.id === participantId)?.name ?? "A teammate";
-      applyProgram(sanitized, running);
-      showSceneStatus(`${author} ${running ? "uploaded" : "stopped"} the Snapino program`, "neutral");
+      const changed = !sameProgram(sanitized, roomProgram) || running !== programRunning;
+      applyRoomProgram(sanitized, running);
+      if (changed && participantId && participantId !== room?.participant.id) {
+        const author = participants.find((participant) => participant.id === participantId)?.name ?? "A teammate";
+        showSceneStatus(`${author} ${running ? "uploaded" : "stopped"} the Snapino program${programDirty ? " · your unsaved edits are kept in your editor" : ""}`, "neutral");
+      }
     },
     onStudio: (studio, participantId) => {
       const mover = participants.find((participant) => participant.id === participantId)?.name ?? "The host";
@@ -625,32 +690,52 @@ function enterWorkspace(): void {
       if (component) room?.setActivity("inspecting", component.name);
       else room?.setActivity("available");
       renderSelection();
+      tools?.refreshPart();
     },
     onStatus: showSceneStatus,
     onTransform: (componentId, transform) => room?.sendTransform(componentId, transform),
     onClaim: (componentId) => {
-      const owner = owners.get(componentId);
-      if (owner && owner.id !== room?.participant.id) {
+      // A whole part conflicts with either cable end, and an end with the whole part.
+      const owner = conflictingOwner(componentId);
+      if (owner) {
         showSceneStatus(`${owner.name} is already moving this component`, "warning");
         return false;
       }
-      room?.claim(componentId);
+      if (!room || room.offline) {
+        showSceneStatus("Reconnecting to the room · moves are paused so nothing is lost", "warning");
+        return false;
+      }
+      tools?.beginLocalEdit(componentId);
       const componentName = componentNameForResource(componentId);
-      room?.setActivity("moving", componentName);
-      room?.recordTrace("claim", collaborationPhase, activeStudio, {
-        objectId: componentId,
-        objectName: componentName,
+      room.setActivity("moving", componentName);
+      // The claim trace is written once the room grants the claim (never for a refused one).
+      void room.claim(componentId).then((granted) => {
+        if (!granted) return;
+        room?.recordTrace("claim", collaborationPhase, activeStudio, { objectId: componentId, objectName: componentName });
       });
       return true;
     },
     onRelease: (componentId) => {
       const componentName = componentNameForResource(componentId);
-      room?.release(componentId);
-      room?.recordTrace("move", collaborationPhase, activeStudio, {
-        objectId: componentId,
-        objectName: componentName,
-      });
+      const record = tools?.endLocalEdit(componentId);
       setTransientActivity("available");
+      if (!room) return;
+      // History and the move trace follow the room: only a drag whose every move was accepted.
+      void room.release(componentId).then((accepted) => {
+        record?.(accepted);
+        if (!accepted) return;
+        room?.recordTrace("move", collaborationPhase, activeStudio, { objectId: componentId, objectName: componentName });
+      });
+    },
+    onDragAborted: (resourceId) => {
+      room?.abandon(resourceId);
+      tools?.cancelLocalEdit(resourceId);
+      setTransientActivity("available");
+    },
+    onEdit: (changes, label) => {
+      void tools?.applyBulk(changes, label).then((accepted) => {
+        if (accepted) workbench?.saveAttempt(label);
+      });
     },
     onAttempt: addAttempt,
     onCircuitState: (isPowered) => {
@@ -663,6 +748,28 @@ function enterWorkspace(): void {
       environmentState = state;
       renderEnvironmentState();
     },
+    onCircuitAnalysis: (analysis) => tools?.setAnalysis(analysis),
+  });
+  tools = new WorkbenchTools({
+    workbench: () => workbench,
+    room: () => room,
+    studio: () => activeStudio,
+    phase: () => collaborationPhase,
+    roomCode: () => currentRoomCode,
+    holderOf: (componentId) => {
+      for (const resourceId of [componentId, `${componentId}::endpoint-0`, `${componentId}::endpoint-1`]) {
+        const owner = owners.get(resourceId);
+        if (owner && owner.id !== room?.participant.id) return owner.name;
+      }
+      return null;
+    },
+    boltBuilding: () => Boolean(aiTeammate?.isBuilding),
+    roomProgram: () => ({ program: roomProgram, running: programRunning }),
+    draftProgram: () => (programDirty ? program : null),
+    loadDraft: (next) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
+    status: showSceneStatus,
+    selected: () => selectedComponent,
+    layoutChanged: () => updateViewInsets(),
   });
   if (queuedSharedState) {
     workbench.applySharedState(queuedSharedState);
@@ -670,6 +777,34 @@ function enterWorkspace(): void {
   }
 
   workbench.switchStudio(activeStudio, false);
+  // Visual-QA hook (camera placement + render counters); only exposed with ?qa in the URL.
+  if (params.has("qa")) {
+    (window as unknown as { __vmQa?: unknown }).__vmQa = {
+      view: (position: [number, number, number], target: [number, number, number]) => workbench?.setCameraView(position, target, true),
+      stats: () => workbench?.renderStats(),
+      demo: () => workbench?.loadCircuitDemo(),
+      /** What this participant sees: seated parts, values, switch states, the room program and any draft. */
+      bench: () => {
+        const transforms = workbench?.getSharedTransforms() ?? {};
+        const parts: Record<string, unknown> = {};
+        for (const [id, transform] of Object.entries(transforms)) {
+          if (!workbench?.studioCatalog(activeStudio).parts.hasOwnProperty(id)) continue;
+          parts[id] = { sockets: transform.sockets ?? null, ...(transform.props ? { props: transform.props } : {}), ...(transform.on !== undefined ? { on: transform.on } : {}) };
+        }
+        return { studio: activeStudio, parts, program: roomProgram, running: programRunning, draft: programDirty ? program : null, canUndo: tools?.history.canUndo ?? false, canRedo: tools?.history.canRedo ?? false };
+      },
+      /** Edit the local code editor (as typing in it would), without uploading. */
+      editDraft: (next: SnapinoStatement[]) => editProgram((draft) => draft.splice(0, draft.length, ...next.map((statement) => ({ ...statement })))),
+      /** Drop a cable end into a socket through the real drag path (claim → move → release). */
+      dropEnd: (componentId: string, index: 0 | 1, socket: number) => workbench?.qaDropEndpoint(componentId, index, socket) ?? false,
+      /** Seat a part locally (no room traffic) for close-up captures. */
+      place: (componentId: string, a: number, b: number) => {
+        const transform = workbench?.placementTransform(componentId, [a, b]);
+        if (transform) workbench?.applyRemoteTransform(componentId, transform, false);
+        return Boolean(transform);
+      },
+    };
+  }
   snapinoRunner = new SnapinoRunner(
     (pins) => {
       pinLevels = pins;
@@ -679,13 +814,17 @@ function enterWorkspace(): void {
     () => workbench?.readSnapinoInput() ?? false,
   );
   if (joinedProgram) {
-    applyProgram(joinedProgram.program, joinedProgram.running);
+    applyRoomProgram(joinedProgram.program, joinedProgram.running);
     joinedProgram = null;
   }
 
   loadActivityTraces();
   renderComponentPalette();
   bindWorkspaceEvents();
+  tools.bind();
+  workbench.reevaluate();
+  // Offer local recovery once any shared state from teammates has had time to arrive.
+  window.setTimeout(() => tools?.offerRecovery(), 2600);
   updateStudioUi();
   installNativeTooltips();
   loadChatHistory();
@@ -785,6 +924,17 @@ function renderWorkspace(): void {
             <div class="viewport-title" data-tooltip="Shared 3D workspace"><i class="ph ph-cube"></i><strong id="viewport-heading">Workbench</strong><span class="sr-only" id="viewport-caption">Camera is local · components are shared</span></div>
             <div class="toolbar-actions">
               <button class="tool-button icon-only is-valid" id="toggle-magnet" type="button" aria-label="Toggle magnetic guidance" data-tooltip="Magnetic guidance on"><i class="ph ph-magnet"></i><span class="sr-only">Magnetism on</span></button>
+              <button class="tool-button icon-only" id="undo-edit" type="button" aria-label="Undo" data-tooltip="Undo" disabled><i class="ph ph-arrow-u-up-left"></i></button>
+              <button class="tool-button icon-only" id="redo-edit" type="button" aria-label="Redo" data-tooltip="Redo" disabled><i class="ph ph-arrow-u-up-right"></i></button>
+              <div class="project-menu-wrap">
+                <button class="tool-button icon-only" id="project-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="project-menu" aria-label="Project file" data-tooltip="Project: export, import, reset"><i class="ph ph-folder-simple"></i></button>
+                <div class="project-menu" id="project-menu" role="menu" hidden>
+                  <button type="button" role="menuitem" id="export-project"><i class="ph ph-download-simple" aria-hidden="true"></i> Export project (.json)</button>
+                  <button type="button" role="menuitem" id="import-project"><i class="ph ph-upload-simple" aria-hidden="true"></i> Import project…</button>
+                  <button type="button" role="menuitem" id="reset-bench" class="is-danger"><i class="ph ph-broom" aria-hidden="true"></i> Reset bench…</button>
+                  <p class="project-menu-note">Files hold parts, values and the Snapino program — never names, chat or activity.</p>
+                </div>
+              </div>
               <button class="tool-button icon-only" id="reset-view" type="button" aria-label="Reset view" data-tooltip="Reset camera"><i class="ph ph-crosshair"></i><span class="sr-only">Reset view</span></button>
               <button class="tool-button icon-only" id="check-circuit" type="button" aria-label="Test the current system" data-tooltip="Test system"><i class="ph ph-lightning"></i><span class="sr-only">Check circuit</span></button>
               <button class="tool-button icon-only" id="toggle-speech" type="button" aria-pressed="false" aria-label="Spoken status off" data-tooltip="Spoken status off"><i class="ph ph-speaker-simple-slash"></i></button>
@@ -821,6 +971,7 @@ function renderWorkspace(): void {
               <button class="challenge-action" id="load-field-test" type="button" aria-label="Load field-test layout" data-tooltip="Load a connected field-test layout"><i class="ph ph-play"></i></button>
             </aside>
             <div class="selection-toolbar" id="selection-toolbar" hidden></div>
+            ${WorkbenchTools.markup()}
             <div class="drop-callout" id="drop-callout"><i class="ph ph-cube"></i> Drop into the 3D workspace</div>
           </div>
 
@@ -886,14 +1037,19 @@ function renderWorkspace(): void {
                 <button class="secondary-button compact" type="button" data-add="follow"><i class="ph ph-arrows-left-right"></i> Follow S1</button>
               </div>
               <div class="code-run">
-                <button class="primary-button" id="code-upload" type="button"><i class="ph ph-upload-simple"></i> Upload &amp; Run</button>
+                <button class="primary-button" id="code-upload" type="button"><i class="ph ph-play"></i> Run blocks</button>
                 <button class="secondary-button" id="code-stop" type="button"><i class="ph ph-stop"></i> Stop</button>
               </div>
               <p class="code-status" id="code-status" role="status" aria-live="polite">Not uploaded</p>
               <div class="pin-leds" id="pin-leds" aria-label="Pin levels"></div>
+              <p class="code-honesty"><i class="ph ph-info" aria-hidden="true"></i><span>The bench runs these blocks in a <strong>limited block runner</strong> (pin on/off, wait, follow S1). It does not compile or emulate Arduino/AVR code; the C sketch below is generated for you to read and upload yourself.</span></p>
               <details class="code-source" open>
-                <summary>Arduino C</summary>
+                <summary>Generated Arduino sketch (.ino)</summary>
                 <pre id="code-source" tabindex="0" aria-label="Generated Arduino code"></pre>
+                <div class="code-export">
+                  <button class="secondary-button compact" id="code-download" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i> Download .ino</button>
+                  <button class="secondary-button compact" id="code-copy" type="button"><i class="ph ph-copy" aria-hidden="true"></i> Copy</button>
+                </div>
               </details>
             </section>
           </div>
@@ -1033,6 +1189,38 @@ function bindWorkspaceEvents(): void {
       : '<i class="ph ph-magnet-straight"></i><span class="sr-only">Magnetism off</span>';
   });
   document.querySelector("#check-circuit")?.addEventListener("click", runSharedTest);
+  document.querySelector("#undo-edit")?.addEventListener("click", () => tools?.undo());
+  document.querySelector("#redo-edit")?.addEventListener("click", () => tools?.redo());
+  const menuButton = document.querySelector<HTMLButtonElement>("#project-menu-button");
+  const menu = document.querySelector<HTMLElement>("#project-menu");
+  const setMenu = (open: boolean): void => {
+    if (!menu || !menuButton) return;
+    menu.hidden = !open;
+    menuButton.setAttribute("aria-expanded", String(open));
+    if (open) menu.querySelector<HTMLButtonElement>("button")?.focus();
+  };
+  menuButton?.addEventListener("click", () => setMenu(Boolean(menu?.hidden)));
+  menu?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setMenu(false);
+      menuButton?.focus();
+    }
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (menu && !menu.hidden && !(event.target as HTMLElement).closest(".project-menu-wrap")) setMenu(false);
+  });
+  document.querySelector("#export-project")?.addEventListener("click", () => {
+    setMenu(false);
+    tools?.exportProject();
+  });
+  document.querySelector("#import-project")?.addEventListener("click", () => {
+    setMenu(false);
+    tools?.chooseImport();
+  });
+  document.querySelector("#reset-bench")?.addEventListener("click", () => {
+    setMenu(false);
+    void tools?.confirmReset();
+  });
   document.querySelector("#load-field-test")?.addEventListener("click", () => {
     if (activeStudio === "greenhouse") workbench?.loadGreenhouseDemo();
     else if (activeStudio === "snap") workbench?.loadSnapDemo();
@@ -1137,7 +1325,9 @@ function updateViewInsets(): void {
     workbench?.setViewInsets(0, 0);
     return;
   }
-  const left = Math.max(0, rail.right - frame.left);
+  // The bench centers in the space left of the dock and right of the rail — and of the
+  // circuit meter when it is open, so the meter never sits on top of the board.
+  const left = Math.max(0, Math.max(rail.right, tools?.inspectorRight() ?? 0) - frame.left);
   const right = dockCollapsed ? 0 : Math.max(0, frame.right - dock.left);
   workbench.setViewInsets(left, right);
 }
@@ -1178,9 +1368,10 @@ function switchStudio(studio: StudioKind, remote = false): void {
   renderComponentPalette();
   renderSelection();
   updateStudioUi();
+  tools?.updateStudio();
   loadChatHistory();
   workbench.saveAttempt(STUDIO_COPY[studio].opened);
-  if (studio === "snapino" && programRunning) snapinoRunner?.start(program);
+  if (studio === "snapino" && programRunning) snapinoRunner?.start(roomProgram);
 }
 
 function installNativeTooltips(): void {
@@ -1487,6 +1678,7 @@ function traceIcon(action: ActivityTrace["action"]): string {
     ready: "ph-check-circle",
     reflect: "ph-notebook",
     teach: "ph-chalkboard-teacher",
+    edit: "ph-sliders-horizontal",
   };
   return icons[action];
 }
@@ -1914,7 +2106,19 @@ function showSceneStatus(message: string, tone: "neutral" | "valid" | "warning")
 
 function onKeyboardShortcut(event: KeyboardEvent): void {
   const target = event.target as HTMLElement | null;
-  if (target?.matches("input, textarea, [contenteditable='true']")) return;
+  if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (event.shiftKey) tools?.redo();
+    else tools?.undo();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    tools?.redo();
+    return;
+  }
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.key.toLowerCase() === "r") workbench?.resetSelectedRotation();
   if (event.key.toLowerCase() === "f") workbench?.focusSelected();
   if (event.key === " " && workbench?.toggleSelectedSwitch()) event.preventDefault();
@@ -1923,30 +2127,49 @@ function onKeyboardShortcut(event: KeyboardEvent): void {
 
 // ---------------------------------------------------------------- Snapino code panel
 
-function applyProgram(next: SnapinoStatement[], running: boolean): void {
-  program = next.map((statement) => ({ ...statement }));
+/**
+ * The room's program changed (accepted edit, upload/stop, or join). U1 runs the room's copy;
+ * the editor follows it unless it holds unsaved edits, which are kept.
+ */
+function applyRoomProgram(next: SnapinoStatement[], running: boolean): void {
+  roomProgram = next.map((statement) => ({ ...statement }));
   programRunning = running;
-  programDirty = false;
-  if (running && activeStudio === "snapino") snapinoRunner?.start(program);
+  if (!programDirty) program = roomProgram.map((statement) => ({ ...statement }));
+  programDirty = !sameProgram(program, roomProgram);
+  if (running && activeStudio === "snapino") snapinoRunner?.start(roomProgram.map((statement) => ({ ...statement })));
   else snapinoRunner?.stop();
   renderCodePanel();
+  tools?.noteChange();
 }
 
-function uploadProgram(): void {
-  applyProgram(program, true);
-  room?.setProgram(program, true);
-  room?.recordTrace("test", collaborationPhase, activeStudio, { detail: `Uploaded a ${program.length}-line program` });
-  showSceneStatus(`Uploaded · ${program.length} line${program.length === 1 ? "" : "s"} running on U1`, "valid");
+/** Run: the editor's program becomes the room's, running — once the room orders it. */
+async function uploadProgram(): Promise<void> {
+  if (!room) return;
+  const draft = program.map((statement) => ({ ...statement }));
+  const result = await room.submitEdit([], { program: draft, running: true, conditional: false });
+  if (!result.ok) {
+    showSceneStatus(result.reason === "offline" ? "Not uploaded · reconnecting to the room" : "Not uploaded · the room did not confirm it, nothing changed", "warning");
+    return;
+  }
+  if (sameProgram(program, draft)) {
+    programDirty = false;
+    renderCodePanel();
+  }
+  room.recordTrace("test", collaborationPhase, activeStudio, { detail: `Uploaded a ${draft.length}-line program` });
+  showSceneStatus(`Uploaded · ${draft.length} line${draft.length === 1 ? "" : "s"} running on U1`, "valid");
 }
 
-function stopProgram(): void {
-  applyProgram(program, false);
-  room?.setProgram(program, false);
+async function stopProgram(): Promise<void> {
+  if (!room) return;
+  const result = await room.submitEdit([], { program: roomProgram, running: false, conditional: false });
+  if (!result.ok) showSceneStatus("Not stopped · the room did not confirm it", "warning");
 }
 
 function editProgram(mutate: (draft: SnapinoStatement[]) => void, focusIndex?: number): void {
   mutate(program);
-  programDirty = true;
+  programDirty = !sameProgram(program, roomProgram);
+  // The unsaved draft is part of what local recovery keeps.
+  tools?.noteChange();
   renderCodePanel();
   if (focusIndex !== undefined) {
     document.querySelector<HTMLElement>(`#code-list li[data-index="${focusIndex}"] select, #code-list li[data-index="${focusIndex}"] input`)?.focus();
@@ -1977,7 +2200,7 @@ function renderCodePanel(): void {
     </li>`;
   }).join("") || '<li class="code-empty">loop() is empty · add a statement below</li>';
   const source = document.querySelector<HTMLElement>("#code-source");
-  if (source) source.textContent = toArduino(program);
+  if (source) source.textContent = toArduinoSketch(program);
   const status = document.querySelector<HTMLElement>("#code-status");
   if (status) {
     status.textContent = programRunning
@@ -2048,6 +2271,26 @@ function bindCodePanel(): void {
     select.value = "";
   });
   document.querySelector("#code-upload")?.addEventListener("click", uploadProgram);
+  document.querySelector("#code-download")?.addEventListener("click", () => {
+    const blob = new Blob([toArduinoSketch(program)], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "snapino_sketch.ino";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showSceneStatus("Sketch downloaded · build and upload it with the Arduino IDE", "valid");
+  });
+  document.querySelector("#code-copy")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(toArduinoSketch(program));
+      showSceneStatus("Sketch copied", "valid");
+    } catch {
+      showSceneStatus("Copy isn't available here; use Download .ino", "warning");
+    }
+  });
   document.querySelector("#code-stop")?.addEventListener("click", stopProgram);
 }
 
@@ -2096,6 +2339,8 @@ function disposeWorkspace(): void {
   window.removeEventListener("resize", updateViewInsets);
   snapinoRunner?.stop();
   snapinoRunner = null;
+  tools?.dispose();
+  tools = null;
   workbench?.dispose();
   aiTeammate?.dispose();
   aiTeammate = null;

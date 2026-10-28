@@ -1,4 +1,18 @@
 import type { SnapinoStatement } from "./snapino.js";
+import {
+  SyncReplica,
+  type EditChange,
+  type EditProgramRequest,
+  type EditResult,
+  type Stamp,
+  type SyncEffect,
+  type SyncMode,
+} from "./sync-replica.ts";
+
+export type { EditResult } from "./sync-replica.ts";
+
+/** How long an edit waits for the room's answer before it counts as failed. */
+const EDIT_TIMEOUT_MS = 8_000;
 
 export type Vec3Tuple = [number, number, number];
 
@@ -10,6 +24,12 @@ export interface SharedTransform {
   activeEndpoint?: 0 | 1;
   /** Slide-switch state for Snap Lab S1. */
   on?: boolean;
+  /**
+   * Edited electrical values for Circuit Bench parts (resistor ohms, battery volts). Absent
+   * means "unchanged" (older clients never send it); every snapshot includes it explicitly.
+   * Validated with the same bounds by the Worker relay (cloudflare/worker.js sanitizeProps).
+   */
+  props?: { ohms?: number; volts?: number };
 }
 
 export interface Participant {
@@ -50,7 +70,12 @@ export type TraceAction =
   | "ready"
   | "reflect"
   /** An AI teammate's belief changed because a teammate taught it (no message body). */
-  | "teach";
+  | "teach"
+  /**
+   * A non-spatial edit: an electrical value change, undo/redo, project import or reset. Kept
+   * apart from "claim"/"move" so existing claim/move research metrics do not count them.
+   */
+  | "edit";
 
 export interface ActivityTrace {
   id: string;
@@ -89,6 +114,8 @@ type RoomMessage =
       componentId: string;
       transform: SharedTransform;
       sequence: number;
+      /** Peer mode only: Lamport stamp, so same-device tabs converge on concurrent moves. */
+      stamp?: Stamp;
     }
   | {
       kind: "claim" | "release";
@@ -118,11 +145,17 @@ type RoomMessage =
       componentName: string;
     }
   | { kind: "state-request"; participantId: string }
+  | { kind: "room-state-request"; participantId: string }
+  | ({ kind: "edit"; participantId: string; opId: string } & Record<string, unknown>)
   | {
       kind: "state-response";
       participantId: string;
       targetId: string;
       transforms: Record<string, SharedTransform>;
+      /** Peer mode: the sender's Lamport clock, so the joiner's first change outranks older ones. */
+      clock?: number;
+      /** Peer mode: the Snapino program the tabs run. */
+      program?: { program: SnapinoStatement[]; running: boolean };
     }
   | {
       kind: "signal";
@@ -146,7 +179,7 @@ export interface RoomEvents {
   onVoiceStatus: (status: string) => void;
   onRemoteAudio: (participantId: string, stream: MediaStream) => void;
   onStateRequest: (targetId: string) => void;
-  onState: (transforms: Record<string, SharedTransform>) => void;
+  onState: (transforms: Record<string, SharedTransform>, program?: { program: SnapinoStatement[]; running: boolean }) => void;
   onPhase: (phase: CollaborationPhase, participantId: string) => void;
   onStudio: (studio: StudioChoice, participantId: string) => void;
   onProgram: (program: SnapinoStatement[], running: boolean, participantId: string) => void;
@@ -156,6 +189,20 @@ export interface RoomEvents {
     componentName: string,
     participant: { id: string; name: string },
   ) => void;
+  /**
+   * A part state to show: a teammate's move (`force` false) or an accepted edit / the room's
+   * authoritative state (`force` true). `propsOnly`: own later moves are still in flight.
+   */
+  onApply: (componentId: string, transform: SharedTransform, options: { force: boolean; propsOnly: boolean; participantId: string }) => void;
+  /** The room refused this participant's move or claim; `transform` null = the part's default. */
+  onRevert: (componentId: string, transform: SharedTransform | null, options: { superseded: boolean; holderName?: string }) => void;
+  onClaimDenied: (resourceId: string, holderName: string) => void;
+  /**
+   * The room's full state arrived (server mode, on every (re)join). Parts not in
+   * `componentIds` are at their defaults, except `ownMovesInFlight`. `fresh`: the room has no
+   * bench state at all — a returning bench may seed it.
+   */
+  onRoomState: (state: { fresh: boolean; componentIds: string[]; ownMovesInFlight: string[] }) => void;
 }
 
 const noOpEvents: RoomEvents = {
@@ -172,7 +219,24 @@ const noOpEvents: RoomEvents = {
   onProgram: () => undefined,
   onTrace: () => undefined,
   onAttention: () => undefined,
+  onApply: () => undefined,
+  onRevert: () => undefined,
+  onClaimDenied: () => undefined,
+  onRoomState: () => undefined,
 };
+
+/** Messages from the room itself (server mode) that the sync rules interpret. */
+const SERVER_REPLY_KINDS = new Set([
+  "rev-ack",
+  "transform-rejected",
+  "claim-granted",
+  "claim-denied",
+  "edit",
+  "edit-result",
+  "room-state",
+  "program",
+  "program-ack",
+]);
 
 export class DesktopRoom {
   readonly participant: Participant;
@@ -200,6 +264,11 @@ export class DesktopRoom {
   private localStream: MediaStream | null = null;
   private analyser: AnalyserNode | null = null;
   private audioContext: AudioContext | null = null;
+  /** Revisions, acknowledgements and refusals (server mode) or Lamport order (peer mode). */
+  readonly sync: SyncReplica;
+  private readonly editWaiters = new Map<string, { resolve: (result: EditResult) => void; timer: number }>();
+  private readonly claimWaiters = new Map<string, Array<(granted: boolean) => void>>();
+  private readonly settleWaiters = new Map<string, Array<(ok: boolean) => void>>();
 
   constructor(
     roomCode: string,
@@ -239,6 +308,7 @@ export class DesktopRoom {
     this.channel = !this.socketUrl && "BroadcastChannel" in window
       ? new BroadcastChannel(`virtual-makerspace:${this.roomCode}`)
       : null;
+    this.sync = new SyncReplica(this.participant.id, this.socketUrl ? "server" : "peer");
     if (this.socketUrl) {
       window.addEventListener("online", this.handleOnline);
       this.connectSocket();
@@ -265,6 +335,45 @@ export class DesktopRoom {
     return message;
   }
 
+  get mode(): SyncMode {
+    return this.sync.mode;
+  }
+
+  /** Server mode without an open socket: nothing can change until the room is back. */
+  get offline(): boolean {
+    return this.sync.mode === "server" && this.socket?.readyState !== WebSocket.OPEN;
+  }
+
+  /**
+   * Submits an atomic batch of whole-part changes (and optionally the Snapino program). In
+   * server mode nothing changes locally until the room accepts it; the accepted state then
+   * arrives through `onApply`/`onProgram` before this resolves. In peer mode it applies now.
+   */
+  submitEdit(changes: Array<{ id: string; transform: SharedTransform }>, program?: EditProgramRequest): Promise<EditResult> {
+    if (this.closed) return Promise.resolve({ ok: false, reason: "disconnected" });
+    if (this.offline) return Promise.resolve({ ok: false, reason: "offline" });
+    const opId = crypto.randomUUID();
+    const clean: EditChange[] = changes.map(({ id, transform }) => {
+      const copy = { ...transform };
+      delete copy.activeEndpoint;
+      return { componentId: id, transform: copy };
+    });
+    const { message, immediate } = this.sync.createEdit(opId, clean, program);
+    return new Promise((resolve) => {
+      const timer = this.sync.mode === "server"
+        ? window.setTimeout(() => this.runEffects(this.sync.expire(opId)), EDIT_TIMEOUT_MS)
+        : 0;
+      this.editWaiters.set(opId, { resolve, timer });
+      this.post(message as RoomMessage);
+      this.runEffects(immediate);
+    });
+  }
+
+  /** Asks the room for its full state again (e.g. after a refused seed). */
+  requestRoomState(): void {
+    if (this.sync.mode === "server") this.post({ kind: "room-state-request", participantId: this.participant.id });
+  }
+
   sendTransform(componentId: string, transform: SharedTransform): void {
     this.pendingTransforms.set(componentId, transform);
     if (this.transformTimers.has(componentId)) return;
@@ -276,18 +385,26 @@ export class DesktopRoom {
   }
 
   private flushTransform(componentId: string): void {
-    const transform = this.pendingTransforms.get(componentId);
-    if (!transform) return;
+    const pending = this.pendingTransforms.get(componentId);
+    if (!pending) return;
     this.pendingTransforms.delete(componentId);
+    // Values and the switch state change only through accepted edits; the room keeps its own
+    // when storing a move.
+    const transform = { ...pending };
+    delete transform.props;
+    delete transform.on;
     const sequence = (this.outboundSequences.get(componentId) ?? 0) + 1;
     this.outboundSequences.set(componentId, sequence);
-    this.post({
-      kind: "transform",
-      participantId: this.participant.id,
-      componentId,
-      transform,
-      sequence,
-    });
+    if (this.sync.mode === "server") {
+      // A move that cannot reach the room is dropped, not queued: the room's state on
+      // reconnect replaces it.
+      if (this.socket?.readyState !== WebSocket.OPEN) return;
+      this.sync.noteOwnTransform(componentId);
+      this.post({ kind: "transform", participantId: this.participant.id, componentId, transform, sequence });
+      return;
+    }
+    const stamp = this.sync.stampTransform(componentId);
+    this.post({ kind: "transform", participantId: this.participant.id, componentId, transform, sequence, stamp });
   }
 
   setActivity(activity: ParticipantActivity, activityDetail?: string): void {
@@ -328,10 +445,8 @@ export class DesktopRoom {
     this.post({ kind: "studio", participantId: this.participant.id, studio });
   }
 
-  /** Shares an uploaded Snapino program; the room persists the latest one. */
-  setProgram(program: SnapinoStatement[], running: boolean): void {
-    this.post({ kind: "program", participantId: this.participant.id, program, running });
-  }
+  // Program uploads/stops go through submitEdit (program-only, unconditional): the room orders
+  // them and everyone, the uploader included, applies them in that order.
 
   sendAttention(componentId: string, componentName: string): void {
     this.post({
@@ -367,17 +482,25 @@ export class DesktopRoom {
   sendState(
     targetId: string,
     transforms: Record<string, SharedTransform>,
+    program?: { program: SnapinoStatement[]; running: boolean },
   ): void {
     this.post({
       kind: "state-response",
       participantId: this.participant.id,
       targetId,
       transforms,
+      clock: this.sync.clock,
+      ...(program ? { program } : {}),
     });
   }
 
-  claim(componentId: string): void {
+  /**
+   * Claims a part or a cable end. Resolves true once the room grants it (immediately in peer
+   * mode), false if it is refused — the room then also sends its state of the part.
+   */
+  claim(componentId: string): Promise<boolean> {
     this.claims.set(componentId, this.participant.id);
+    this.sync.beginHold(componentId);
     this.events.onClaim(componentId, {
       id: this.participant.id,
       name: this.participant.name,
@@ -388,21 +511,120 @@ export class DesktopRoom {
       participantName: this.participant.name,
       componentId,
     });
+    if (this.sync.mode === "peer") return Promise.resolve(true);
+    if (this.offline) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const waiting = this.claimWaiters.get(componentId) ?? [];
+      waiting.push(resolve);
+      this.claimWaiters.set(componentId, waiting);
+    });
   }
 
-  release(componentId: string): void {
-    const timer = this.transformTimers.get(componentId);
+  /**
+   * Lets go of a part after sending its final move. Resolves true once every move of this hold
+   * was accepted (so it may be recorded as a move), false if any was refused.
+   */
+  release(componentId: string): Promise<boolean> {
+    // Moves are queued per part (a cable end's moves too), so the final one goes out now —
+    // before the release, while the claim still stands.
+    const partId = componentId.split("::")[0];
+    const timer = this.transformTimers.get(partId);
     if (timer) window.clearTimeout(timer);
-    this.transformTimers.delete(componentId);
-    this.flushTransform(componentId);
-    this.claims.delete(componentId);
-    this.events.onClaim(componentId, null);
+    this.transformTimers.delete(partId);
+    this.flushTransform(partId);
+    this.dropClaim(componentId);
+    const settled = this.sync.settleRelease(partId);
+    if (settled !== null) return Promise.resolve(settled && !(this.sync.mode === "server" && this.offline));
+    return new Promise((resolve) => {
+      const waiting = this.settleWaiters.get(partId) ?? [];
+      waiting.push(resolve);
+      this.settleWaiters.set(partId, waiting);
+    });
+  }
+
+  /** Gives up a hold the room ended (refused claim or authoritative change): no final move. */
+  abandon(componentId: string): void {
+    const partId = componentId.split("::")[0];
+    const timer = this.transformTimers.get(partId);
+    if (timer) window.clearTimeout(timer);
+    this.transformTimers.delete(partId);
+    this.pendingTransforms.delete(partId);
+    // Anyone still waiting on this claim (e.g. Bolt after its timeout) gets a refusal now, so a
+    // later claim of the same part is not answered with this one's result.
+    // The room still answers that claim (in order), so its slot stays, answered by a no-op.
+    const waiting = this.claimWaiters.get(componentId) ?? [];
+    for (let index = 0; index < waiting.length; index += 1) {
+      waiting[index](false);
+      waiting[index] = () => undefined;
+    }
+    if (this.claims.get(componentId) === this.participant.id) this.dropClaim(componentId);
+  }
+
+  private dropClaim(componentId: string): void {
+    if (this.claims.get(componentId) === this.participant.id) {
+      this.claims.delete(componentId);
+      this.events.onClaim(componentId, null);
+    }
     this.post({
       kind: "release",
       participantId: this.participant.id,
       participantName: this.participant.name,
       componentId,
     });
+  }
+
+  private runEffects(effects: SyncEffect[]): void {
+    for (const effect of effects) {
+      switch (effect.type) {
+        case "apply":
+          this.events.onApply(effect.componentId, effect.transform, { force: effect.force, propsOnly: Boolean(effect.propsOnly), participantId: "" });
+          break;
+        case "program":
+          this.events.onProgram(effect.program, effect.running, effect.participantId);
+          break;
+        case "resolve": {
+          const waiter = this.editWaiters.get(effect.opId);
+          if (!waiter) break;
+          this.editWaiters.delete(effect.opId);
+          window.clearTimeout(waiter.timer);
+          waiter.resolve(effect.result);
+          break;
+        }
+        case "revert":
+          this.events.onRevert(effect.componentId, effect.transform, { superseded: Boolean(effect.superseded), holderName: effect.holderName });
+          break;
+        case "claim-denied":
+          if (this.claims.get(effect.componentId) === this.participant.id) {
+            this.claims.delete(effect.componentId);
+            this.events.onClaim(effect.componentId, null);
+          }
+          this.events.onClaimDenied(effect.componentId, effect.holderName);
+          break;
+        case "claim-result": {
+          const waiting = this.claimWaiters.get(effect.resourceId);
+          const resolve = waiting?.shift();
+          if (waiting && !waiting.length) this.claimWaiters.delete(effect.resourceId);
+          resolve?.(effect.granted);
+          break;
+        }
+        case "settled": {
+          const waiting = this.settleWaiters.get(effect.componentId) ?? [];
+          this.settleWaiters.delete(effect.componentId);
+          for (const resolve of waiting) resolve(effect.ok);
+          break;
+        }
+        case "claims":
+          for (const claim of effect.claims) {
+            if (claim.participantId === this.participant.id) continue;
+            this.claims.set(claim.componentId, claim.participantId);
+            this.events.onClaim(claim.componentId, { id: claim.participantId, name: claim.participantName });
+          }
+          break;
+        case "room-state":
+          this.events.onRoomState({ fresh: effect.fresh, componentIds: effect.componentIds, ownMovesInFlight: effect.ownMovesInFlight });
+          break;
+      }
+    }
   }
 
   async enableVoice(): Promise<MediaStream> {
@@ -466,6 +688,11 @@ export class DesktopRoom {
   }
 
   close(): void {
+    for (const waiter of this.editWaiters.values()) {
+      window.clearTimeout(waiter.timer);
+      waiter.resolve({ ok: false, reason: "disconnected" });
+    }
+    this.editWaiters.clear();
     for (const timer of this.transformTimers.values()) window.clearTimeout(timer);
     this.transformTimers.clear();
     this.pendingTransforms.clear();
@@ -498,7 +725,15 @@ export class DesktopRoom {
     } catch {
       return;
     }
-    if (!message || ("participantId" in message && message.participantId === this.participant.id)) {
+    if (!message || typeof message !== "object") return;
+    const kind = (message as { kind?: unknown }).kind;
+    // Room replies addressed to this participant (server mode): acks, refusals, edits, state.
+    if (this.sync.mode === "server" && typeof kind === "string" && SERVER_REPLY_KINDS.has(kind)) {
+      if (kind === "edit" && (message as { participantId?: unknown }).participantId === this.participant.id) return;
+      this.runEffects(this.sync.receive(message as unknown as Record<string, unknown>));
+      return;
+    }
+    if ("participantId" in message && message.participantId === this.participant.id) {
       return;
     }
 
@@ -540,11 +775,25 @@ export class DesktopRoom {
           if (message.sequence <= previous) break;
           this.inboundSequences.set(sequenceKey, message.sequence);
         }
+        if (this.sync.mode === "server") {
+          for (const effect of this.sync.receive(message as unknown as Record<string, unknown>)) {
+            if (effect.type === "apply") {
+              this.events.onApply(effect.componentId, effect.transform, { force: false, propsOnly: Boolean(effect.propsOnly), participantId: message.participantId });
+            }
+          }
+        } else {
+          if (!this.sync.acceptTransform(message.componentId, message.stamp)) break;
+          this.events.onApply(message.componentId, message.transform, { force: false, propsOnly: false, participantId: message.participantId });
+        }
         this.events.onTransform(
           message.componentId,
           message.transform,
           message.participantId,
         );
+        break;
+      case "edit":
+        // Peer mode: a same-device tab's edit, applied by Lamport order.
+        this.runEffects(this.sync.receive(message as unknown as Record<string, unknown>));
         break;
       case "claim":
         this.claims.set(message.componentId, message.participantId);
@@ -585,6 +834,7 @@ export class DesktopRoom {
         this.events.onStudio(message.studio, message.participantId);
         break;
       case "program":
+        // Legacy direct upload from an older peer tab.
         this.events.onProgram(message.program, message.running, message.participantId);
         break;
       case "attention":
@@ -595,14 +845,17 @@ export class DesktopRoom {
         );
         break;
       case "state-request":
-        if (this.isStateCoordinator(message.participantId)) {
+        if (this.sync.mode === "peer" && this.isStateCoordinator(message.participantId)) {
           this.events.onStateRequest(message.participantId);
         }
         break;
       case "state-response":
+        // Server mode: the room's own state (room-state) is authoritative, never a peer's copy.
+        if (this.sync.mode === "server") break;
         if (message.targetId === this.participant.id && this.awaitingState) {
           this.awaitingState = false;
-          this.events.onState(message.transforms);
+          this.sync.observeClock(message.clock);
+          this.events.onState(message.transforms, message.program);
         }
         break;
       case "signal":
@@ -671,10 +924,7 @@ export class DesktopRoom {
       this.awaitingState = true;
       socket.send(JSON.stringify({ kind: "hello", participant: this.participant } satisfies RoomMessage));
       this.flushSocketOutbox(socket);
-      socket.send(JSON.stringify({
-        kind: "state-request",
-        participantId: this.participant.id,
-      } satisfies RoomMessage));
+      // The room answers hello with its authoritative state (room-state): no peer copy needed.
       this.events.onVoiceStatus("Realtime room connected");
     });
     socket.addEventListener("message", this.handleMessage);
@@ -682,6 +932,13 @@ export class DesktopRoom {
       if (this.socket !== socket) return;
       this.socket = null;
       if (this.closed) return;
+      // Pending edits and drags fail; the room-state on reconnect is authoritative again.
+      this.sync.resetForReconnect();
+      this.runEffects(this.sync.failPending("disconnected"));
+      for (const [resourceId, waiting] of this.claimWaiters) {
+        this.claimWaiters.delete(resourceId);
+        for (const resolve of waiting) resolve(false);
+      }
       this.resetRemoteSessionState();
       this.events.onVoiceStatus("Realtime room disconnected · reconnecting");
       this.scheduleReconnect();
@@ -723,7 +980,9 @@ export class DesktopRoom {
   }
 
   private queueSocketMessage(message: RoomMessage): void {
-    if (["hello", "goodbye", "state-request", "state-response", "signal", "attention"].includes(message.kind)) {
+    // Bench changes are never queued while offline: edits fail at once, moves are dropped, and
+    // the room's state decides on reconnect.
+    if (["hello", "goodbye", "state-request", "state-response", "signal", "attention", "claim", "release", "transform", "edit", "program", "room-state-request"].includes(message.kind)) {
       return;
     }
 

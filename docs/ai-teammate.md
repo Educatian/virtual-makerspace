@@ -36,7 +36,7 @@ Because Bolt is a real participant on the wire, **human–human and human–AI s
 |---|---|---|---|
 | `strips` | Holes in the same row are connected | Holes connect in vertical column strips; parts must share a strip | Parts lined up end-to-end along one row → open circuit |
 | `loop` | One connection from the battery is enough | Current must return to the other battery terminal | No return wire → open circuit |
-| `resistor` | Extra parts just slow things down | A series resistor limits current so the LED doesn't burn out | LED straight across the battery → lights, but unsafe |
+| `resistor` | Extra parts just slow things down | A series resistor limits current so the LED doesn't burn out | LED straight across the battery → the circuit engine reports a burnout (~440 mA at 9 V), never a success; the taught plan uses 1 kΩ (≈7 mA) |
 
 Belief states: `naive` → `partial` (told *what*, not *why*) → `taught`. Bolt acts only on `taught` ideas.
 
@@ -61,7 +61,7 @@ Profiles: `?agentProfile=novice` (default, all naive) or `intermediate` (`loop` 
 |---|---|---|
 | Frame | States its plan from its beliefs; asks "Does that sound right?" | Asks the learner to walk through the plan |
 | Build | Builds its plan, part by part, with its ghost hand; rebuilds right after being taught | After the learner's moves settle, questions what contradicts its naive ideas ("Why add the resistor?") or applies what it was taught ("You taught me rows aren't connected — are these joined?") |
-| Test | Reacts to the result: dark → "What did I get wrong?"; lit but unsafe → depends on whether it was taught `resistor` | Same reactions |
+| Test | Reacts to the engine result: dark → "What did I get wrong?"; burnout or overdriven (names the current) → depends on whether it was taught `resistor`; reversed LED or short → asks about it; safe → names the current against the 20 mA rating | Same reactions |
 | Reflect | Restates what it was taught and by whom, and what it is still unsure about | Same |
 
 Readiness: Bolt marks ready once its own work is done and a human is ready (or the team is in Test), so it never blocks the shared test. Bolt never rebuilds on entering Test, so it can't undo a teammate's fix. Chat commands: "Bolt, you build" / "you check" / "I'll build" swap roles (a lone human takes the other role automatically); "rebuild" / "try again" / "can you build it?" ask it to build. Questions ("did you build it right?") and first-person plans ("I'll fix it") are never commands. Each one-time prompt ("What's your plan?") is said once per session, and a build restarted mid-way is not re-announced.

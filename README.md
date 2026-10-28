@@ -35,7 +35,7 @@ Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, dep
 
 ## Desktop collaborative mode
 
-The default desktop workspace includes the Motherboard Circuit Lab and Smart Greenhouse studios, independent orbital cameras, text/voice discussion, magnetic placement, and independently draggable A/B endpoints for wires and irrigation hose.
+The default desktop workspace includes the Circuit Bench (breadboard LED lab) and Smart Greenhouse studios, independent orbital cameras, text/voice discussion, magnetic placement, and independently draggable A/B endpoints for wires and irrigation hose.
 
 On screens wider than 900px the workspace is **immersive**: the 3D bench fills the window and the parts rail, toolbar, attempt history and discussion panel float over it as translucent glass. The discussion panel slides away with the `»` button (a chat button with an unread dot brings it back), the camera re-frames so the bench stays centered in the open space, and the toolbar's full-screen button hides the browser chrome. Phones keep the stacked layout.
 
@@ -49,6 +49,10 @@ On screens wider than 900px the workspace is **immersive**: the 3D bench fills t
 <td width="50%"><img src="docs/images/desktop-greenhouse.png" alt="Smart Greenhouse studio with minimal icon-based controls" /><br/><sub>Smart Greenhouse: an icon-first interface, shared attempts, environmental telemetry, and integrated text discussion.</sub></td>
 </tr>
 </table>
+
+### Circuit Bench: one DC engine, a meter, and shared editing
+
+Every Circuit Bench view — LED glow, the status line, the check button, the floating **circuit meter**, Bolt's plans and reactions, and the tests — reads one result from a small DC solver in `src/circuit/` (modified nodal analysis; batteries with internal resistance, real resistor values, polarity-aware piecewise-linear LEDs; diagnostics for open circuits, shorts, reversed LEDs, overcurrent and burnout). A 220 Ω resistor at 9 V gives about 30 mA, so it is flagged as overdriving a 20 mA LED; the safe reference circuit uses 1 kΩ (≈7 mA). The meter shows volts, amps and power with units, lets you set a resistor (10 Ω–1 MΩ) or the supply (1–12 V) as a shared, validated edit, and explains each diagnostic. Every change is accepted or refused by the room as one atomic edit (no optimistic local writes), so concurrent edits, cable-end vs whole-part claims and disconnects leave every participant and late joiner with the same bench; undo/redo only touches your own accepted edits and refuses to overwrite a teammate's newer change (parts or Snapino program); projects export/import as validated, versioned JSON with no names, chat or activity (the room's program and an unsaved code draft are kept apart); the bench offers local recovery and a confirmed reset. Snapino's generated Arduino sketch can be downloaded as `.ino`, but the bench itself only runs block statements — it does not compile or emulate AVR code. The breadboard, LEDs, resistor (value-driven color bands), jumper wires and the Snapino PCB are original procedural models at breadboard scale; the 9 V battery is deliberately drawn at about 25 % of its real size so it fits two adjacent rows (see the docs). The WebXR path keeps its own, unchanged models. Details, approximations, migration notes and limits: [`docs/circuit-engine.md`](docs/circuit-engine.md).
 
 ### AI teammate: Bolt (teachable agent)
 
@@ -163,7 +167,8 @@ Built as the first net-new module after a Learning-Experience-Design review of t
 | `grab_end` | `{ entity_id, held_duration_ms, snapped }` |
 | `socket_connect` | `{ entity_id, socket_a, socket_b }` |
 | `socket_disconnect` | `{ entity_id, socket_a, socket_b }` |
-| `led_state_change` | `{ entity_id, lit }` |
+| `led_state_change` | `{ entity_id, lit, circuit_model, solver_version, dc_lit }` — `lit` keeps the legacy net-union meaning |
+| `circuit_dc_eval` | `{ solver_version, circuit_model, entity_id, dc_state, dc_lit, current_ma, status }` — shared DC engine result (opt into engine-driven LEDs/completion with `?circuitModel=dc`) |
 | `step_advance` | `{ step, total, completed }` |
 | `ui_interaction` | `{ element_id, action }` |
 

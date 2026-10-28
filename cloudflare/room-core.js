@@ -1,0 +1,238 @@
+/**
+ * Room coordination shared by the Durable Object (cloudflare/worker.js) and the local relay
+ * (server/collaboration.mjs): claims, the authoritative bench state and its revisions.
+ *
+ * - Every accepted change to a part bumps that part's revision. The room keeps the last
+ *   accepted whole-part state ("authoritative") per part.
+ * - Claims: holding a part conflicts with anyone holding either of its cable ends, and holding
+ *   an end conflicts with anyone holding the whole part (or that same end).
+ * - Live drags ("transform"): accepted only from the participant holding the resource; the sender gets
+ *   the new revision (`rev-ack`), a rejected sender gets the authoritative state back
+ *   (`transform-rejected`), so a refused drag can never leave its sender diverged — even if
+ *   the holder disconnects without a final move.
+ * - Edits ("edit"): atomic batches of whole-part changes (value edits, undo/redo, import,
+ *   reset, return to tray) with the revision each change was based on. All or nothing: refused
+ *   if any part is held by someone else or changed since. The sender applies an edit only when
+ *   the room accepts it (`edit-result`), and every other client receives it in the room's
+ *   order, so concurrent edits cannot leave two clients with different values.
+ * - Joiners get the authoritative state, revisions, claims, program and its revision
+ *   (`room-state`); a granted claim is confirmed to its holder (`claim-granted`).
+ * - Program uploads/stops may be unconditional (`expectRev: null`): still ordered by the room
+ *   and applied by everyone (sender included) only when relayed/accepted.
+ *
+ * Pure: no sockets or storage. `handle()` returns what to send and what to persist.
+ */
+
+const resourceParts = (resourceId) => {
+  const match = /^(.*)::endpoint-([01])$/.exec(resourceId);
+  return match ? { componentId: match[1], endpoint: Number(match[2]) } : { componentId: resourceId, endpoint: null };
+};
+
+export class RoomCore {
+  /**
+   * @param {{ entries?: Array<[string, { transform: object, rev: number }]>, programRev?: number, program?: { program: unknown[], running: boolean } | null }} [initial]
+   */
+  constructor(initial = {}) {
+    /** @type {Map<string, { participantId: string, participantName: string }>} */
+    this.claims = new Map();
+    /** @type {Map<string, { transform: object, rev: number }>} */
+    this.state = new Map(initial.entries ?? []);
+    this.programRev = initial.programRev ?? 0;
+    this.program = initial.program ?? null;
+  }
+
+  rev(componentId) {
+    return this.state.get(componentId)?.rev ?? 0;
+  }
+
+  /** Someone other than `participantId` holding `resourceId` or a conflicting resource, if any. */
+  conflict(resourceId, participantId) {
+    const { componentId, endpoint } = resourceParts(resourceId);
+    const keys = endpoint === null
+      ? [componentId, `${componentId}::endpoint-0`, `${componentId}::endpoint-1`]
+      : [componentId, resourceId];
+    for (const key of keys) {
+      const claim = this.claims.get(key);
+      if (claim && claim.participantId !== participantId) return { resourceId: key, ...claim };
+    }
+    return null;
+  }
+
+  claimMessage(resourceId, claim) {
+    return { kind: "claim", participantId: claim.participantId, participantName: claim.participantName, componentId: resourceId };
+  }
+
+  authoritative(componentId) {
+    const entry = this.state.get(componentId);
+    return { componentId, transform: entry ? entry.transform : null, rev: entry ? entry.rev : 0 };
+  }
+
+  /** Messages for a participant joining (after their hello). */
+  join() {
+    const transforms = {};
+    for (const [componentId, entry] of this.state) transforms[componentId] = { transform: entry.transform, rev: entry.rev };
+    const claims = [...this.claims].map(([componentId, claim]) => ({ componentId, ...claim }));
+    return [{
+      kind: "room-state",
+      transforms,
+      claims,
+      programRev: this.programRev,
+      ...(this.program ? { program: this.program } : {}),
+      // Nothing on the bench has been changed through the room since it started (or since the
+      // last participant left): a reconnecting client's bench may seed it.
+      fresh: this.state.size === 0,
+    }];
+  }
+
+  /**
+   * Handles one sanitized message from `participant` ({ id, name }).
+   * @returns {{ sender: object[], others: object[], persist: { state?: Array<[string, object]>, program?: object } }}
+   */
+  handle(participant, message, { maxClaims = 16 } = {}) {
+    const out = { sender: [], others: [], persist: {} };
+    switch (message.kind) {
+      case "claim": {
+        const conflict = this.conflict(message.componentId, participant.id);
+        if (conflict) {
+          out.sender.push(this.claimMessage(conflict.resourceId, conflict));
+          // With the room's state of the part, so a sender who already started moving it locally
+          // goes back to what everyone else sees.
+          const { componentId } = resourceParts(message.componentId);
+          const { transform, rev } = this.authoritative(componentId);
+          out.sender.push({ kind: "claim-denied", componentId: message.componentId, holderId: conflict.participantId, holderName: conflict.participantName, partId: componentId, transform, rev });
+          return out;
+        }
+        const mine = [...this.claims.values()].filter((claim) => claim.participantId === participant.id).length;
+        if (!this.claims.has(message.componentId) && mine >= maxClaims) {
+          const { componentId } = resourceParts(message.componentId);
+          const { transform, rev } = this.authoritative(componentId);
+          out.sender.push({ kind: "claim-denied", componentId: message.componentId, holderId: "", holderName: "", partId: componentId, transform, rev });
+          return out;
+        }
+        this.claims.set(message.componentId, { participantId: participant.id, participantName: participant.name });
+        out.others.push(message);
+        // The holder learns its claim stood, so its own claim/move traces follow the room.
+        out.sender.push({ kind: "claim-granted", componentId: message.componentId });
+        return out;
+      }
+      case "release": {
+        const current = this.claims.get(message.componentId);
+        if (current?.participantId !== participant.id) return out;
+        this.claims.delete(message.componentId);
+        out.others.push(message);
+        return out;
+      }
+      case "transform": {
+        const endpoint = message.transform.activeEndpoint;
+        const resourceId = endpoint === 0 || endpoint === 1 ? `${message.componentId}::endpoint-${endpoint}` : message.componentId;
+        // Only the holder moves a part: the sender must hold this resource (or, for a cable
+        // end, the whole cable). Anything else gets the room's state back.
+        const holds = this.claims.get(resourceId)?.participantId === participant.id ||
+          (resourceId !== message.componentId && this.claims.get(message.componentId)?.participantId === participant.id);
+        if (!holds) {
+          const conflict = this.conflict(resourceId, participant.id);
+          out.sender.push({ kind: "transform-rejected", ...this.authoritative(message.componentId), holderId: conflict?.participantId ?? "", holderName: conflict?.participantName ?? "" });
+          return out;
+        }
+        const entry = this.store(message.componentId, message.transform);
+        out.persist.state = [[message.componentId, entry]];
+        out.others.push({ ...message, rev: entry.rev });
+        out.sender.push({ kind: "rev-ack", componentId: message.componentId, rev: entry.rev });
+        return out;
+      }
+      case "edit": {
+        const refuse = (reason, extra = {}) => {
+          out.sender.push({
+            kind: "edit-result",
+            opId: message.opId,
+            ok: false,
+            reason,
+            current: message.changes.map((change) => this.authoritative(change.componentId)),
+            programRev: this.programRev,
+            ...extra,
+          });
+          return out;
+        };
+        for (const change of message.changes) {
+          const conflict = this.conflict(change.componentId, participant.id);
+          if (conflict) return refuse("held", { holderName: conflict.participantName, componentId: change.componentId });
+        }
+        for (const change of message.changes) {
+          if (this.rev(change.componentId) !== change.expectRev) return refuse("stale", { componentId: change.componentId });
+        }
+        if (message.program && message.program.expectRev !== null && message.program.expectRev !== this.programRev) return refuse("stale", { componentId: "program" });
+        const applied = message.changes.map((change) => {
+          const entry = this.store(change.componentId, change.transform);
+          return { componentId: change.componentId, transform: entry.transform, rev: entry.rev };
+        });
+        out.persist.state = applied.map((change) => [change.componentId, { transform: change.transform, rev: change.rev }]);
+        let program;
+        if (message.program) {
+          this.programRev += 1;
+          this.program = { program: message.program.program, running: message.program.running };
+          program = { ...this.program, rev: this.programRev };
+          out.persist.program = { program: this.program.program, programRunning: this.program.running, programRev: this.programRev };
+        }
+        out.others.push({ kind: "edit", participantId: participant.id, opId: message.opId, changes: applied, ...(program ? { program } : {}) });
+        out.sender.push({ kind: "edit-result", opId: message.opId, ok: true, changes: applied.map(({ componentId, rev }) => ({ componentId, rev })), ...(program ? { programRev: program.rev } : {}) });
+        return out;
+      }
+      case "room-state-request":
+        // A client whose seed was refused (or that lost track) asks for the room's state again.
+        out.sender.push(...this.join());
+        return out;
+      case "program": {
+        this.programRev += 1;
+        this.program = { program: message.program, running: message.running };
+        out.persist.program = { program: message.program, programRunning: message.running, programRev: this.programRev };
+        out.others.push({ ...message, programRev: this.programRev });
+        out.sender.push({ kind: "program-ack", programRev: this.programRev });
+        return out;
+      }
+      default:
+        out.others.push(message);
+        return out;
+    }
+  }
+
+  /** A participant left: release everything they held. Returns messages for everyone else. */
+  leave(participant) {
+    const released = [];
+    for (const [resourceId, claim] of this.claims) {
+      if (claim.participantId !== participant.id) continue;
+      this.claims.delete(resourceId);
+      released.push({ kind: "release", participantId: participant.id, participantName: participant.name, componentId: resourceId });
+    }
+    return released;
+  }
+
+  /** Everyone left: the bench returns to its default state (as before this protocol). */
+  reset() {
+    this.claims.clear();
+    this.state.clear();
+  }
+
+  store(componentId, transform) {
+    const previous = this.state.get(componentId);
+    let next = { ...transform };
+    const end = transform.activeEndpoint;
+    if ((end === 0 || end === 1) && previous?.transform.endpoints && transform.endpoints) {
+      // A cable-end move changes only that end: two people may each hold one end, and each
+      // sender's view of the other end can be behind. Keep the room's other end.
+      const base = previous.transform;
+      const endpoints = [base.endpoints[0], base.endpoints[1]];
+      endpoints[end] = transform.endpoints[end];
+      const sockets = Array.isArray(base.sockets) ? [base.sockets[0], base.sockets[1]] : [null, null];
+      sockets[end] = transform.sockets?.[end] ?? null;
+      next = { ...base, endpoints, sockets: sockets.some((socket) => socket !== null) ? sockets : null };
+    }
+    delete next.activeEndpoint;
+    // Live drags omit electrical values and switch state (they never change them): keep the accepted ones.
+    if (next.props === undefined && previous?.transform.props !== undefined) next.props = previous.transform.props;
+    // Likewise the slide-switch state: moves never carry it, and an edit without it keeps it.
+    if (next.on === undefined && previous?.transform.on !== undefined) next.on = previous.transform.on;
+    const entry = { transform: next, rev: (previous?.rev ?? 0) + 1 };
+    this.state.set(componentId, entry);
+    return entry;
+  }
+}

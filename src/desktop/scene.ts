@@ -1,7 +1,7 @@
 import {
   AdditiveBlending,
   ACESFilmicToneMapping,
-  AmbientLight,
+  Box3,
   BoxGeometry,
   BoxHelper,
   CatmullRomCurve3,
@@ -13,6 +13,7 @@ import {
   Fog,
   Euler,
   Group,
+  HemisphereLight,
   InstancedMesh,
   MathUtils,
   Mesh,
@@ -45,7 +46,21 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
+import { formatAmps, formatVolts } from "../circuit/dc-engine.ts";
+import { sanitizeProps, type PartProps } from "../circuit/part-props.ts";
+import { analyzeCircuit, type CircuitAnalysis, type CircuitPlacements, type CircuitProps } from "./circuit-topology.js";
 import type { SharedTransform } from "./collaboration.js";
+import {
+  BOARD_SURFACE,
+  HOLE_FLOOR,
+  createBatteryModel,
+  createBreadboard,
+  createHeaderRows,
+  createLedModel,
+  createResistorModel,
+  createSnapinoSilkscreen,
+  palette,
+} from "./bench-models.js";
 import { RemoteHands, type HandOwner } from "./remote-hands.js";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
 
@@ -104,7 +119,19 @@ export interface SceneEvents {
   onClaim: (componentId: string) => boolean;
   onRelease: (componentId: string) => void;
   onAttempt: (snapshot: SceneSnapshot) => void;
+  /**
+   * The room ended this participant's drag (claim refused, or an accepted change the room
+   * ordered first): nothing was moved, so there is no move to record or release to trace.
+   */
+  onDragAborted?: (resourceId: string) => void;
+  /**
+   * A whole-part change made here (demo layout, slide switch, rotation reset, restoring an
+   * attempt) to submit to the room as one atomic edit; it shows when the room accepts it.
+   */
+  onEdit?: (changes: Array<{ id: string; transform: SharedTransform }>, label: string) => void;
   onCircuitState: (powered: boolean) => void;
+  /** The Circuit Bench's latest engine analysis (every re-evaluation, not only on change). */
+  onCircuitAnalysis?: (analysis: CircuitAnalysis) => void;
   onEnvironmentState: (state: EnvironmentState) => void;
 }
 
@@ -131,6 +158,21 @@ const SNAP_COLS = 9;
 const SNAP_ROWS = 7;
 const SNAP_STUD_Y = DRAG_Y - 0.1;
 const MAGNETIC_RADIUS = 0.72;
+/** Jumper wire: insulation radius (≈1 mm OD), where the insulation ends above the socket point, and the bare tip that reaches the hole floor. */
+const WIRE_RADIUS = 0.048;
+const WIRE_INSULATION_END = 0.04;
+const WIRE_TIP_BOTTOM = HOLE_FLOOR - (BOARD_TOP + 0.015) + 0.004;
+const WIRE_TIP_LENGTH = WIRE_INSULATION_END + 0.01 - WIRE_TIP_BOTTOM;
+const WIRE_TIP_CENTER = WIRE_TIP_BOTTOM + WIRE_TIP_LENGTH / 2;
+/** Board surface in a seated part's local frame (parts sit at DRAG_Y). */
+const SURFACE_LOCAL_Y = BOARD_SURFACE - DRAG_Y;
+
+export type RenderQuality = "low" | "medium" | "high";
+const QUALITY: Record<RenderQuality, { maxPixelRatio: number; minPixelRatio: number; shadowMap: number; shadows: boolean; glowLights: boolean }> = {
+  low: { maxPixelRatio: 1, minPixelRatio: 0.7, shadowMap: 0, shadows: false, glowLights: false },
+  medium: { maxPixelRatio: 1.5, minPixelRatio: 0.85, shadowMap: 1024, shadows: true, glowLights: true },
+  high: { maxPixelRatio: 2, minPixelRatio: 1, shadowMap: 2048, shadows: true, glowLights: true },
+};
 
 type EndpointSockets = [number | null, number | null] | null;
 type EndpointPair = [Vector3, Vector3];
@@ -257,6 +299,18 @@ export class DesktopWorkbenchScene {
   private readonly proceduralTable: Mesh[] = [];
   private hovered: Group | null = null;
   private snapShortActive = false;
+  private circuitAnalysis: CircuitAnalysis | null = null;
+  /** LEDs mid "burn-out" flash: id → time the flash started. */
+  private readonly ledFlashes = new Map<string, number>();
+  private readonly burntLeds = new Set<string>();
+  private readonly quality: RenderQuality;
+  /** Adaptive resolution: current pixel ratio and a rolling frame-time sample. */
+  private pixelRatio = 1;
+  private readonly frameTimes: number[] = [];
+  private adaptations = 0;
+  /** Shadow maps re-render only for a few frames after something moves (not every frame). */
+  private shadowDirtyFrames = 4;
+  private keyLight: DirectionalLight | null = null;
   private snapinoWarning = "";
   private readonly resizeObserver: ResizeObserver;
 
@@ -281,18 +335,22 @@ export class DesktopWorkbenchScene {
   private environmentTarget = { moisture: 34, temperature: 28.6, light: 58, flow: 0 };
   private environmentEmitAt = 0;
 
-  constructor(host: HTMLElement, events: SceneEvents) {
+  constructor(host: HTMLElement, events: SceneEvents, quality: RenderQuality = defaultQuality()) {
     this.host = host;
     this.events = events;
-    this.scene.background = new Color(0x0a0e18);
+    this.quality = quality;
+    this.scene.background = new Color(0x1a1d22);
 
-    this.renderer = new WebGLRenderer({ antialias: true, alpha: false });
+    const tier = QUALITY[quality];
+    this.renderer = new WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.shadowMap.enabled = tier.shadows;
     this.renderer.shadowMap.type = PCFSoftShadowMap;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.autoUpdate = false;
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, tier.maxPixelRatio);
+    this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setAnimationLoop(this.render);
     this.renderer.domElement.className = "workbench-canvas";
     this.renderer.domElement.setAttribute("aria-label", "Interactive 3D electronics workbench");
@@ -303,10 +361,11 @@ export class DesktopWorkbenchScene {
     this.orbit.target.set(0.1, 0.2, 0);
     this.orbit.enableDamping = true;
     this.orbit.dampingFactor = 0.08;
-    this.orbit.minDistance = 5.2;
+    // Close enough to read hole labels and LED polarity; far enough to see the whole bench.
+    this.orbit.minDistance = 1.6;
     this.orbit.maxDistance = 14;
-    this.orbit.minPolarAngle = MathUtils.degToRad(20);
-    this.orbit.maxPolarAngle = MathUtils.degToRad(75);
+    this.orbit.minPolarAngle = MathUtils.degToRad(12);
+    this.orbit.maxPolarAngle = MathUtils.degToRad(80);
     this.orbit.screenSpacePanning = false;
     this.orbit.update();
 
@@ -395,8 +454,9 @@ export class DesktopWorkbenchScene {
 
   focusSelected(): void {
     if (!this.selected) return;
-    const target = this.selected.position.clone();
-    const offset = this.camera.position.clone().sub(this.orbit.target).normalize().multiplyScalar(5.4);
+    const target = this.selected.getWorldPosition(new Vector3());
+    target.y = Math.max(target.y, BOARD_SURFACE + 0.2);
+    const offset = this.camera.position.clone().sub(this.orbit.target).normalize().multiplyScalar(3.1);
     this.orbit.target.copy(target);
     this.camera.position.copy(target).add(offset);
     this.orbit.update();
@@ -408,13 +468,35 @@ export class DesktopWorkbenchScene {
     this.orbit.update();
   }
 
+  /** QA/close-up helper: place the orbit camera explicitly (clamped by the orbit limits on the next update). */
+  setCameraView(position: [number, number, number], target: [number, number, number], unclamped = false): void {
+    if (unclamped) {
+      this.orbit.minDistance = 0.6;
+      this.orbit.maxPolarAngle = MathUtils.degToRad(88);
+    }
+    this.camera.position.set(...position);
+    this.orbit.target.set(...target);
+    this.orbit.update();
+  }
+
+  /** Renderer counters for the last frame (draw calls, triangles), for QA budgets. */
+  renderStats(): { calls: number; triangles: number; geometries: number; textures: number; pixelRatio: number } {
+    const info = this.renderer.info;
+    return {
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      pixelRatio: this.renderer.getPixelRatio(),
+    };
+  }
+
   resetSelectedRotation(): void {
     if (!this.selected) return;
-    this.selected.rotation.set(0, 0, 0);
-    this.selected.updateMatrixWorld(true);
-    this.emitTransform(this.selected, true);
-    this.selectionBox.update();
-    this.events.onStatus("Rotation reset", "neutral");
+    const id = this.selected.userData.componentId as string;
+    const transform = this.snapshotTransform(this.selected);
+    transform.rotation = [0, 0, 0];
+    this.events.onEdit?.([{ id, transform }], "Rotation reset");
   }
 
   toggleMagnetism(): boolean {
@@ -448,9 +530,20 @@ export class DesktopWorkbenchScene {
     }
   }
 
-  applyRemoteTransform(componentId: string, transform: SharedTransform, animate = true): void {
+  /**
+   * Applies a part state from the room. `force`: an accepted edit or the room's authoritative
+   * state — it ends a local drag of the part. `propsOnly`: this participant's own later moves
+   * of the part are still in flight, so only values and the switch state apply.
+   */
+  applyRemoteTransform(componentId: string, transform: SharedTransform, animate = true, options: { force?: boolean; propsOnly?: boolean } = {}): void {
     const component = this.components.get(componentId);
     if (!component) return;
+    if (options.propsOnly) {
+      this.applyPartValues(component, transform);
+      this.evaluateCurrentSystem();
+      return;
+    }
+    if (options.force) this.abortDrag(component);
     if (transform.activeEndpoint !== undefined && transform.endpoints) {
       const remoteIndex = transform.activeEndpoint;
       if (this.draggingEndpoint?.component === component && this.draggingEndpoint.index === remoteIndex) return;
@@ -465,7 +558,7 @@ export class DesktopWorkbenchScene {
       this.evaluateCurrentSystem();
       return;
     }
-    if (typeof transform.on === "boolean") this.setSwitch(component, transform.on);
+    this.applyPartValues(component, transform);
     // Only an active local drag outranks a teammate's move; a merely selected part follows it.
     if (component === this.dragging || (component === this.transform.object && this.transform.dragging)) {
       this.evaluateCurrentSystem();
@@ -494,6 +587,100 @@ export class DesktopWorkbenchScene {
     component.updateMatrixWorld(true);
     if (component === this.selected) this.selectionBox.update();
     this.evaluateCurrentSystem();
+  }
+
+  private applyPartValues(component: Group, transform: SharedTransform): void {
+    if (typeof transform.on === "boolean") this.setSwitch(component, transform.on);
+    if (transform.props) {
+      const spec = component.userData.spec as ComponentSpec;
+      const kind = propKind(spec);
+      const clean = kind ? sanitizeProps(kind, transform.props) : null;
+      if (clean) {
+        component.userData.props = clean;
+        this.refreshPartAppearance(component);
+      }
+    }
+  }
+
+  /**
+   * The room refused this participant's move or claim: its state replaces the local guess
+   * (null = the part was never changed through the room, i.e. its default). `superseded`: a
+   * newer move of ours is still in flight and decides, so keep the position for now.
+   */
+  revertPart(componentId: string, transform: SharedTransform | null, superseded = false): void {
+    const component = this.components.get(componentId);
+    if (!component) return;
+    const target = transform ?? this.defaultTransform(componentId);
+    if (!target) return;
+    if (superseded) {
+      this.applyPartValues(component, target);
+      this.evaluateCurrentSystem();
+      return;
+    }
+    this.applyRemoteTransform(componentId, target, true, { force: true });
+  }
+
+  /**
+   * QA only (`?qa`): drops one cable end into a socket through the same path as a pointer drag —
+   * claim, snapped move, release in the same task — so tests exercise the real room ordering.
+   */
+  qaDropEndpoint(componentId: string, index: 0 | 1, socketIndex: number): boolean {
+    const component = this.components.get(componentId);
+    const socket = this.sockets[socketIndex];
+    const spec = component?.userData.spec as ComponentSpec | undefined;
+    if (!component || !socket || (spec?.kind !== "wire" && spec?.kind !== "hose")) return false;
+    const resourceId = this.endpointResourceId(componentId, index);
+    if (!this.events.onClaim(resourceId)) return false;
+    this.getEndpointPositions(component)[index].copy(component.worldToLocal(socket.clone()));
+    const sockets = this.cloneEndpointSockets(component.userData.sockets as EndpointSockets) ?? [null, null];
+    sockets[index] = socketIndex;
+    component.userData.sockets = sockets;
+    this.updateFlexibleWireGeometry(component, true);
+    component.updateMatrixWorld(true);
+    this.emitTransform(component, true, index);
+    this.evaluateCurrentSystem();
+    this.events.onRelease(resourceId);
+    return true;
+  }
+
+  /** Ends a local drag of the part, if any (the room refused the claim). */
+  abortDragOf(componentId: string): void {
+    const component = this.components.get(componentId);
+    if (component) this.abortDrag(component);
+  }
+
+  private abortDrag(component: Group): void {
+    const id = component.userData.componentId as string;
+    if (this.dragging === component) {
+      const resourceId = this.draggingEndpoint?.resourceId ?? id;
+      if (this.dragPointerId !== null && this.renderer.domElement.hasPointerCapture(this.dragPointerId)) {
+        this.renderer.domElement.releasePointerCapture(this.dragPointerId);
+      }
+      this.dragging = null;
+      this.draggingEndpoint = null;
+      this.dragPointerId = null;
+      this.orbit.enabled = true;
+      this.hideSnapPreview();
+      this.flexMotion.delete(id);
+      this.events.onDragAborted?.(resourceId);
+    } else if (this.transform.object === component && this.transform.dragging) {
+      // Detaching mid-drag drops the gizmo's mouseUp, so no final move is sent.
+      this.transform.detach();
+      this.orbit.enabled = true;
+      this.events.onDragAborted?.(id);
+    }
+  }
+
+  /** A part's state when nobody has changed it: in its tray slot, default values, switch off. */
+  defaultTransform(componentId: string): SharedTransform | null {
+    const transform = this.homeTransform(componentId);
+    const spec = this.components.get(componentId)?.userData.spec as ComponentSpec | undefined;
+    if (!transform || !spec) return null;
+    const props = defaultProps(spec);
+    if (props) transform.props = props;
+    else delete transform.props;
+    if (spec.kind === "snapswitch") transform.on = false;
+    return transform;
   }
 
   setOwner(componentId: string, owner: HandOwner | null): void {
@@ -553,14 +740,19 @@ export class DesktopWorkbenchScene {
     return snapshot;
   }
 
+  /** Restoring a saved attempt is one atomic shared edit (it shows once the room accepts it). */
   restoreAttempt(snapshot: SceneSnapshot): void {
-    for (const [id, transform] of Object.entries(snapshot.transforms)) {
-      this.applyRemoteTransform(id, transform);
-      this.events.onTransform(id, transform);
-    }
-    const restored = this.captureAttempt(`Restored from ${snapshot.id}`);
-    this.events.onAttempt(restored);
-    this.events.onStatus("Attempt restored as a new state", "valid");
+    const changes = Object.entries(snapshot.transforms).map(([id, transform]) => {
+      const clean = { ...transform };
+      delete clean.activeEndpoint;
+      return { id, transform: clean };
+    });
+    this.events.onEdit?.(changes, `Restored ${snapshot.id}`);
+  }
+
+  /** Re-run the active studio's evaluation quietly (refreshes listeners such as the meter). */
+  reevaluate(): void {
+    this.evaluateCurrentSystem(false);
   }
 
   checkCircuit(): boolean {
@@ -569,26 +761,26 @@ export class DesktopWorkbenchScene {
 
   loadCircuitDemo(): void {
     if (this.activeStudio !== "circuit") return;
-    const layout: Record<string, [number, number]> = {
+    // Battery + at r1c5, − at r1c7. The 1 kΩ resistor (r2c4→c7) limits the red LED (anode
+    // r3c5 on +, cathode r3c4) to about 7 mA at 9 V, inside its 20 mA rating.
+    this.submitLayout({
       "battery-9v": [21, 23],
-      "resistor-220": [36, 39],
-      "led-red": [52, 53],
-    };
+      "resistor-1k": [36, 39],
+      "led-red": [53, 52],
+    }, "Diagnostic LED path connected");
+  }
+
+  /**
+   * A demo layout as one atomic shared edit: seats each part exactly as a snapped move would,
+   * keeps everything else on the bench as it is, and shows once the room accepts it.
+   */
+  private submitLayout(layout: Record<string, [number, number]>, label: string, overrides: Record<string, Partial<SharedTransform>> = {}): void {
+    const changes: Array<{ id: string; transform: SharedTransform }> = [];
     for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.circuitSockets[pair[0]];
-      const b = this.circuitSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      const direction = b.clone().sub(a);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-direction.z, direction.x), 0);
-      component.userData.sockets = pair;
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
+      const transform = this.placementTransform(id, pair);
+      if (transform) changes.push({ id, transform: { ...transform, ...overrides[id] } });
     }
-    this.evaluateCircuit(true);
-    this.events.onAttempt(this.captureAttempt("Diagnostic LED path connected"));
+    if (changes.length) this.events.onEdit?.(changes, label);
   }
 
   /**
@@ -599,9 +791,11 @@ export class DesktopWorkbenchScene {
   placementTransform(componentId: string, sockets: [number, number]): SharedTransform | null {
     const component = this.components.get(componentId);
     const spec = component?.userData.spec as ComponentSpec | undefined;
-    const a = this.circuitSockets[sockets[0]];
-    const b = this.circuitSockets[sockets[1]];
-    if (!component || !spec || spec.studio !== "circuit" || !a || !b || sockets[0] === sockets[1]) return null;
+    if (!component || !spec) return null;
+    const grid = this.socketsForStudio(spec.studio);
+    const a = grid[sockets[0]];
+    const b = grid[sockets[1]];
+    if (!a || !b || sockets[0] === sockets[1]) return null;
     const midpoint = a.clone().add(b).multiplyScalar(0.5);
     const direction = b.clone().sub(a);
     const rotationY = Math.atan2(-direction.z, direction.x);
@@ -610,7 +804,10 @@ export class DesktopWorkbenchScene {
       rotation: [0, rotationY, 0],
       sockets: [sockets[0], sockets[1]],
     };
-    if (spec.kind === "wire") {
+    const props = this.getPartProps(componentId);
+    if (props) transform.props = props;
+    if (spec.kind === "snapswitch") transform.on = Boolean(component.userData.switchOn);
+    if (spec.kind === "wire" || spec.kind === "hose") {
       const frame = new Object3D();
       frame.position.set(midpoint.x, DRAG_Y, midpoint.z);
       frame.rotation.set(0, rotationY, 0);
@@ -634,11 +831,62 @@ export class DesktopWorkbenchScene {
       rotation: [0, 0, 0],
       sockets: null,
     };
+    const props = this.getPartProps(componentId);
+    if (props) transform.props = props;
     if (spec.kind === "wire" || spec.kind === "hose") {
       const half = spec.leadSeparation / 2;
       transform.endpoints = [[-half, 0, 0], [half, 0, 0]];
     }
     return transform;
+  }
+
+  private socketsForStudio(studio: StudioKind): Vector3[] {
+    if (studio === "greenhouse") return this.greenhouseSockets;
+    if (studio === "snap" || studio === "snapino") return this.snapSockets;
+    return this.circuitSockets;
+  }
+
+  /** What a project file may contain for `studio`: its part ids, value kinds and socket range. */
+  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, "resistor" | "battery" | null>; socketCount: number; switches: string[]; sharedSockets: boolean } {
+    const parts: Record<string, "resistor" | "battery" | null> = {};
+    for (const spec of COMPONENTS) if (spec.studio === studio) parts[spec.id] = propKind(spec);
+    return {
+      studio,
+      parts,
+      socketCount: this.socketsForStudio(studio).length,
+      switches: COMPONENTS.filter((spec) => spec.studio === studio && spec.kind === "snapswitch").map((spec) => spec.id),
+      // Snap Lab and Snapino parts stack on shared studs; breadboard and greenhouse holes do not.
+      sharedSockets: studio === "snap" || studio === "snapino",
+    };
+  }
+
+  /** The values a part starts with (used by reset). */
+  defaultPartProps(componentId: string): PartProps | null {
+    const spec = this.components.get(componentId)?.userData.spec as ComponentSpec | undefined;
+    return spec ? defaultProps(spec) : null;
+  }
+
+  /** Current electrical values of a resistor or battery; null for parts without any. */
+  getPartProps(componentId: string): PartProps | null {
+    const props = this.components.get(componentId)?.userData.props as PartProps | undefined;
+    return props ? { ...props } : null;
+  }
+
+  /** The latest Circuit Bench analysis from the shared DC engine. */
+  getCircuitAnalysis(): CircuitAnalysis | null {
+    return this.circuitAnalysis;
+  }
+
+  /** Projects a part's anchor to client coordinates (for measurement tags); null if hidden. */
+  projectComponent(componentId: string): { x: number; y: number } | null {
+    const component = this.components.get(componentId);
+    if (!component || !component.visible || !component.parent?.visible) return null;
+    const point = component.getWorldPosition(new Vector3());
+    point.y += 0.55;
+    point.project(this.camera);
+    if (point.z > 1 || point.z < -1) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + ((point.x + 1) / 2) * rect.width, y: rect.top + ((1 - point.y) / 2) * rect.height };
   }
 
   /** Lets go of a locally selected part so a teammate's move is not masked by the gizmo. */
@@ -649,7 +897,7 @@ export class DesktopWorkbenchScene {
   loadSnapDemo(): void {
     if (this.activeStudio !== "snap") return;
     // studs are row * 9 + col: B1+ (r1c0) → W4 → W3 → M1 → L1 → S1 → W2 → B1− (r1c3)
-    const layout: Record<string, [number, number]> = {
+    this.submitLayout({
       "snap-b1": [9, 12],
       "snap-w4": [9, 45],
       "snap-w3a": [45, 48],
@@ -657,22 +905,7 @@ export class DesktopWorkbenchScene {
       "snap-l1": [50, 32],
       "snap-s1": [32, 14],
       "snap-w2": [14, 12],
-    };
-    for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.snapSockets[pair[0]];
-      const b = this.snapSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
-      component.userData.sockets = pair;
-      if (id === "snap-s1") this.setSwitch(component, true);
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
-    }
-    this.evaluateSnap(true);
-    this.events.onAttempt(this.captureAttempt("Series lamp + motor loop connected"));
+    }, "Series lamp + motor loop connected", { "snap-s1": { on: true } });
   }
 
   /** Keyboard/assistive path to operate the selected slide switch. */
@@ -689,11 +922,10 @@ export class DesktopWorkbenchScene {
       this.events.onStatus(`${owner.name} is holding S1`, "warning");
       return;
     }
-    this.setSwitch(component, !component.userData.switchOn);
-    this.emitTransform(component, true);
-    this.events.onStatus(`Slide switch S1 ${component.userData.switchOn ? "ON" : "OFF"}`, "neutral");
-    this.evaluateCurrentSystem(true);
-    this.events.onAttempt(this.captureAttempt(`S1 switched ${component.userData.switchOn ? "on" : "off"}`));
+    // A switch flip is a shared edit: it shows (here and for everyone) once the room accepts it.
+    const transform = this.snapshotTransform(component);
+    transform.on = !component.userData.switchOn;
+    this.events.onEdit?.([{ id, transform }], `S1 switched ${transform.on ? "on" : "off"}`);
   }
 
   private setSwitch(component: Group, on: boolean): void {
@@ -709,7 +941,7 @@ export class DesktopWorkbenchScene {
 
   loadGreenhouseDemo(): void {
     if (this.activeStudio !== "greenhouse") return;
-    const layout: Record<string, [number, number]> = {
+    this.submitLayout({
       "soil-sensor": [0, 1],
       "temp-sensor": [2, 3],
       "light-sensor": [4, 5],
@@ -718,31 +950,7 @@ export class DesktopWorkbenchScene {
       "water-pump": [12, 14],
       "irrigation-hose": [15, 18],
       "vent-fan": [19, 21],
-    };
-    for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.greenhouseSockets[pair[0]];
-      const b = this.greenhouseSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
-      component.userData.sockets = pair;
-      component.updateMatrixWorld(true);
-      const spec = component.userData.spec as ComponentSpec;
-      if (spec.kind === "wire" || spec.kind === "hose") {
-        const endpoints = this.getEndpointPositions(component);
-        endpoints[0].copy(component.worldToLocal(a.clone()));
-        endpoints[1].copy(component.worldToLocal(b.clone()));
-        this.updateFlexibleWireGeometry(component, true);
-      } else {
-        this.updateFlexibleWire(component, a.distanceTo(b), true);
-      }
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
-    }
-    this.evaluateGreenhouse(true);
-    this.events.onAttempt(this.captureAttempt("Field test layout connected"));
+    }, "Field test layout connected");
   }
 
   dispose(): void {
@@ -761,32 +969,44 @@ export class DesktopWorkbenchScene {
     this.renderer.domElement.remove();
   }
 
+  /**
+   * Studio lighting for a bench: soft sky/ground fill, one shadow-casting key over the board,
+   * a warm pendant pool, a cool rim, and a dim room environment for metal reflections. No
+   * bloom or post-processing (labels and lead details stay crisp).
+   */
   private setupLighting(): void {
     const pmrem = new PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.42;
+    this.scene.environmentIntensity = 0.5;
     pmrem.dispose();
-    const ambient = new AmbientLight(0xc7d2e0, 0.55);
-    this.scene.add(ambient);
-    const key = new DirectionalLight(0xfff0d8, 2.4);
-    key.position.set(4, 8, 5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.left = -7.5;
-    key.shadow.camera.right = 7.5;
-    key.shadow.camera.top = 6;
-    key.shadow.camera.bottom = -6;
-    key.shadow.bias = -0.0004;
-    key.shadow.normalBias = 0.02;
-    this.scene.add(key);
-    // warm pendant pool over the bench: the work surface reads as the stage
-    const pendant = new SpotLight(0xffe2b8, 90, 22, MathUtils.degToRad(38), 0.65, 1.6);
-    pendant.position.set(0, 9.2, 0.4);
-    pendant.target.position.set(0, 0, 0);
+    const sky = new HemisphereLight(0xe6edf7, 0x4a3f33, 0.55);
+    this.scene.add(sky);
+    const tier = QUALITY[this.quality];
+    const key = new DirectionalLight(0xfff4e6, 2.1);
+    key.position.set(3.2, 8.5, 4.4);
+    key.target.position.set(-0.4, 0, 0);
+    key.castShadow = tier.shadows;
+    if (tier.shadows) {
+      key.shadow.mapSize.set(tier.shadowMap, tier.shadowMap);
+      key.shadow.camera.left = -5.5;
+      key.shadow.camera.right = 5.5;
+      key.shadow.camera.top = 4.5;
+      key.shadow.camera.bottom = -4.5;
+      key.shadow.camera.near = 2;
+      key.shadow.camera.far = 20;
+      key.shadow.bias = -0.0003;
+      key.shadow.normalBias = 0.015;
+      key.shadow.radius = 4;
+    }
+    this.keyLight = key;
+    this.scene.add(key, key.target);
+    const pendant = new SpotLight(0xffe6c4, 42, 22, MathUtils.degToRad(40), 0.75, 1.6);
+    pendant.position.set(-0.4, 9.2, 0.6);
+    pendant.target.position.set(-0.6, 0, 0);
     this.scene.add(pendant, pendant.target);
-    const fill = new DirectionalLight(0x7aa2e8, 0.8);
-    fill.position.set(-5, 4, -3);
-    this.scene.add(fill);
+    const rim = new DirectionalLight(0x9ab8ef, 0.55);
+    rim.position.set(-5, 4, -4);
+    this.scene.add(rim);
   }
 
   private setupTable(): void {
@@ -809,131 +1029,16 @@ export class DesktopWorkbenchScene {
   }
 
   private setupBreadboard(): void {
-    const board = new Group();
-    board.position.x = BOARD_X;
-    const pcb = new Mesh(
-      new RoundedBoxGeometry(4.82, 0.16, 4.28, 5, 0.14),
-      new MeshPhysicalMaterial({ color: 0x173f38, roughness: 0.48, metalness: 0.18, clearcoat: 0.28 }),
-    );
-    pcb.position.y = 0.04;
-    pcb.receiveShadow = true;
-    board.add(pcb);
-    const body = new Mesh(
-      new RoundedBoxGeometry(4.25, 0.28, 3.7, 5, 0.11),
-      new MeshPhysicalMaterial({
-        color: COLORS.board,
-        roughness: 0.72,
-        metalness: 0,
-        clearcoat: 0.08,
-        clearcoatRoughness: 0.8,
-      }),
-    );
-    body.position.y = 0.14;
-    body.receiveShadow = true;
-    board.add(body);
-
-    const edge = new Mesh(
-      new BoxGeometry(4.34, 0.13, 3.79),
-      new MeshStandardMaterial({ color: COLORS.boardEdge, roughness: 0.82 }),
-    );
-    edge.position.y = 0.045;
-    board.add(edge);
-
-    const traceMaterial = new MeshStandardMaterial({ color: 0xc89d4d, roughness: 0.28, metalness: 0.82 });
-    for (const [x, z, width, depth] of [
-      [0, -2.02, 3.9, 0.025],
-      [0, 2.02, 3.9, 0.025],
-      [-2.25, 0, 0.025, 3.55],
-      [2.25, 0, 0.025, 3.55],
-      [1.92, 1.42, 0.62, 0.025],
-      [-1.86, -1.4, 0.72, 0.025],
-    ] as const) {
-      const trace = new Mesh(new BoxGeometry(width, 0.014, depth), traceMaterial);
-      trace.position.set(x, 0.135, z);
-      board.add(trace);
-    }
-
-    const mountingMaterial = new MeshStandardMaterial({ color: 0xd6b56c, roughness: 0.24, metalness: 0.9 });
-    for (const x of [-2.24, 2.24]) {
-      for (const z of [-1.96, 1.96]) {
-        const mount = new Mesh(new TorusGeometry(0.105, 0.028, 10, 24), mountingMaterial);
-        mount.rotation.x = Math.PI / 2;
-        mount.position.set(x, 0.15, z);
-        board.add(mount);
-      }
-    }
-
-    const channel = new Mesh(
-      new BoxGeometry(3.85, 0.035, 0.18),
-      new MeshStandardMaterial({ color: 0x37332d, roughness: 0.9 }),
-    );
-    channel.position.y = 0.295;
-    board.add(channel);
-
-    const stripeGeometry = new BoxGeometry(3.78, 0.012, 0.035);
-    const red = new Mesh(stripeGeometry, new MeshStandardMaterial({ color: 0xcc4d4d, roughness: 0.65 }));
-    red.position.set(0, 0.292, -1.73);
-    board.add(red);
-    const blue = new Mesh(stripeGeometry, new MeshStandardMaterial({ color: 0x3b6fb6, roughness: 0.65 }));
-    blue.position.set(0, 0.292, 1.73);
-    board.add(blue);
-    const upperBlue = blue.clone();
-    upperBlue.position.z = -1.62;
-    board.add(upperBlue);
-    const lowerRed = red.clone();
-    lowerRed.position.z = 1.62;
-    board.add(lowerRed);
-
-    const controllerBody = new Mesh(
-      new RoundedBoxGeometry(0.56, 0.16, 0.82, 4, 0.06),
-      new MeshStandardMaterial({ color: 0x101820, roughness: 0.36, metalness: 0.24 }),
-    );
-    controllerBody.position.set(2.08, 0.24, 0.52);
-    board.add(controllerBody);
-    for (const z of [-0.28, -0.14, 0, 0.14, 0.28]) {
-      for (const x of [1.76, 2.4]) {
-        const pin = new Mesh(new BoxGeometry(0.12, 0.025, 0.035), mountingMaterial);
-        pin.position.set(x, 0.23, 0.52 + z);
-        board.add(pin);
-      }
-    }
-    const powerJack = new Mesh(
-      new RoundedBoxGeometry(0.5, 0.3, 0.42, 4, 0.055),
-      new MeshStandardMaterial({ color: 0x9da8b4, roughness: 0.3, metalness: 0.78 }),
-    );
-    powerJack.position.set(-2.12, 0.24, -1.45);
-    board.add(powerJack);
-    for (const z of [-1.2, -0.98]) {
-      const capacitor = new Mesh(
-        new CylinderGeometry(0.095, 0.095, 0.32, 18),
-        new MeshStandardMaterial({ color: 0x243d63, roughness: 0.36, metalness: 0.38 }),
-      );
-      capacitor.position.set(-2.12, 0.31, z);
-      board.add(capacitor);
-    }
-
-    const holes = new InstancedMesh(
-      new CylinderGeometry(0.035, 0.026, 0.04, 12),
-      new MeshStandardMaterial({ color: 0x171717, roughness: 0.42, metalness: 0.45 }),
-      COLS * ROWS,
-    );
-    const dummy = new Object3D();
     const rows = socketRows();
-    let index = 0;
+    const columns: number[] = [];
+    for (let col = 0; col < COLS; col += 1) columns.push(-((COLS - 1) * PITCH) / 2 + col * PITCH);
     for (let row = 0; row < ROWS; row += 1) {
       for (let col = 0; col < COLS; col += 1) {
-        const x = BOARD_X - ((COLS - 1) * PITCH) / 2 + col * PITCH;
-        const z = rows[row];
-        this.circuitSockets.push(new Vector3(x, BOARD_TOP + 0.015, z));
-        dummy.position.set(x - BOARD_X, BOARD_TOP, z);
-        dummy.rotation.x = Math.PI;
-        dummy.updateMatrix();
-        holes.setMatrixAt(index++, dummy.matrix);
+        // Picking, snapping and the rendered holes all come from these same coordinates.
+        this.circuitSockets.push(new Vector3(BOARD_X + columns[col], BOARD_TOP + 0.015, rows[row]));
       }
     }
-    holes.instanceMatrix.needsUpdate = true;
-    board.add(holes);
-    this.circuitGroup.add(board);
+    this.circuitGroup.add(createBreadboard({ centerX: BOARD_X, columns, rows }));
   }
 
   private setupGreenhouse(): void {
@@ -1120,11 +1225,15 @@ export class DesktopWorkbenchScene {
       component.userData.spec = spec;
       component.userData.sockets = null;
       component.userData.home = component.position.clone();
+      const kind = propKind(spec);
+      if (kind) component.userData.props = defaultProps(spec);
       component.traverse((child) => {
         child.userData.componentRoot = component;
         if (child instanceof Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+          // Decals, glows, hit targets and indicators (unlit materials) never cast shadows.
+          const unlit = child.material instanceof MeshBasicMaterial || child.userData.contactShadow;
+          child.castShadow = !unlit;
+          child.receiveShadow = !unlit;
         }
       });
       this.components.set(spec.id, component);
@@ -1137,55 +1246,20 @@ export class DesktopWorkbenchScene {
     const metal = new MeshStandardMaterial({ color: COLORS.metal, roughness: 0.33, metalness: 0.82 });
 
     if (spec.kind === "led") {
-      const bodyMaterial = new MeshStandardMaterial({
-        color: spec.color,
-        emissive: spec.color,
-        emissiveIntensity: 0,
-        roughness: 0.28,
-        transparent: true,
-        opacity: 0.92,
+      group.add(createLedModel({ color: spec.color, leadSeparation: spec.leadSeparation, surfaceY: SURFACE_LOCAL_Y }));
+      const model = group.children[group.children.length - 1];
+      Object.assign(group.userData, {
+        glowMaterials: model.userData.glowMaterials,
+        ledCore: model.userData.ledCore,
+        glowLight: model.userData.glowLight,
+        scorchMaterial: model.userData.scorchMaterial,
       });
-      const dome = new Mesh(new SphereGeometry(0.19, 24, 18), bodyMaterial);
-      dome.scale.y = 1.2;
-      dome.position.y = 0.24;
-      group.add(dome);
-      const collar = new Mesh(new CylinderGeometry(0.19, 0.19, 0.1, 24), bodyMaterial);
-      collar.position.y = 0.1;
-      group.add(collar);
-      for (const x of [-spec.leadSeparation / 2, spec.leadSeparation / 2]) {
-        const lead = new Mesh(new CylinderGeometry(0.025, 0.025, 0.44, 10), metal);
-        lead.position.set(x, -0.12, 0);
-        group.add(lead);
-      }
-      group.userData.glowMaterials = [bodyMaterial];
-      const glow = new PointLight(spec.color, 0, 3.2, 1.6);
-      glow.position.y = 0.3;
-      group.add(glow);
-      group.userData.glowLight = glow;
     }
 
     if (spec.kind === "resistor") {
-      const leadGeometry = new CylinderGeometry(0.025, 0.025, spec.leadSeparation, 10);
-      const lead = new Mesh(leadGeometry, metal);
-      lead.rotation.z = Math.PI / 2;
-      group.add(lead);
-      const body = new Mesh(
-        new CylinderGeometry(0.12, 0.12, 0.5, 24),
-        new MeshStandardMaterial({ color: spec.color, roughness: 0.58 }),
-      );
-      body.rotation.z = Math.PI / 2;
-      body.position.y = 0.12;
-      group.add(body);
-      const bandColors = [0x6b2b1f, 0x191919, spec.id === "resistor-220" ? 0xa83232 : 0x9f6a1f];
-      bandColors.forEach((color, index) => {
-        const band = new Mesh(
-          new TorusGeometry(0.123, 0.018, 8, 20),
-          new MeshStandardMaterial({ color, roughness: 0.48 }),
-        );
-        band.rotation.y = Math.PI / 2;
-        band.position.set((index - 1) * 0.12, 0.12, 0);
-        group.add(band);
-      });
+      const model = createResistorModel({ ohms: defaultProps(spec)?.ohms ?? 1000, leadSeparation: spec.leadSeparation, surfaceY: SURFACE_LOCAL_Y });
+      group.add(model);
+      group.userData.refreshAppearance = model.userData.refreshAppearance;
     }
 
     if (spec.kind === "wire" || spec.kind === "hose") {
@@ -1200,18 +1274,15 @@ export class DesktopWorkbenchScene {
         new Vector3(half * 0.5, 0.34, 0.04),
         new Vector3(half, 0, 0),
       ]);
-      const body = new Mesh(
-        new TubeGeometry(curve, 28, spec.kind === "hose" ? 0.075 : 0.045, 10, false),
-        new MeshPhysicalMaterial({
-          color: spec.color,
-          roughness: spec.kind === "hose" ? 0.72 : 0.54,
-          metalness: 0.02,
-          clearcoat: spec.kind === "hose" ? 0.12 : 0.34,
-          clearcoatRoughness: 0.62,
-          sheen: spec.kind === "hose" ? 0.18 : 0.08,
-          sheenRoughness: 0.74,
-        }),
-      );
+      const insulation = new MeshPhysicalMaterial({
+        name: spec.kind === "hose" ? "hose_pvc" : "wire_insulation_pvc",
+        color: spec.color,
+        roughness: spec.kind === "hose" ? 0.72 : 0.42,
+        metalness: 0,
+        clearcoat: spec.kind === "hose" ? 0.12 : 0.45,
+        clearcoatRoughness: 0.3,
+      });
+      const body = new Mesh(new TubeGeometry(curve, 28, spec.kind === "hose" ? 0.075 : WIRE_RADIUS, 10, false), insulation);
       body.userData.flexibleWireBody = true;
       group.userData.wireBody = body;
       group.add(body);
@@ -1220,15 +1291,18 @@ export class DesktopWorkbenchScene {
       const endpointIndicators: Mesh<TorusGeometry, MeshBasicMaterial>[] = [];
       const endpointHitTargets: Mesh<SphereGeometry, MeshBasicMaterial>[] = [];
       for (const [index, x] of [-half, half].entries()) {
-        const tip = new Mesh(new CylinderGeometry(spec.kind === "hose" ? 0.055 : 0.024, spec.kind === "hose" ? 0.055 : 0.024, 0.34, 10), metal);
-        tip.position.set(x, -0.14, 0);
+        // Jumper: a bare tinned conductor that enters the hole; hose: a brass barb.
+        const tip = spec.kind === "hose"
+          ? new Mesh(new CylinderGeometry(0.055, 0.055, 0.34, 10), metal)
+          : new Mesh(new CylinderGeometry(0.021, 0.021, WIRE_TIP_LENGTH, 10), palette.tinnedLead());
+        tip.position.set(x, spec.kind === "hose" ? -0.14 : WIRE_TIP_CENTER, 0);
         tip.userData.endpointIndex = index;
         group.add(tip);
-        const collar = new Mesh(
-          new CylinderGeometry(spec.kind === "hose" ? 0.105 : 0.052, spec.kind === "hose" ? 0.095 : 0.048, 0.13, 16),
-          new MeshStandardMaterial({ color: spec.kind === "hose" ? 0xb88b3e : 0x1f2937, roughness: 0.34, metalness: spec.kind === "hose" ? 0.7 : 0.28 }),
-        );
-        collar.position.set(x, 0.015, 0);
+        // Jumper: the insulation's cut end, a short sleeve in the wire's own color.
+        const collar = spec.kind === "hose"
+          ? new Mesh(new CylinderGeometry(0.105, 0.095, 0.13, 16), new MeshStandardMaterial({ color: 0xb88b3e, roughness: 0.34, metalness: 0.7 }))
+          : new Mesh(new CylinderGeometry(WIRE_RADIUS, WIRE_RADIUS, 0.02, 12), insulation);
+        collar.position.set(x, spec.kind === "hose" ? 0.015 : WIRE_INSULATION_END + 0.01, 0);
         collar.userData.endpointIndex = index;
         group.add(collar);
         wireTips.push(tip);
@@ -1272,29 +1346,9 @@ export class DesktopWorkbenchScene {
     }
 
     if (spec.kind === "battery") {
-      const body = new Mesh(
-        new BoxGeometry(0.82, 0.76, 0.46),
-        new MeshStandardMaterial({ color: 0x20242a, roughness: 0.68, metalness: 0.08 }),
-      );
-      body.position.y = 0.23;
-      group.add(body);
-      const top = new Mesh(
-        new BoxGeometry(0.84, 0.17, 0.48),
-        new MeshStandardMaterial({ color: 0xa9672c, roughness: 0.45, metalness: 0.35 }),
-      );
-      top.position.y = 0.69;
-      group.add(top);
-      for (const [x, color] of [[-spec.leadSeparation / 2, 0xd5a857], [spec.leadSeparation / 2, 0xc7cbd0]] as const) {
-        const terminal = new Mesh(
-          new CylinderGeometry(0.08, 0.08, 0.12, 16),
-          new MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.75 }),
-        );
-        terminal.position.set(x, 0.84, 0);
-        group.add(terminal);
-        const lead = new Mesh(new CylinderGeometry(0.024, 0.024, 0.44, 10), metal);
-        lead.position.set(x, -0.2, 0);
-        group.add(lead);
-      }
+      const model = createBatteryModel({ volts: defaultProps(spec)?.volts ?? 9, leadSeparation: spec.leadSeparation, surfaceY: SURFACE_LOCAL_Y });
+      group.add(model);
+      group.userData.refreshAppearance = model.userData.refreshAppearance;
     }
 
     if (spec.kind === "sensor") {
@@ -1765,7 +1819,9 @@ export class DesktopWorkbenchScene {
 
       for (const [id, component] of this.components) {
         const spec = component.userData.spec as ComponentSpec;
-        if (spec.kind === "wire" || spec.kind === "hose") continue;
+        // Circuit Bench parts use the procedural bench models (bench-models.ts): exact scale,
+        // polarity cues and value-driven bands that the baked GLB parts cannot show.
+        if (spec.kind === "wire" || spec.kind === "hose" || spec.studio === "circuit") continue;
         const source = parts.scene.getObjectByName(`part_${spec.model ?? id}`);
         if (!source) continue;
         const detailed = source.clone(true);
@@ -1809,12 +1865,32 @@ export class DesktopWorkbenchScene {
         });
         procedural.visible = false;
         group.add(detailed);
+        if (name === "snapino_board") this.addSnapinoSilkscreen(detailed);
       }
       this.evaluateCurrentSystem();
       if (this.selected) this.selectionBox.setFromObject(this.selected);
     } catch (error) {
       console.warn("Detailed makerspace models unavailable; using procedural meshes.", error);
     }
+  }
+
+  /** Readable pin names, headers and an honest "not an AVR emulator" note on the Nano module. */
+  private addSnapinoSilkscreen(board: Object3D): void {
+    const pcb = board.getObjectByName("snapino_nano_pcb");
+    if (!pcb) return;
+    board.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(pcb);
+    const size = box.getSize(new Vector3());
+    const center = box.getCenter(new Vector3());
+    const long = Math.max(size.x, size.z);
+    const short = Math.min(size.x, size.z);
+    const silkscreen = createSnapinoSilkscreen(long * 0.98, short * 0.94);
+    silkscreen.position.set(center.x, box.max.y + 0.002, center.z);
+    if (size.z > size.x) silkscreen.rotation.y = Math.PI / 2;
+    const headers = createHeaderRows(long * 0.9, short * 0.42, 15);
+    headers.position.set(center.x, box.max.y, center.z);
+    if (size.z > size.x) headers.rotation.y = Math.PI / 2;
+    this.snapinoGroup.add(silkscreen, headers);
   }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
@@ -1998,6 +2074,8 @@ export class DesktopWorkbenchScene {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hits = this.raycaster.intersectObjects([...this.components.values()], true);
     for (const hit of hits) {
+      // Contact shadows and other decals are never grab handles.
+      if (hit.object.userData.noPick) continue;
       const root = hit.object.userData.componentRoot as Group | undefined;
       const spec = root?.userData.spec as ComponentSpec | undefined;
       if (root && root.visible !== false && spec?.studio === this.activeStudio) return root;
@@ -2342,21 +2420,41 @@ export class DesktopWorkbenchScene {
     const perpendicular = new Vector3(-tangent.z, 0, tangent.x).normalize();
     const point = (amount: number, lift: number, side: number): Vector3 =>
       start.clone().lerp(end, amount).add(new Vector3(0, lift, 0)).addScaledVector(perpendicular, side);
-    const curve = new CatmullRomCurve3([
-      start.clone(),
-      point(0.14, arch * 0.56, lateral * 0.28),
-      point(0.31, arch * 0.92, lateral * 0.72),
-      point(0.5, arch, lateral),
-      point(0.69, arch * 0.88, lateral * 0.58),
-      point(0.86, arch * 0.52, lateral * 0.18),
-      end.clone(),
-    ]);
+    let curve: CatmullRomCurve3;
+    if (spec.kind === "wire") {
+      // A jumper leaves each hole vertically (insulation stops just above the board, the bare
+      // conductor goes in), then arches over in one smooth, gently sagging span.
+      const rise = Math.min(0.16, 0.08 + span * 0.05);
+      const up = (from: Vector3, height: number): Vector3 => from.clone().add(new Vector3(0, height, 0));
+      curve = new CatmullRomCurve3([
+        up(start, WIRE_INSULATION_END),
+        up(start, WIRE_INSULATION_END + rise * 0.55),
+        point(0.12, rise + arch * 0.45, lateral * 0.2),
+        point(0.5, rise + arch * 0.82, lateral),
+        point(0.88, rise + arch * 0.45, lateral * 0.2),
+        up(end, WIRE_INSULATION_END + rise * 0.55),
+        up(end, WIRE_INSULATION_END),
+      ], false, "centripetal");
+    } else {
+      curve = new CatmullRomCurve3([
+        start.clone(),
+        point(0.14, arch * 0.56, lateral * 0.28),
+        point(0.31, arch * 0.92, lateral * 0.72),
+        point(0.5, arch, lateral),
+        point(0.69, arch * 0.88, lateral * 0.58),
+        point(0.86, arch * 0.52, lateral * 0.18),
+        end.clone(),
+      ]);
+    }
     body.geometry.dispose();
-    body.geometry = new TubeGeometry(curve, spec.kind === "hose" ? 52 : 44, spec.kind === "hose" ? 0.075 : 0.045, spec.kind === "hose" ? 14 : 12, false);
-    tips[0].position.copy(start).add(new Vector3(0, -0.14, 0));
-    tips[1].position.copy(end).add(new Vector3(0, -0.14, 0));
-    collars?.[0]?.position.copy(start).add(new Vector3(0, 0.015, 0));
-    collars?.[1]?.position.copy(end).add(new Vector3(0, 0.015, 0));
+    body.geometry = new TubeGeometry(curve, spec.kind === "hose" ? 52 : 64, spec.kind === "hose" ? 0.075 : WIRE_RADIUS, spec.kind === "hose" ? 14 : 12, false);
+    const tipOffset = spec.kind === "hose" ? -0.14 : WIRE_TIP_CENTER;
+    tips[0].position.copy(start).add(new Vector3(0, tipOffset, 0));
+    tips[1].position.copy(end).add(new Vector3(0, tipOffset, 0));
+    // Jumper: a flush cap of the insulation's own color closes the tube's cut end.
+    const collarOffset = spec.kind === "hose" ? 0.015 : WIRE_INSULATION_END + 0.01;
+    collars?.[0]?.position.copy(start).add(new Vector3(0, collarOffset, 0));
+    collars?.[1]?.position.copy(end).add(new Vector3(0, collarOffset, 0));
     indicators?.[0]?.position.copy(start).add(new Vector3(0, 0.025, 0));
     indicators?.[1]?.position.copy(end).add(new Vector3(0, 0.025, 0));
     hitTargets?.[0]?.position.copy(start);
@@ -2369,6 +2467,8 @@ export class DesktopWorkbenchScene {
   }
 
   private evaluateCurrentSystem(announce = false): boolean {
+    this.shadowDirtyFrames = Math.max(this.shadowDirtyFrames, 3);
+    this.syncContactShadows();
     if (this.activeStudio === "greenhouse") return this.evaluateGreenhouse(announce);
     if (this.activeStudio === "snap") return this.evaluateSnap(announce);
     if (this.activeStudio === "snapino") return this.evaluateSnapino(announce);
@@ -2383,78 +2483,91 @@ export class DesktopWorkbenchScene {
     );
   }
 
+  /**
+   * Circuit Bench: one electrical truth. Placements and edited values go through the shared
+   * DC engine (src/circuit); LED glow follows the computed current, and only a safely lit
+   * LED (no short, no overdriven or burnt LED) counts as powered.
+   */
   private evaluateCircuit(announce = false): boolean {
-    const parent = new Int16Array(2 + COLS * 2);
-    for (let i = 0; i < parent.length; i += 1) parent[i] = i;
-    const find = (value: number): number => {
-      let current = value;
-      while (parent[current] !== current) {
-        parent[current] = parent[parent[current]];
-        current = parent[current];
-      }
-      return current;
-    };
-    const union = (a: number, b: number): void => {
-      const rootA = find(a);
-      const rootB = find(b);
-      if (rootA !== rootB) parent[rootA] = rootB;
-    };
-    const socketToNet = (socketIndex: number): number => {
-      const row = Math.floor(socketIndex / COLS);
-      const col = socketIndex % COLS;
-      if (row === 0) return 0;
-      if (row === ROWS - 1) return 1;
-      if (row <= 5) return 2 + col;
-      return 2 + COLS + col;
-    };
-
-    for (const component of this.components.values()) {
+    const placements: CircuitPlacements = {};
+    const props: CircuitProps = {};
+    for (const [id, component] of this.components) {
       const spec = component.userData.spec as ComponentSpec;
+      if (spec.studio !== "circuit") continue;
       const sockets = component.userData.sockets as EndpointSockets;
-      if (!this.isFullyConnected(sockets) || (spec.kind !== "wire" && spec.kind !== "resistor")) continue;
-      union(socketToNet(sockets[0]), socketToNet(sockets[1]));
+      placements[id] = this.isFullyConnected(sockets) ? [sockets[0], sockets[1]] : null;
+      props[id] = (component.userData.props as PartProps | undefined) ?? null;
     }
-
-    const battery = this.components.get("battery-9v");
-    const batterySockets = battery?.userData.sockets as EndpointSockets | undefined;
-    let powered = false;
-    if (this.isFullyConnected(batterySockets)) {
-      const sourceA = find(socketToNet(batterySockets[0]));
-      const sourceB = find(socketToNet(batterySockets[1]));
-      for (const id of ["led-red", "led-green"]) {
-        const led = this.components.get(id)!;
-        const ledSockets = led.userData.sockets as EndpointSockets;
-        let lit = false;
-        if (this.isFullyConnected(ledSockets)) {
-          const ledA = find(socketToNet(ledSockets[0]));
-          const ledB = find(socketToNet(ledSockets[1]));
-          lit = (ledA === sourceA && ledB === sourceB) || (ledA === sourceB && ledB === sourceA);
-        }
-        for (const material of (led.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
-          material.emissiveIntensity = lit ? 3.2 : 0;
-        }
-        const glowLight = led.userData.glowLight as PointLight | undefined;
-        if (glowLight) glowLight.intensity = lit ? 2.4 : 0;
-        powered ||= lit;
+    const analysis = analyzeCircuit(placements, props);
+    this.circuitAnalysis = analysis;
+    const readings = analysis.board.result.elements;
+    for (const id of ["led-red", "led-green"]) {
+      const led = this.components.get(id);
+      if (!led) continue;
+      const reading = readings[id]?.led;
+      const brightness = reading?.on ? Math.max(0.12, reading.brightness) : 0;
+      const burnt = reading?.state === "burnout";
+      if (burnt && !this.burntLeds.has(id)) this.ledFlashes.set(id, performance.now());
+      if (burnt) this.burntLeds.add(id);
+      else {
+        this.burntLeds.delete(id);
+        this.ledFlashes.delete(id);
       }
-    } else {
-      for (const id of ["led-red", "led-green"]) {
-        const led = this.components.get(id)!;
-        for (const material of (led.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
-          material.emissiveIntensity = 0;
-        }
-        const glowLight = led.userData.glowLight as PointLight | undefined;
-        if (glowLight) glowLight.intensity = 0;
-      }
+      led.userData.ledBrightness = brightness;
+      led.userData.ledBurnt = burnt;
+      this.applyLedGlow(led, brightness, burnt ? 0 : 1);
     }
+    const powered = analysis.powered;
     this.events.onCircuitState(powered);
+    this.events.onCircuitAnalysis?.(analysis);
     if (announce) {
-      this.events.onStatus(
-        powered ? "Circuit powered · the current path is complete" : "Needs review · the current path is still open",
-        powered ? "valid" : "warning",
-      );
+      const { message, tone } = describeCircuit(analysis);
+      this.events.onStatus(message, tone);
     }
     return powered;
+  }
+
+  /** Contact shadows sit on the board surface, so they show only while a part is seated. */
+  private syncContactShadows(): void {
+    for (const component of this.components.values()) {
+      const shadow = component.userData.contactShadowMesh as Object3D | null | undefined;
+      if (shadow === undefined) {
+        let found: Object3D | null = null;
+        component.traverse((child) => {
+          if (child.userData.contactShadow) found = child;
+        });
+        component.userData.contactShadowMesh = found;
+        continue;
+      }
+      if (shadow) shadow.visible = this.isFullyConnected(component.userData.sockets as EndpointSockets) && !this.remoteTweens.has(component.userData.componentId as string) && component !== this.dragging;
+    }
+  }
+
+  /** Resin emission, glow light and burnt tint for one LED; `health` 0 = burnt (darkened). */
+  private applyLedGlow(led: Group, brightness: number, health: number): void {
+    for (const material of (led.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
+      // Moderate emission keeps the resin's tint saturated under ACES tone mapping (no white-out).
+      material.emissiveIntensity = brightness > 0 ? 0.35 + Math.sqrt(brightness) * 1.05 : 0;
+    }
+    const core = led.userData.ledCore as Mesh<SphereGeometry, MeshBasicMaterial> | undefined;
+    if (core) {
+      core.visible = brightness > 0;
+      core.material.opacity = Math.min(1, 0.45 + Math.sqrt(brightness) * 0.55);
+    }
+    const glowLight = led.userData.glowLight as PointLight | undefined;
+    if (glowLight) {
+      glowLight.visible = QUALITY[this.quality].glowLights;
+      glowLight.intensity = brightness * 1.1;
+    }
+    const scorch = led.userData.scorchMaterial as MeshStandardMaterial | undefined;
+    if (scorch) scorch.opacity = (1 - health) * 0.55;
+  }
+
+  /** Reflects edited values on the model (resistor bands / label). */
+  private refreshPartAppearance(component: Group): void {
+    const refresh = component.userData.refreshAppearance as ((props: PartProps) => void) | undefined;
+    const props = component.userData.props as PartProps | undefined;
+    if (refresh && props) refresh(props);
   }
 
   /**
@@ -2639,25 +2752,11 @@ export class DesktopWorkbenchScene {
     if (this.activeStudio !== "snapino") return;
     // L1 from D5 down to row D and back to GND. Wiring S1 (D2 → 5V) is left to
     // the team: that path must cross this loop, the design problem of the task.
-    const layout: Record<string, [number, number]> = {
+    this.submitLayout({
       "sno-l1": [SNAPINO_PADS.D5, 30],
       "sno-w3": [30, 33],
       "sno-w2a": [33, SNAPINO_PADS.GND],
-    };
-    for (const [id, pair] of Object.entries(layout)) {
-      const component = this.components.get(id);
-      if (!component) continue;
-      const a = this.snapSockets[pair[0]];
-      const b = this.snapSockets[pair[1]];
-      const midpoint = a.clone().add(b).multiplyScalar(0.5);
-      component.position.set(midpoint.x, DRAG_Y, midpoint.z);
-      component.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
-      component.userData.sockets = pair;
-      component.updateMatrixWorld(true);
-      this.emitTransform(component, true);
-    }
-    this.evaluateSnapino(true);
-    this.events.onAttempt(this.captureAttempt("Snapino lamp wired to D5"));
+    }, "Snapino lamp wired to D5");
   }
 
   private evaluateGreenhouse(announce = false): boolean {
@@ -2727,10 +2826,11 @@ export class DesktopWorkbenchScene {
   private emitTransform(component: Group, force: boolean, activeEndpoint?: 0 | 1): void {
     this.cancelRemoteTween(component, false);
     if (!force && performance.now() - this.transformBroadcastAt < 40) return;
-    this.events.onTransform(
-      component.userData.componentId as string,
-      this.snapshotTransform(component, activeEndpoint),
-    );
+    // Live moves never carry electrical values: those change only through accepted edits, and
+    // the room keeps its accepted values when it stores a move.
+    const transform = this.snapshotTransform(component, activeEndpoint);
+    delete transform.props;
+    this.events.onTransform(component.userData.componentId as string, transform);
   }
 
   private snapshotTransform(component: Group, activeEndpoint?: 0 | 1): SharedTransform {
@@ -2745,6 +2845,7 @@ export class DesktopWorkbenchScene {
     };
     const spec = component.userData.spec as ComponentSpec;
     if (spec.kind === "snapswitch") transform.on = Boolean(component.userData.switchOn);
+    if (component.userData.props) transform.props = { ...(component.userData.props as PartProps) };
     if (spec.kind === "wire" || spec.kind === "hose") {
       const endpoints = this.getEndpointPositions(component);
       transform.endpoints = [
@@ -2792,6 +2893,20 @@ export class DesktopWorkbenchScene {
     this.applyViewOffset();
   };
 
+  /** An LED that burns out pops bright for a moment, then goes dark with a scorched tint. */
+  private stepLedFlashes(now: number): void {
+    for (const [id, startedAt] of this.ledFlashes) {
+      const led = this.components.get(id);
+      const t = (now - startedAt) / 650;
+      if (!led || t >= 1) {
+        this.ledFlashes.delete(id);
+        if (led) this.applyLedGlow(led, 0, 0);
+        continue;
+      }
+      this.applyLedGlow(led, t < 0.25 ? 1 : (1 - t) * 1.2, Math.min(1, 1 - t));
+    }
+  }
+
   /** Glides remotely moved parts toward their target, lifted slightly while carried. */
   private stepRemoteTweens(seconds: number): void {
     const blend = 1 - Math.exp(-seconds * 9);
@@ -2831,6 +2946,7 @@ export class DesktopWorkbenchScene {
     this.lastFrameAt = now;
     if (this.remoteTweens.size) this.stepRemoteTweens(frameSeconds);
     this.remoteHands.update(this.camera);
+    if (this.ledFlashes.size) this.stepLedFlashes(now);
     if (this.selected) {
       const indicators = (this.selected.userData.endpointIndicators ?? []) as Mesh[];
       const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.09;
@@ -2875,6 +2991,104 @@ export class DesktopWorkbenchScene {
         this.environmentEmitAt = performance.now();
       }
     }
+    if (this.renderer.shadowMap.enabled && (this.dragging || this.remoteTweens.size || this.shadowDirtyFrames > 0)) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowDirtyFrames = Math.max(0, this.shadowDirtyFrames - 1);
+    }
     this.renderer.render(this.scene, this.camera);
+    this.adaptResolution(now);
   };
+
+  /**
+   * Adaptive resolution: if frames run slow (> 33 ms average over ~2 s), step the pixel ratio
+   * down within the quality tier; if they run comfortably fast, step back up. Bounded so it
+   * never oscillates for long.
+   */
+  private adaptResolution(now: number): void {
+    if (document.hidden) return;
+    const sample = this.frameTimes;
+    sample.push(now);
+    if (sample.length < 120) return;
+    const average = (sample[sample.length - 1] - sample[0]) / (sample.length - 1);
+    sample.length = 0;
+    const tier = QUALITY[this.quality];
+    const ceiling = Math.min(window.devicePixelRatio || 1, tier.maxPixelRatio);
+    let next = this.pixelRatio;
+    if (average > 33 && this.pixelRatio > tier.minPixelRatio) next = Math.max(tier.minPixelRatio, this.pixelRatio - 0.25);
+    else if (average < 14 && this.pixelRatio < ceiling && this.adaptations < 6) next = Math.min(ceiling, this.pixelRatio + 0.25);
+    if (next !== this.pixelRatio) {
+      this.pixelRatio = next;
+      this.adaptations += 1;
+      this.renderer.setPixelRatio(next);
+      this.resize();
+    }
+  }
+
+  get renderQuality(): RenderQuality {
+    return this.quality;
+  }
+}
+
+function propKind(spec: ComponentSpec): "resistor" | "battery" | null {
+  if (spec.studio !== "circuit") return null;
+  if (spec.kind === "resistor") return "resistor";
+  if (spec.kind === "battery") return "battery";
+  return null;
+}
+
+function defaultProps(spec: ComponentSpec): PartProps | null {
+  if (spec.id === "resistor-220") return { ohms: 220 };
+  if (spec.id === "resistor-1k") return { ohms: 1000 };
+  if (spec.id === "battery-9v") return { volts: 9 };
+  return null;
+}
+
+/** One status line for the engine result: what happened, with the numbers that explain it. */
+export function describeCircuit(analysis: CircuitAnalysis): { message: string; tone: "neutral" | "valid" | "warning" } {
+  const board = analysis.board;
+  const reading = (id: string | undefined) => (id ? board.result.elements[id] : undefined);
+  const source = board.result.elements["battery-9v"];
+  if (board.result.status === "invalid" || board.result.status === "singular" || board.result.status === "non-convergence") {
+    return { message: `Simulation stopped · ${board.diagnostics.find((d) => d.severity === "error")?.message ?? "the circuit could not be solved"}`, tone: "warning" };
+  }
+  if (analysis.short) {
+    return { message: `Short circuit · the battery's terminals are bridged (${formatAmps(Math.abs(source?.amps ?? 0))}); nothing is powered safely`, tone: "warning" };
+  }
+  if (analysis.unprotectedLeds.length) {
+    const led = reading(analysis.unprotectedLeds[0]);
+    return { message: `LED would burn out · ${formatAmps(led?.amps ?? 0)} with nothing limiting the current (rating 20 mA)`, tone: "warning" };
+  }
+  if (analysis.overdrivenLeds.length) {
+    const led = reading(analysis.overdrivenLeds[0]);
+    return { message: `LED overdriven · ${formatAmps(led?.amps ?? 0)} exceeds its 20 mA rating; use a larger resistor`, tone: "warning" };
+  }
+  if (analysis.reverseStressedLeds.length) {
+    const led = reading(analysis.reverseStressedLeds[0]);
+    return { message: `LED backwards at ${formatVolts(Math.abs(led?.volts ?? 0))} · more than the ~5 V an LED tolerates in reverse; turn it around`, tone: "warning" };
+  }
+  if (analysis.powered) {
+    const id = board.safeLitLeds[0];
+    const led = reading(id);
+    return { message: `Circuit powered · LED at ${formatAmps(led?.amps ?? 0)}, ${formatVolts(led?.volts)} across it (within its 20 mA rating)`, tone: "valid" };
+  }
+  if (analysis.reversedLeds.length) {
+    return { message: "LED is backwards · its anode (long lead, lead A) must face the battery's + side", tone: "warning" };
+  }
+  if (!analysis.batteryPlaced) return { message: "Needs review · place the battery so current has a source", tone: "warning" };
+  if (board.result.status === "open-circuit") return { message: "Open circuit · the path does not return to the battery, so no current flows", tone: "warning" };
+  return { message: "Needs review · no LED is lit yet", tone: "warning" };
+}
+
+
+/**
+ * Render tier from `?quality=low|medium|high`; otherwise a guess from the device (small touch
+ * screens and low core counts start on low). The frame-time monitor adjusts resolution further.
+ */
+export function defaultQuality(): RenderQuality {
+  const requested = new URLSearchParams(location.search).get("quality");
+  if (requested === "low" || requested === "medium" || requested === "high") return requested;
+  const cores = navigator.hardwareConcurrency ?? 4;
+  const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  if (coarse || cores <= 2) return "low";
+  return "medium";
 }
