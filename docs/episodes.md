@@ -316,6 +316,68 @@ Between `606fa07` and `13aa2aa`, only the room client's clock sampling changed (
 
 ---
 
+## Episode 2 · Sound Flow Studio
+
+### Goal and model criteria (fixed before the code was written)
+
+**Story.** A team must patch a warning tone for a shared monitor speaker. They patch real cables between the jacks of four fixed modules on a desktop patch case, turn the knobs, listen (or watch the signal), explain what they hear and revise.
+
+**The bounded goal: brief "Dark alarm tone".** It is met when one Test of the shared patch satisfies all five criteria. They are task rules, visible in both conditions:
+
+| # | Criterion | Measured on |
+|---|---|---|
+| C1 | **Path.** Source OUT → Filter and Drive (either order, each OUT → IN) → Speaker IN. No loose cable end, no OUT→OUT or IN→IN cable, no loop. The Speaker is switched on. | The patch graph |
+| C2 | **Tone.** The Source plays a sawtooth at 220 Hz. | The Source's knobs |
+| C3 | **Dark.** At the Speaker input, the 660 Hz (3rd) harmonic is at least 18 dB below the 220 Hz fundamental. A raw sawtooth has it 9.5 dB below, so the filter must take about 8.5 dB more off 660 Hz than off 220 Hz. | The modelled signal at the Speaker input |
+| C4 | **Clean.** Nothing clips: the signal entering the Drive, times its gain, stays within ±1.0 FS. | The modelled signal at the Drive |
+| C5 | **Level.** The Speaker input peaks between −12 and −3 dBFS. | The modelled signal at the Speaker input |
+
+The brief has many solutions (for example a cutoff from about 100 Hz to about 410 Hz with a matching Drive gain), and many tempting failures: no filter (bright), Drive ×4 (clipped), a very low cutoff (too quiet even at ×4), filter and drive swapped with too much gain (clipped before the filter), the speaker switched off (silent at the output, but not a broken patch).
+
+**The learning loop.**
+1. **Predict / design.** Each learner records a prediction for the current attempt (meets the brief, too bright, clipped, too quiet or too loud, silent) and why. Predictions are local drafts, never shared or exported.
+2. **Build.** Patch cables and turn knobs. Every change is a room edit.
+3. **Test / listen / inspect.** *Test patch* evaluates the room's current patch with the model and shows the five criteria with their measured values next to the prediction. Listening is optional and needs a click to start audio; the signal is always shown without audio.
+4. **Explain.** The learner writes what they heard or saw and why. The goal counts as met only for a passing test that has an explanation.
+5. **Revise.** A new attempt keeps the history of earlier attempts.
+
+No points, XP, timers or fake measurements.
+
+**PF / DI.**
+- Both conditions: the brief and its five criteria, the module ratings and safety limits, the signal display, and the measured criterion values after each Test.
+- DI only: a worked example with its numbers (computed by the same model at runtime) and, after a Test, an explanation for each failed criterion.
+- PF: no solution, hint or auto-patch. Measurements appear only after a Test. The diagram always draws the patch as built, including wrong cables and loops; its explanatory fault notes appear in PF only after the team's first Test (DI: at once). Safety notes (a loop is silenced, the output is capped) are shown in both conditions at all times.
+- Bolt keeps to the Circuit Bench; its domain is not extended.
+
+**Model (an educational signal abstraction, not SPICE and not an acoustic room model).**
+
+| Module | Jacks | Model |
+|---|---|---|
+| Source | OUT | Band-limited Web Audio oscillator (sine, square or sawtooth), 55–1760 Hz in 1 Hz steps. Output 0.5 FS peak (−6.02 dBFS). |
+| Filter | IN, OUT | 2nd-order Butterworth low-pass (12 dB/octave, Q = 1/√2, no resonance knob), cutoff 80–8000 Hz. Web Audio `BiquadFilterNode` (its low-pass Q is in dB: −3.01 dB). The criteria use the analog prototype \|H\| = 1/√(1 + (f/fc)⁴); the offline tests bound the digital filter's difference. |
+| Drive | IN, OUT | Linear gain ×0–×4 (0.01 steps), then an ideal hard clip at ±1.0 FS (`WaveShaperNode`, identity curve). The distortion is real time-domain clipping of the actual signal. Real overdrive clips more softly. |
+| Speaker | IN | Shared power switch. Then a hard clip at ±1.0 FS and a fixed ×0.25 (−12.04 dBFS) safety ceiling, then **local** volume (0–100 %, default 50 %) and **local** mute. The digital output never exceeds 0.25 FS. What a person hears depends on their device; loudness (SPL, dBA) is not measured or modelled. |
+| Patch cable | two plugs | Ideal and lossless. Signal flows OUT → IN. One plug per jack (a server rule). |
+
+**Wrong builds are drawn as built, never repaired.**
+- OUT→OUT and IN→IN cables carry nothing and are marked invalid.
+- A loose cable end carries nothing.
+- An unpatched input makes its module silent.
+- **Feedback is unsupported, all of it:** any loop of modules, including a module's OUT patched to its own IN. Web Audio can only loop through a delay, and this studio does not model delay, resonance or oscillation. A loop is silenced (its modules are not connected), marked in the diagram, and said so; no stable audio is invented.
+- Two plugs in one jack cannot be stored (the server refuses it); if one ever arrived (a same-device peer race), the model ignores both and says so.
+- A switched-off Speaker or a muted listener is reported as such, not as a broken patch.
+
+**One authoritative state.** The room's versioned part state (cable jacks, knob values, the Speaker switch) drives the 3D desk, the Web Audio graph, the diagram, the inspector, the signal display, the Test outcome and project files. Audio samples are never synced: each client builds its own Web Audio graph from the same patch. No sample-accurate or synchronized playback across clients is claimed.
+
+**Audio safety (local, per listener).**
+- Audio starts only from an explicit click or key press on *Start audio*; it is never started by a teammate's edit, an import, a reconnect or a page load.
+- Mute applies at once (a 10 ms ramp, to avoid a click). Volume is bounded as above.
+- Leaving the room, switching studios or losing the connection stops audio and closes the AudioContext (nodes, oscillators and listeners are released). Restarting needs a new click.
+- A suspended AudioContext is resumed only from a click.
+- The signal display is computed from the same graph: an `OfflineAudioContext` renders the patch (no gesture needed, no sound output). With audio on, a live analyser also shows what this client is playing. Offline numbers say nothing about any physical speaker.
+
+---
+
 ## Acceptance contracts for the next episodes (not implemented)
 
 Each starts only after the previous episode passes independent review.
