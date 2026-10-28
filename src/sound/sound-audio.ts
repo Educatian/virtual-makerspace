@@ -225,7 +225,12 @@ export class SoundEngine {
   /** How many AudioContexts this engine has created (tests: none before a gesture). */
   contextsCreated = 0;
 
-  constructor(private readonly onStatus: (status: AudioStatus, detail?: string) => void = () => undefined) {}
+  // A plain field (no TypeScript parameter property), so Node's --experimental-strip-types can run it.
+  private readonly onStatus: (status: AudioStatus, detail?: string) => void;
+
+  constructor(onStatus: (status: AudioStatus, detail?: string) => void = () => undefined) {
+    this.onStatus = onStatus;
+  }
 
   get running(): boolean {
     return this.status === "running";
@@ -236,7 +241,7 @@ export class SoundEngine {
    * created by a click whose resume has not settled yet, while the status still says "off").
    */
   get active(): boolean {
-    return this.context !== null || this.status !== "off";
+    return this.context !== null;
   }
 
   get isMuted(): boolean {
