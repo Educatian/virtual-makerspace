@@ -1,0 +1,13 @@
+  [ready] host entered: 4 s (+4 frames)
+  [ready] member entered: 6 s (+3 frames)
+PASS DI host sees the worked example; PF member does not
+PASS no AudioContext on either page before any click
+  [ready] host after plug A0: 15 s (+3 frames)
+  [ready] member after plug B0: 15 s (+3 frames)
+  [ready] member after plug B1: 10 s (+3 frames)
+  [ready] member after plug C0: 10 s (+3 frames)
+FAIL pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker — {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,null]} | {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,null]}
+  [ready] member before occupied: 9 s (+3 frames)
+mouse.move: Target page, context or browser has been closed
+    at /home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:172:64
+e2e sound: 2/4 checks passed (room SKXR; artifacts <scratch>/sound-e2e2)

@@ -16,12 +16,22 @@
  * Snapino projects distinguish the program the room is running (`program`, what an import
  * shares) from an unsaved editor draft (`draftProgram`, loaded only into the importer's own
  * editor).
+ *
+ * Versions: the four original studios write and read version 1, unchanged, so older apps and
+ * older files keep working. Sound Flow Studio projects (Episode 2) are version 2: their parts
+ * carry knob values (`hz`/`wave`, `cutoff`, `gain`), the Speaker's switch and patch cables'
+ * jacks. A version-1 file naming the sound studio, or a version-2 file naming another studio,
+ * is refused. Fixture modules never carry sockets.
  */
 import { SOLVER_VERSION } from "../circuit/dc-engine.ts";
 import { sanitizeProps, type PartProps, type PropKind } from "../circuit/part-props.ts";
+import { sanitizeSoundProps, type SoundPropKind, type SoundProps } from "../../cloudflare/sound-rules.js";
 import type { SharedTransform, StudioChoice } from "./collaboration.js";
 import { sanitizeProgram, type SnapinoStatement } from "./snapino.ts";
 import { isMission, isWord, MAX_WORDS, MISSIONS, type Word } from "../episodes/rescue-signal.ts";
+
+/** Sound projects carry no DC readings: their stamp names the signal model instead. */
+export const SOUND_MODEL_VERSION = "sound-flow-signal-1";
 
 /** Episode 1's design in a Snapino project: the mission and the sender's intended words. */
 export interface ProjectEpisode {
@@ -32,21 +42,34 @@ export interface ProjectEpisode {
 }
 
 export const PROJECT_FORMAT = "virtual-makerspace.project";
+/** The version the original four studios write (and older apps read). */
 export const PROJECT_VERSION = 1;
+/** Sound Flow Studio projects. */
+export const SOUND_PROJECT_VERSION = 2;
 export const MAX_PROJECT_BYTES = 64 * 1024;
-const STUDIOS: readonly StudioChoice[] = ["circuit", "greenhouse", "snap", "snapino"];
+const STUDIOS: readonly StudioChoice[] = ["circuit", "greenhouse", "snap", "snapino", "sound"];
+const versionFor = (studio: StudioChoice): 1 | 2 => (studio === "sound" ? SOUND_PROJECT_VERSION : PROJECT_VERSION);
+
+export type PartKind = PropKind | SoundPropKind;
+export type AnyPartProps = PartProps & SoundProps;
+
+/** Values for either kind family (Circuit Bench parts, Sound modules), or null. */
+export function sanitizePartProps(kind: PartKind | null | undefined, raw: unknown): AnyPartProps | null {
+  if (!kind) return null;
+  return kind === "resistor" || kind === "battery" ? sanitizeProps(kind, raw) : sanitizeSoundProps(kind, raw);
+}
 
 export interface ProjectPart {
   id: string;
   sockets: [number, number] | null;
-  props?: PartProps;
+  props?: AnyPartProps;
   on?: boolean;
 }
 
 export interface ProjectFile {
   format: typeof PROJECT_FORMAT;
-  version: typeof PROJECT_VERSION;
-  /** DC solver that produced any readings the learner saw; informative only. */
+  version: 1 | 2;
+  /** The model behind any readings the learner saw (the DC solver, or the Sound Flow signal model); informative only. */
   solver: string;
   studio: StudioChoice;
   savedAt: string;
@@ -65,8 +88,8 @@ export interface ProjectFile {
 /** What the importing scene accepts for a studio. */
 export interface StudioCatalog {
   studio: StudioChoice;
-  /** Part id → electrical kind (for props) or null. */
-  parts: Record<string, PropKind | null>;
+  /** Part id → value kind (for props) or null. */
+  parts: Record<string, PartKind | null>;
   socketCount: number;
   /** Parts that carry a slide-switch state. */
   switches?: readonly string[];
@@ -75,6 +98,8 @@ export interface StudioCatalog {
    * socket may be used by more than one part. Breadboard holes take one lead each.
    */
   sharedSockets?: boolean;
+  /** Parts that are fixtures (never seated in sockets), e.g. the Sound desk's modules. */
+  fixtures?: readonly string[];
 }
 
 export function buildProject(
@@ -91,15 +116,16 @@ export function buildProject(
     const sockets = transform?.sockets;
     const seated = Array.isArray(sockets) && Number.isInteger(sockets[0]) && Number.isInteger(sockets[1]);
     const part: ProjectPart = { id, sockets: seated ? [sockets[0] as number, sockets[1] as number] : null };
-    const props = kind ? sanitizeProps(kind, transform?.props) : null;
+    const props = sanitizePartProps(kind, transform?.props);
     if (props) part.props = props;
+    if (catalog.fixtures?.includes(id)) part.sockets = null;
     if (catalog.switches?.includes(id) && typeof transform?.on === "boolean") part.on = transform.on;
     parts.push(part);
   }
   const project: ProjectFile = {
     format: PROJECT_FORMAT,
-    version: PROJECT_VERSION,
-    solver: SOLVER_VERSION,
+    version: versionFor(catalog.studio),
+    solver: catalog.studio === "sound" ? SOUND_MODEL_VERSION : SOLVER_VERSION,
     studio: catalog.studio,
     savedAt: now.toISOString(),
     parts,
@@ -141,13 +167,16 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "The file is not a workbench project." };
   const input = raw as Record<string, unknown>;
   if (input.format !== PROJECT_FORMAT) return { ok: false, error: "The file is not a Virtual Makerspace project." };
-  if (input.version !== PROJECT_VERSION) {
+  if (input.version !== PROJECT_VERSION && input.version !== SOUND_PROJECT_VERSION) {
     // Only a plain number is echoed back; anything else (strings, objects) is not.
     const shown = typeof input.version === "number" && Number.isFinite(input.version) ? ` ${String(input.version).slice(0, 12)}` : "";
-    return { ok: false, error: `Project version${shown} is not supported (expected ${PROJECT_VERSION}).` };
+    return { ok: false, error: `Project version${shown} is not supported (expected ${PROJECT_VERSION}, or ${SOUND_PROJECT_VERSION} for Sound Flow Studio).` };
   }
   if (!STUDIOS.includes(input.studio as StudioChoice)) return { ok: false, error: "The project names an unknown studio." };
   const studio = input.studio as StudioChoice;
+  if (input.version !== versionFor(studio)) {
+    return { ok: false, error: `Project version ${String(input.version)} is not supported for this studio (expected ${versionFor(studio)}${studio === "sound" ? ": Sound Flow Studio projects are version 2" : ""}).` };
+  }
   const catalog = catalogFor(studio);
   if (!catalog) return { ok: false, error: "That studio cannot be imported here." };
   if (!Array.isArray(input.parts) || input.parts.length > Object.keys(catalog.parts).length) {
@@ -167,20 +196,21 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
     seen.add(id);
     const part: ProjectPart = { id, sockets: null };
     if (item.sockets !== null && item.sockets !== undefined) {
+      if (catalog.fixtures?.includes(id)) return { ok: false, error: `${id} is fixed to the desk and cannot be placed in sockets.` };
       const sockets = item.sockets;
       if (!Array.isArray(sockets) || sockets.length !== 2) return { ok: false, error: `${id} has malformed sockets.` };
       const [a, b] = sockets;
       const valid = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0 && value < catalog.socketCount;
       if (!valid(a) || !valid(b) || a === b) return { ok: false, error: `${id} uses a socket that does not exist.` };
-      if (!catalog.sharedSockets && (usedSockets.has(a) || usedSockets.has(b))) return { ok: false, error: `${id} shares a hole with another part.` };
+      if (!catalog.sharedSockets && (usedSockets.has(a) || usedSockets.has(b))) return { ok: false, error: studio === "sound" ? `${id} shares a jack with another cable (one plug per jack).` : `${id} shares a hole with another part.` };
       usedSockets.add(a);
       usedSockets.add(b);
       part.sockets = [a, b];
     }
     const kind = catalog.parts[id];
     if (item.props !== undefined) {
-      const props = kind ? sanitizeProps(kind, item.props) : null;
-      if (!props) return { ok: false, error: `${id} has an electrical value outside the allowed range.` };
+      const props = sanitizePartProps(kind, item.props);
+      if (!props) return { ok: false, error: `${id} has ${studio === "sound" ? "a knob" : "an electrical"} value outside the allowed range.` };
       part.props = props;
     }
     if (item.on !== undefined) {
@@ -191,7 +221,7 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
   }
   const project: ProjectFile = {
     format: PROJECT_FORMAT,
-    version: PROJECT_VERSION,
+    version: versionFor(studio),
     solver: typeof input.solver === "string" ? input.solver.slice(0, 40).replace(/[^\w.-]/g, "") : "unknown",
     studio,
     savedAt: typeof input.savedAt === "string" && input.savedAt.length <= 40 && Number.isFinite(Date.parse(input.savedAt)) ? new Date(Date.parse(input.savedAt)).toISOString() : new Date(0).toISOString(),
@@ -225,15 +255,16 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
  * at its default, no slide switch on, and no program or draft. Edited values on parts left in
  * the tray (e.g. a resistor set to 470 Ω) are NOT empty.
  */
-export function isDefaultProject(project: ProjectFile, defaultsFor: (id: string) => PartProps | null): boolean {
+export function isDefaultProject(project: ProjectFile, defaultsFor: (id: string) => AnyPartProps | null, defaultOn: (id: string) => boolean = () => false): boolean {
   if (project.program?.length || project.draftProgram?.length) return false;
   if (project.episode && (project.episode.intent.length > 0 || project.episode.mission !== MISSIONS[0].id)) return false;
   return project.parts.every((part) => {
     if (part.sockets) return false;
-    if (part.on === true) return false;
+    if (part.on !== undefined && part.on !== defaultOn(part.id)) return false;
     if (!part.props) return true;
-    const defaults = defaultsFor(part.id);
-    return (part.props.ohms ?? null) === (defaults?.ohms ?? null) && (part.props.volts ?? null) === (defaults?.volts ?? null);
+    const defaults = defaultsFor(part.id) ?? {};
+    const keys = new Set([...Object.keys(part.props), ...Object.keys(defaults)]) as Set<keyof AnyPartProps>;
+    return [...keys].every((key) => (part.props?.[key] ?? null) === (defaults[key] ?? null));
   });
 }
 

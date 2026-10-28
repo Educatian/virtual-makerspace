@@ -1,0 +1,21 @@
+  [ready] host entered: 2 s (+3 frames)
+  [ready] member entered: 10 s (+3 frames)
+PASS both makers are on the Circuit Bench — ["circuit","circuit"]
+PASS the drag path accepts the drop
+  [ready] member after the host's drop: 74 s (+5 frames)
+PASS the teammate sees end A seated — [36,null]
+PASS the mover's end stays seated (its final move was not refused) — [36,null]
+PASS (the host can undo)
+  [ready] member after undo: 18 s (+3 frames)
+PASS undo restores the end's previous place on both screens — null → null
+PASS one drag was exactly one undo step (nothing left to undo, redo available)
+  [ready] member after redo: 19 s (+3 frames)
+PASS redo seats it again on both screens — [36,null]
+PASS the teammate's drop is accepted by the drag path
+  [ready] host after the member's drop: 22 s (+3 frames)
+PASS each end can be seated by a different maker — [36,39]
+  [ready] late entered: 10 s (+3 frames)
+PASS a late joiner gets both seated ends from the room — [36,39]
+PASS no page errors
+
+12/12 passed · room WRZD

@@ -1,0 +1,15 @@
+app 63a342130e91734c5f1d298d0c50e027a51f1c92
+npm-test exit=0 (working tree identical to 63a3421, run before the commit)
+build exit=0
+dsp exit=0
+e2e-sound exit=0 3632s
+worker-sync exit=0 3s
+cable-end exit=0 444s
+room-sync exit=0 988s
+snapino-history exit=0 1142s
+ai-teammate-worker exit=0 384s
+bench-inspector attempt1 exit=124 2700s (killed by the harness 45 min per-test limit after 25 checks passed; log bench-inspector-attempt1-limit.txt)
+bench-inspector attempt2 exit=0 3014s (limit 90 min)
+rescue-signal exit=0 4047s (one bounded attempt)
+qa-sound exit=0 2236s
+ai-teammate-peer exit=0 521s

@@ -1,0 +1,56 @@
+  [ready] DI 1440 entered: 12 s (+4 frames)
+  [ready] 01-overview: 19 s (+3 frames)
+shot 01-overview: 202 calls, 40832 triangles
+PASS 1440×900 overview: the desk fills ≥ 60 % of the free width — 0.865
+  [ready] 03-plan: 21 s (+3 frames)
+shot 03-plan: 203 calls, 41036 triangles
+  [ready] 04-listener: 24 s (+3 frames)
+shot 04-listener: 191 calls, 35638 triangles
+  [ready] 05-closeup-jacks: 27 s (+3 frames)
+shot 05-closeup-jacks: 125 calls, 27130 triangles
+  [ready] 06-closeup-knob: 23 s (+3 frames)
+shot 06-closeup-knob: 69 calls, 13218 triangles
+  [ready] 07-closeup-speaker: 23 s (+3 frames)
+shot 07-closeup-speaker: 76 calls, 17770 triangles
+PASS wrong patch: the loop and the loose end are drawn and diagnosed; nothing reaches the Speaker — ["loose-end","loop","unpatched-input"]
+  [ready] 08-wrong-patch: 11 s (+3 frames)
+shot 08-wrong-patch: 207 calls, 41600 triangles
+  [ready] 08b-wrong-patch-inspector: 11 s (+3 frames)
+shot 08b-wrong-patch-inspector: 207 calls, 41600 triangles
+PASS working: the brief is met, the display shows a rendered, unclipped tone at the Speaker — {"met":true,"display":{"reaches":true,"clipped":false,"peak":0.495988130569458,"source":"rendered"},"audio":"running"}
+  [ready] 09-working: 11 s (+3 frames)
+shot 09-working: 207 calls, 41472 triangles
+  [ready] 09b-signal-display: 10 s (+3 frames)
+shot 09b-signal-display: 207 calls, 41472 triangles
+  [ready] 09c-test-result: 10 s (+3 frames)
+shot 09c-test-result: 207 calls, 41472 triangles
+  [ready] 10-recovered: 11 s (+3 frames)
+shot 10-recovered: 207 calls, 41472 triangles
+  [ready] DI 1280 entered: 4 s (+3 frames)
+  [ready] 02-overview-1280: 12 s (+3 frames)
+shot 02-overview-1280: 202 calls, 40832 triangles
+PASS 1280×720 overview: the desk fills ≥ 60 % of the free width — 0.857
+  [ready] DI 390 entered: 2 s (+3 frames)
+  [ready] 11-phone-top: 6 s (+3 frames)
+shot 11-phone-top: 201 calls, 41220 triangles
+PASS phone: no horizontal overflow — 0
+PASS phone: Test patch reached by keyboard after wheel scrolling; target ≥ 44 px — {"x":23,"y":799.84375,"width":116.59375,"height":44}
+  [ready] 12-phone-dock: 3 s (+3 frames)
+shot 12-phone-dock: 201 calls, 41220 triangles
+  [ready] PF 1440 entered: 6 s (+3 frames)
+PASS PF: no worked example
+  [ready] 13-pf-studio: 21 s (+3 frames)
+shot 13-pf-studio: 202 calls, 40832 triangles
+{
+ "ok": true,
+ "issues": [],
+ "checks": [
+  "PASS 1440×900 overview: the desk fills ≥ 60 % of the free width",
+  "PASS wrong patch: the loop and the loose end are drawn and diagnosed; nothing reaches the Speaker",
+  "PASS working: the brief is met, the display shows a rendered, unclipped tone at the Speaker",
+  "PASS 1280×720 overview: the desk fills ≥ 60 % of the free width",
+  "PASS phone: no horizontal overflow",
+  "PASS phone: Test patch reached by keyboard after wheel scrolling; target ≥ 44 px",
+  "PASS PF: no worked example"
+ ]
+}

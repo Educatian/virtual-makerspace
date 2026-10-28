@@ -1,0 +1,305 @@
+{
+ "room": "RGZS",
+ "results": [
+  {
+   "name": "the workshop panel opens for both makers (room state, not a local overlay)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "sender and receiver are taken by different makers",
+   "ok": true,
+   "detail": "{\"host\":\"sender\",\"member\":\"receiver\"}"
+  },
+  {
+   "name": "the receiver's panel does not show the intended message",
+   "ok": true,
+   "detail": "Roles Design & build Transmit Read Compare & explain Sender host Receiver member (you) Leave role Sw"
+  },
+  {
+   "name": "the transmission reaches the receiver as room state",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the round's light under the protocol is INJURED · NORTH",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "round 1: every driven frame of the receiver's lamp agrees with the timeline (and there were some)",
+   "ok": true,
+   "detail": "{\"frames\":4,\"lit\":0,\"dark\":4,\"wrong\":0,\"wrongAt\":[]}"
+  },
+  {
+   "name": "round 1: every driven frame of the sender's lamp agrees with the timeline (and there were some)",
+   "ok": true,
+   "detail": "{\"frames\":3,\"lit\":0,\"dark\":3,\"wrong\":0,\"wrongAt\":[]}"
+  },
+  {
+   "name": "unread round: the header shows the reading step",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the comparison says the message was delivered — on both screens",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a second reading is refused by the room and the first stays",
+   "ok": true,
+   "detail": "{\"ok\":false,\"reason\":\"already-read\"}"
+  },
+  {
+   "name": "and the receiver's panel offers no second 'Record reading'",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the explained, delivered round meets the workshop goal (history milestone)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "after closing the delivered round (next round's design): the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Round 2 · design\",\"step\":\"Design & build\"}"
+  },
+  {
+   "name": "round 2 ended, unread: the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Reading\",\"step\":\"Read\"}"
+  },
+  {
+   "name": "a 500 ms flash makes the round ambiguous, even with the 'right' reading",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the diagnosis states the measured flash against the bands",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "ambiguous round 2: the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Not delivered\",\"step\":\"Compare & explain\"}"
+  },
+  {
+   "name": "with the circuit open, the receiver's lamp never lit although the code ran",
+   "ok": true,
+   "detail": "7 frames"
+  },
+  {
+   "name": "an open circuit cannot deliver a message",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "open-circuit round 3: the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Not delivered\",\"step\":\"Compare & explain\"}"
+  },
+  {
+   "name": "(the receiver has drafted a reading of the first transmission)",
+   "ok": true,
+   "detail": "[\"SAFE\"]"
+  },
+  {
+   "name": "a retransmission keeps round 4 but is a new transmission (new tx) on the receiver too",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the receiver's draft of the replaced transmission is discarded",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a delayed reading of the replaced transmission is refused by the room",
+   "ok": true,
+   "detail": "{\"ok\":false,\"reason\":\"stale-round\"}"
+  },
+  {
+   "name": "after rebuilding, the same message is delivered (recovery)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "(round 5 is a 107.5 s recurring light with irregular phases)",
+   "ok": true,
+   "detail": "107500 ms"
+  },
+  {
+   "name": "the receiver's own render-driven frames include lit AND dark, all agreeing with the timeline",
+   "ok": true,
+   "detail": "{\"frames\":4,\"lit\":3,\"dark\":1,\"wrong\":0,\"wrongAt\":[],\"tx\":24,\"since\":null}"
+  },
+  {
+   "name": "the sender's too",
+   "ok": true,
+   "detail": "{\"frames\":7,\"lit\":3,\"dark\":4,\"wrong\":0,\"wrongAt\":[],\"tx\":24,\"since\":null}"
+  },
+  {
+   "name": "running round 5: the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Transmitting\",\"step\":\"Transmit\"}"
+  },
+  {
+   "name": "the sender's Stop ends the transmission on both screens",
+   "ok": true,
+   "detail": "stopped"
+  },
+  {
+   "name": "after Stop the receiver's bench lamp is dark",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "stopped, unread round 5: the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Reading\",\"step\":\"Read\"}"
+  },
+  {
+   "name": "(round 6 runs a recurring light with irregular phases)",
+   "ok": true,
+   "detail": "107500 ms"
+  },
+  {
+   "name": "(the receiver's socket is dropped mid-transmission)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the room released the dropped receiver's role",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the dropped client reconnected by itself and holds the room's state (no role)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "after reconnecting, the receiver is back in the running transmission",
+   "ok": true,
+   "detail": "39567 of 107500 ms"
+  },
+  {
+   "name": "after reconnecting, the receiver's FRESH driven frames (round 6's tx, rendered after the reconnect) include lit AND dark, all agreeing",
+   "ok": true,
+   "detail": "{\"frames\":3,\"lit\":2,\"dark\":1,\"wrong\":0,\"wrongAt\":[],\"tx\":27,\"since\":1793209051969}"
+  },
+  {
+   "name": "its room-clock estimate agrees with the sender's within 250 ms (same machine clock)",
+   "ok": true,
+   "detail": "Δ 6 ms; round trips 16 / 3 ms (each must be <= 400 ms)"
+  },
+  {
+   "name": "pixels: the receiver's lamp crop is brighter while the probe says lit than while it says dark (screenshots, same camera)",
+   "ok": true,
+   "detail": "{\"lit\":\"201.2\",\"dark\":\"163.5\",\"litAt\":[16752,57671],\"darkAt\":[64813,105029],\"clip\":{\"x\":402.73816602963655,\"y\":269.52025754778515,\"width\":81.95301248641778,\"height\":83.5743279012799}}"
+  },
+  {
+   "name": "a teammate's bench edit ends the running transmission for everyone",
+   "ok": true,
+   "detail": "{\"host\":\"bench-changed\",\"member\":\"bench-changed\"}"
+  },
+  {
+   "name": "round 8: the receiver's driven frames before the cut-off agree with the timeline (and there were some)",
+   "ok": true,
+   "detail": "{\"frames\":2,\"lit\":0,\"dark\":2,\"wrong\":0,\"wrongAt\":[]}"
+  },
+  {
+   "name": "round 8: the sender's driven frames before the cut-off agree with the timeline (and there were some)",
+   "ok": true,
+   "detail": "{\"frames\":3,\"lit\":0,\"dark\":3,\"wrong\":0,\"wrongAt\":[]}"
+  },
+  {
+   "name": "cut-off round 8: the header does not claim delivery",
+   "ok": true,
+   "detail": "{\"pill\":\"Reading\",\"step\":\"Read\"}"
+  },
+  {
+   "name": "importing the identical program while transmitting stops it (program-changed)",
+   "ok": true,
+   "detail": "stopReason program-changed at 1026 of 61500 ms"
+  },
+  {
+   "name": "after a reload the receiver gets the room's rounds, and no role",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "roles swap between rounds, on both screens",
+   "ok": true,
+   "detail": "{\"host\":\"receiver\",\"member\":\"sender\"}"
+  },
+  {
+   "name": "export schema: only project keys, the design is exactly {id, v, mission, intent}, parts carry only id/sockets/props/on",
+   "ok": true,
+   "detail": "{\"topKeys\":[\"episode\",\"format\",\"parts\",\"program\",\"savedAt\",\"solver\",\"studio\",\"version\"],\"episode\":{\"id\":\"rescue-signal\",\"v\":1,\"mission\":\"ridge\",\"intent\":[\"SAFE\"]},\"partKeys\":[\"id\",\"sockets\",\"on\"]}"
+  },
+  {
+   "name": "export contains no session activity (no reading, explanation, round or role)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "reset reaches both connected clients immediately, with a higher revision",
+   "ok": true,
+   "detail": "{\"before\":41,\"host\":42,\"member\":42}"
+  },
+  {
+   "name": "after the reset, the next transmission reaches the other client (round 1 again, a new tx)",
+   "ok": true,
+   "detail": "tx 44"
+  },
+  {
+   "name": "the late joiner joined while the transmission was running (state at join)",
+   "ok": true,
+   "detail": "36996 of 107500 ms, tx 44"
+  },
+  {
+   "name": "the late joiner's own driven frames (this tx) include lit AND dark, all agreeing with the timeline",
+   "ok": true,
+   "detail": "{\"frames\":11,\"lit\":4,\"dark\":7,\"wrong\":0,\"wrongAt\":[],\"tx\":44,\"since\":null}"
+  },
+  {
+   "name": "its room-clock estimate agrees with the sender's within 250 ms (same machine clock)",
+   "ok": true,
+   "detail": "Δ 22 ms; round trips 60 / 3 ms (each must be <= 400 ms)"
+  },
+  {
+   "name": "phone-width LAYOUT only: the panel fits between the viewport edges and the page has no horizontal overflow (no touch interaction tested)",
+   "ok": true,
+   "detail": "{\"left\":0,\"right\":390,\"width\":390,\"overflow\":0}"
+  },
+  {
+   "name": "(the transmission is still running when the host leaves)",
+   "ok": true,
+   "detail": "11501 of 107500 ms"
+  },
+  {
+   "name": "leaving during a transmission returns to the lobby without page errors",
+   "ok": true,
+   "detail": "Leave room · "
+  },
+  {
+   "name": "the leaver's receiver role is freed; the sender keeps theirs",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no page errors on the pages that stayed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the run executed all 59 checks",
+   "ok": true,
+   "detail": "59 executed"
+  }
+ ]
+}

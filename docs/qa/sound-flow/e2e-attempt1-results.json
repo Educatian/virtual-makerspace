@@ -1,0 +1,210 @@
+{
+ "room": "SC4T",
+ "base": "http://vm.test:8800",
+ "results": [
+  {
+   "name": "DI host sees the worked example; PF member does not",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T04:17:36.694Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "no AudioContext on either page before any click",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T04:17:57.233Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker",
+   "ok": true,
+   "detail": "{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]} | {\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]}",
+   "actor": "host + member",
+   "at": "2026-10-28T04:32:56.645Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 20
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 20
+     }
+    }
+   }
+  },
+  {
+   "name": "occupied: the plug dropped on Filter IN (taken) stays out, for both; Filter IN keeps the red cable",
+   "ok": true,
+   "detail": "member C [4,null], host C [4,null]; status \"Filter IN already holds a plug (one plug per jack) · Blue cable end B stays out\"",
+   "actor": "member",
+   "at": "2026-10-28T04:34:36.079Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 30
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 30
+     }
+    }
+   }
+  },
+  {
+   "name": "host Test on the default knobs: not met (C2 tone fails), measured values shown",
+   "ok": true,
+   "detail": "[\"C1:met\",\"C2:not\",\"C3:met\",\"C4:met\",\"C5:met\"]",
+   "actor": "host",
+   "at": "2026-10-28T04:37:41.475Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 40
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 40
+     }
+    }
+   }
+  },
+  {
+   "name": "host's Source edit (220 Hz sawtooth, by keyboard) accepted and received by the member",
+   "ok": false,
+   "detail": "{\"hz\":440,\"wave\":\"sine\"}",
+   "actor": "host",
+   "at": "2026-10-28T04:44:09.890Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 40
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 21,
+      "snd-cable-b": 20,
+      "snd-cable-c": 40
+     }
+    }
+   }
+  },
+  {
+   "name": "run completed",
+   "ok": false,
+   "detail": "locator.click: Target page, context or browser has been closed\n    at selectFromRail (/home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:128:61)\n    at async file:///home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:204:3",
+   "at": "2026-10-28T04:46:14.781Z"
+  }
+ ]
+}

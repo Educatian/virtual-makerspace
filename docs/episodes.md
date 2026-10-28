@@ -5,13 +5,13 @@ episode at a time**. Each episode is reviewed before the next one starts.
 
 | # | Episode | Studio | Status |
 |---|---|---|---|
-| 1 | Rescue Signal Workshop | Snapino Bridge | **Implemented on this branch.** Awaiting independent review. |
-| 2 | Sound Flow Studio | new | Planned. The acceptance contract is below; not started. |
+| 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Merged into the `desktop` release branch with PRs #2–#4 (`db85d85`); production deployment and live checks are recorded outside this document. |
+| 2 | Sound Flow Studio | Sound Flow Studio (new) | **Implemented on `feat/sound-flow-studio`** (PR #5 against `desktop`, final app `63a3421`). Review findings fixed; awaiting the final gate. Not merged or deployed. |
 | 3 | Resource-Limited Greenhouse | Greenhouse | Planned. The acceptance contract is below; not started. |
 | 4 | Smart Sorting Center | new | Planned. The acceptance contract is below; not started. |
 | 5 | Structural Test Yard | new | Planned. The acceptance contract is below; not started. |
 
-Episodes 2–5 are not in the app. There are no placeholder buttons, rooms or stubs for them.
+Episodes 3–5 are not in the app. There are no placeholder buttons, rooms or stubs for them.
 
 ## Quality contract (applies to every episode)
 
@@ -316,9 +316,138 @@ Between `606fa07` and `13aa2aa`, only the room client's clock sampling changed (
 
 ---
 
-## Acceptance contracts for the next episodes (not implemented)
+## Episode 2 · Sound Flow Studio
 
-Each starts only after the previous episode passes independent review.
+### Goal and model criteria (fixed before the code was written)
+
+**Story.** A team must patch a warning tone for a shared monitor speaker. They patch real cables between the jacks of four fixed modules on a desktop patch case, turn the knobs, listen (or watch the signal), explain what they hear and revise.
+
+**The bounded goal: brief "Dark alarm tone".** It is met when one Test of the shared patch satisfies all five criteria. They are task rules, visible in both conditions:
+
+| # | Criterion | Measured on |
+|---|---|---|
+| C1 | **Path.** Source OUT → Filter and Drive (either order, each OUT → IN) → Speaker IN. No loose cable end, no OUT→OUT or IN→IN cable, no loop. The Speaker is switched on. | The patch graph |
+| C2 | **Tone.** The Source plays a sawtooth at 220 Hz. | The Source's knobs |
+| C3 | **Dark.** At the Speaker input, the 660 Hz (3rd) harmonic is at least 18 dB below the 220 Hz fundamental. A raw sawtooth has it 9.5 dB below, so the filter must take about 8.5 dB more off 660 Hz than off 220 Hz. | The modelled signal at the Speaker input |
+| C4 | **Clean.** Nothing clips: the signal entering the Drive, times its gain, stays within ±1.0 FS. | The modelled signal at the Drive |
+| C5 | **Level.** The Speaker input peaks between −12 and −3 dBFS. | The modelled signal at the Speaker input |
+
+The brief has many solutions (by the model, any cutoff from about 105 Hz to 410 Hz with a matching Drive gain), and many tempting failures: no filter (bright), Drive ×4 (clipped), a very low cutoff (too quiet even at ×4), filter and drive swapped with too much gain (clipped before the filter), the speaker switched off (silent at the output, but not a broken patch).
+
+**The learning loop.**
+1. **Predict / design.** Each learner records a prediction for the current attempt (meets the brief, too bright, clipped, too quiet or too loud, silent) and why. Predictions are local drafts, never shared or exported.
+2. **Build.** Patch cables and turn knobs. Every change is a room edit.
+3. **Test / listen / inspect.** *Test patch* evaluates the room's current patch with the model and shows the five criteria with their measured values next to the prediction. Listening is optional and needs a click to start audio; the signal is always shown without audio.
+4. **Explain.** The learner writes what they heard or saw and why. The goal counts as met only for a passing test that has an explanation.
+5. **Revise.** A new attempt keeps the history of earlier attempts.
+
+No points, XP, timers or fake measurements.
+
+**PF / DI.**
+- Both conditions: the brief and its five criteria, the module ratings and safety limits, the signal display, and the measured criterion values after each Test.
+- DI only: a worked example with its numbers (computed by the same model at runtime) and, after a Test, an explanation for each failed criterion.
+- PF: no solution, hint or auto-patch. Measurements appear only after a Test. The diagram always draws the patch as built, including wrong cables and loops; its explanatory fault notes appear in PF only after the learner's own first Test in this browser session (a personal gate: a teammate's Test does not unlock it; DI: at once). Safety notes (a loop is silenced, the output is capped) are shown in both conditions at all times.
+- Bolt keeps to the Circuit Bench; its domain is not extended.
+
+**Model (an educational signal abstraction, not SPICE and not an acoustic room model).**
+
+| Module | Jacks | Model |
+|---|---|---|
+| Source | OUT | Band-limited Web Audio oscillator (sine, square or sawtooth), 55–1760 Hz in 1 Hz steps, ×0.5. A sine peaks at exactly 0.5 FS (−6.02 dBFS). Web Audio scales square and sawtooth so that their full-band waveform peaks at 1.0 (coefficients ÷ (2/π)·Si(π) ≈ 1.179, measured in Chromium), so their band-limited versions peak a little lower: about 0.49 FS for a 220 Hz sawtooth, 0.46 FS at 1760 Hz. |
+| Filter | IN, OUT | 2nd-order Butterworth low-pass (12 dB/octave, Q = 1/√2, no resonance knob), cutoff 80–8000 Hz. Web Audio `BiquadFilterNode` (its low-pass Q is in dB: −3.01 dB). The criteria use the analog prototype \|H\| = 1/√(1 + (f/fc)⁴); the offline tests bound the digital filter's difference. |
+| Drive | IN, OUT | Linear gain ×0–×4 (0.01 steps), then an ideal hard clip at ±1.0 FS (`WaveShaperNode`, identity curve). The distortion is real time-domain clipping of the actual signal. Real overdrive clips more softly. |
+| Speaker | IN | Shared power switch. Then a hard clip at ±1.0 FS and a fixed ×0.25 (−12.04 dBFS) safety ceiling, then **local** volume (0–100 %, default 50 %) and **local** mute. The digital output never exceeds 0.25 FS. What a person hears depends on their device; loudness (SPL, dBA) is not measured or modelled. |
+| Patch cable | two plugs | Ideal and lossless. Signal flows OUT → IN. One plug per jack (a server rule). |
+
+**Wrong builds are drawn as built, never repaired.**
+- OUT→OUT and IN→IN cables carry nothing and are marked invalid.
+- A loose cable end carries nothing.
+- An unpatched input makes its module silent.
+- **Feedback is unsupported, all of it:** any loop of modules, including a module's OUT patched to its own IN. Web Audio can only loop through a delay, and this studio does not model delay, resonance or oscillation. A loop is silenced (its modules are not connected), marked in the diagram, and said so; no stable audio is invented.
+- Two plugs in one jack cannot be stored (the server refuses it); if one ever arrived (a same-device peer race), the model ignores both and says so.
+- A switched-off Speaker or a muted listener is reported as such, not as a broken patch.
+
+**One authoritative state.** The room's versioned part state (cable jacks, knob values, the Speaker switch) drives the 3D desk, the Web Audio graph, the diagram, the inspector, the signal display, the Test outcome and project files. Audio samples are never synced: each client builds its own Web Audio graph from the same patch. No sample-accurate or synchronized playback across clients is claimed.
+
+**Audio safety (local, per listener).**
+- Audio starts only from an explicit click or key press on *Start audio*; it is never started by a teammate's edit, an import, a reconnect or a page load.
+- Mute applies at once (a 10 ms ramp, to avoid a click). Volume is bounded as above.
+- Leaving the room, switching studios or losing the connection stops audio and closes the AudioContext (nodes, oscillators and listeners are released). Restarting needs a new click.
+- A suspended AudioContext is resumed only from a click.
+- The signal display is computed from the same graph: an `OfflineAudioContext` renders the patch (no gesture needed, no sound output). With audio on, a live analyser also shows what this client is playing. Offline numbers say nothing about any physical speaker.
+
+### On screen
+
+- **The desk** fills the space between the parts rail and the dock: a walnut-cheeked desktop case with four brushed-aluminium (Speaker: graphite) modules, knurled skirted knobs with printed scales, recessed jacks (hex nut, bushing, a bore drilled through the panel), IN/OUT labels (outputs inverted, as on modular synths), signal LEDs (the Drive's CLIP LED), the Speaker's grille, cone and power toggle, and three patch cables (red, yellow, blue) on a felt mat. A plug seats with its sleeve inside the jack's bore; a released plug lies on the panel or the table; a carried plug hangs under the pointer.
+- **Camera views:** Overview `1`, Plan `2`, Speaker (the listener's view) `3`, Fit selected `F`, as buttons and keys.
+- **One dock, two contextual tabs** (the rest stay: Chat, Voice, Activity, Notes):
+  - **Studio:** the brief and its five criteria; the DI worked example; *Listen (this device only)* with Start/Stop, Mute and your volume; the signal display; the attempt loop (predict, build, test, explain, revise) with earlier attempts.
+  - **Inspector:** the live signal-flow diagram with its legend, fault notes and the text connection list; the selected module or cable with Overview, Ports and Behaviour & limits tabs (arrow keys move between tabs).
+- **Toolbar:** a speaker button starts audio (a click) or mutes/unmutes this device.
+- **Cross-link:** selecting a module or cable in 3D, in the parts rail or on the diagram (click or Enter) selects it everywhere: the inspector shows it, its jacks get printed rings in 3D (amber solid: its own; cyan dashed: the far end of its cables; red double: a wrong cable's jacks), and the diagram marks its node, ports and edges. Clicking a knob or the Speaker's switch in 3D focuses that control in the inspector.
+- **Edits:** the inspector's fields are drafts until *Apply to the room* (or Enter). A refused, stale or unconfirmed edit changes nothing and says so; the typed draft stays. The Speaker's switch is one shared edit. *Unplug and return to the mat* returns a cable.
+- **Signal display (the non-audio indication):** one or two cycles of what reaches the Speaker input, rendered by Web Audio in an `OfflineAudioContext` from the same graph a listener hears; the ±1.0 FS rails; peak and RMS in dBFS; clipping; the Speaker switch; the first six harmonics in dB relative to the strongest. With audio on, a live line reads this device's analysers (Speaker input and output, or "muted").
+
+### Collaboration, files and persistence
+
+- **Room authority.** Plugging and unplugging are cable-end moves with claims; knob values and the Speaker's switch are atomic edits with the revision the sender saw. The server refuses moved or rotated modules, out-of-range or missing knob values (never clamped), jack indices outside 0–5, both ends in one jack and a second plug in a jack (`occupied`, for live moves and for edits, judged on the whole batch). An edit the server's validation refuses is answered (`invalid`) by the Worker and the local relay, instead of being dropped. Wrong patches a learner makes on purpose (OUT→OUT, IN→IN, loops) are allowed and diagnosed. A cable-end move changes only the end its sender holds: the room keeps its own other end whatever the message says about it (a cable the room has never stored counts as unplugged, as every client starts it on the mat), and a move that would leave both plugs of one cable in one jack (two people each moving one end there) is refused (`occupied`) before anything is stored. An end move must carry both end positions, or it is refused (a payload without them could not be applied end-only by the other clients).
+- **Late join and reconnect** receive the room's state like any other studio. Audio is never part of it.
+- **Undo/Redo** covers knob edits, the switch, moves of cable ends, imports, reset and returns to the mat, with the existing stale/held rules.
+- **Project files.** Sound projects are **version 2**: knob values, the Speaker's switch and each cable's jacks (a half-plugged cable is saved unplugged). Fixture modules never carry sockets. The original four studios still write and read version 1; a version-1 file naming the sound studio, or a version-2 file naming another studio, is refused. Predictions, explanations, attempts, names and chat are never exported.
+- **Autosave and recovery** follow the existing rules (a desk at its defaults, Speaker on, is "empty").
+- **Local only:** audio start/stop, mute, volume, predictions, explanations and attempts (sessionStorage). The room's activity record gets one `test` trace per Test (attempt number and criterion codes, no words) and one `reflect` trace per saved explanation (no text).
+
+### Tests (developer environment)
+
+| Command | What it checks |
+|---|---|
+| `npm run test:sound` (in `npm test`) | `scripts/sound-model-check.mjs`:<ul><li>**review findings on PR #5, through the real sanitizer and RoomCore:** opposite end holders moving their ends into the same jack before seeing each other's move (both orders; refused `occupied`, nothing relayed or stored, the late joiner's state valid, the next move to a free jack accepted); an end move without endpoints (refused by the sanitizer) or naming another socket for the other end (only the claimed end changes, also in RoomCore alone, and also for a cable the room has never stored, fresh or after everyone left); a batch with both plugs of one cable in one jack (refused whole); 400 random runs of 12 moves (half from a never-stored cable) by two end holders and a whole-cable mover never leave two plugs in one jack;</li><li>**the patch graph against an independent oracle** written in the test (adjacency matrix and Warshall closure, not the product's Tarjan and propagation) on **every** patch of the three cables (43³ = 79,507, two-plug jacks included): live modules, cable statuses, faults, loops, chain;</li><li>13 curated patches with stated expectations, for both the product and the oracle;</li><li>the diagram's edges and nodes and the connection list against the oracle on every 25th patch (3,180);</li><li>the signal model against analytic references: a sine through the Butterworth magnitude, a sine driven past ±1.0 FS (clipped fraction 1 − (2/π)·asin(1/a), the clipped fundamental by dense integration), band-limited sawtooth harmonics with the Gibbs scaling (Si(π) integrated in the test), the Speaker's ceiling and switch, silence for open and looped patches;</li><li>the brief on 13 curated builds (each criterion's verdict stated) and the cutoff range in which it can be met;</li><li>the server rules: value bounds and rounding, moved or rotated modules, switches, jacks 0–5, both ends in one jack, out-of-range edits refused whole; RoomCore refusing a second plug in a jack for edits (judged on the batch) and live moves, keeping the other end on an end move, and stale knob edits;</li><li>project files: version 2 round trip, nine hostile files refused, older version-1 files still accepted, other studios still writing version 1, recovery emptiness.</li></ul> |
+| `npm run test:sound` (second part) | `scripts/sound-engine-check.mjs`, the live engine's lifecycle with a fake AudioContext that starts suspended and whose resume settles when the test says: a disconnect or studio exit while a click's resume is pending closes that context through the panel's own exit helper, and the late resume never runs audio (the previous exit guard, as a negative control, lets it run); a stale start's late failure or success never touches a newer running start (each outcome on its own fresh promise); an accepted inspector edit clears only the drafts it carried; only definite refusals (held, stale, invalid, occupied, offline) say "nothing changed", while a timeout, a closed connection or any unconfirmed result says the value appears if the room accepted it; and an edit the room accepted whose answer was lost to a disconnect (the room's canonical state has the new value) is reported as uncertain, with the draft kept. Lifecycle and copy only, no audio. |
+| `npm run test:sound:dsp` | `scripts/sound-dsp-check.mjs`, the actual Web Audio graph in headless Chromium: an `OfflineAudioContext` render measured against independent references — frequency (zero crossings), the fundamental of each waveform (0.5·b₁, divided by (2/π)·Si(π) for square and sawtooth), gain transfer, the low-pass against the RBJ biquad formula written in the test (Q in dB), the digital filter against the analog prototype, exact silence for open, looped and OUT→OUT patches, the Speaker switch, real clipping (2/3 of each cycle at 2 FS), the model's numbers against the rendered buffers, and the 0.25 FS ceiling on 24 random builds. Then the live engine on the page: no AudioContext from `apply()`; `start()` without user activation refused and creating nothing; a trusted click creating and running one context; live analysers; the volume cap; mute to exactly 0 within 80 ms while the Speaker input still carries the tone; a patch change while muted; `stop()` closing the context and stopping every oscillator it started; no restart afterwards; with `resume()` held: a disconnect or studio exit during a click's pending resume closes that context, and a stale start's late failure leaves a newer running start alone. In Chromium a context created inside the click usually reports "running" by itself, so this run has no negative control for the status-"off" case; that case (and the previous guard failing it) is in `sound-engine-check.mjs`. **What it proves:** the digital signal Web Audio computes. Nothing was heard through a physical speaker; no loudness was measured. |
+| `node --experimental-strip-types scripts/e2e-sound-worker.mjs` | Two real browsers (separate processes) and a late joiner over wrangler dev (Durable Object + WebSocket), with real pointer and keyboard input; see the list at the top of the script. Every check records its time, the acting maker and the room revisions each client held. |
+| `node scripts/qa-sound.mjs` | Render evidence (peer mode): see [`docs/images/episodes/sound-flow/`](images/episodes/sound-flow/README.md). |
+
+### Results of the last developer-environment run
+
+**Final app `63a3421`.** The run used headless Chromium with SwiftShader, wrangler dev and the local access proxy, on 2 CPU cores. It is not GitHub CI. Every room was a fresh random QA room; 7K3M was never used. Every command, its exit code, its duration and every non-passing attempt are in [the test records](qa/sound-flow/README.md), per app (`app-63a3421/`, `app-ad7fd3c/`, `app-1eaf1dd/`).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, circuit 17,742, project 270, sync 858, tools 36, rescue signal 17,751, episode sync 55, diagram 66,886, **sound model 89,528**, **sound engine 47**) | `63a3421` | All passed |
+| `npx vite build` | `63a3421` | OK |
+| `npm run test:sound:dsp` | `63a3421` | **101/101** |
+| `e2e-sound-worker.mjs` (two makers plus a late joiner, Worker) | `63a3421` | **29/29** (also 29/29 on `ad7fd3c` and on `1eaf1dd`) |
+| `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync`, `e2e-snapino-history` | `63a3421` | 18/18, 12/12, 13/13, 25/25 |
+| `e2e-ai-teammate-worker` | `63a3421` | 10/10 |
+| `e2e-bench-inspector` | `63a3421` | **30/30** on attempt 2. Attempt 1 was killed by the harness's own 45-minute limit after 25 checks; that is a partial prefix, not a pass. |
+| `e2e-rescue-signal` (Episode 1) | `63a3421` | **60/60**, one bounded attempt |
+| `qa-sound.mjs` (renders) | `63a3421` | **7/7**, no issues: desk fill 0.865 at 1440 and 0.857 at 1280; phone Test reached by keyboard (44 px); PF without the worked example ([renders](images/episodes/sound-flow/README.md)) |
+| `e2e-ai-teammate` (peer) | `63a3421` | 37/37 |
+
+**On `1eaf1dd`, two runs did not pass:**
+- `e2e-snapino-history` attempt 1: an import's confirmation dialog did not open within 30 s; attempt 2 passed 25/25.
+- `e2e-bench-inspector`: one attempt was stopped by a task limit, and one stalled 300 s after the field-test click.
+
+Their causes were not established. They are listed with their logs, not counted as passes.
+
+### Limits (honest)
+
+- **An educational signal abstraction.** Periodic, band-limited waveforms through an analog-prototype Butterworth low-pass and an ideal hard clipper. Not SPICE, not circuit-level electronics, not an acoustic or room model. Levels are digital full scale (FS, dBFS), not volts; no loudness (SPL/dBA) is measured or modelled.
+- **The model and the live graph differ slightly**, measured: the digital biquad within 0.011 dB of the analog prototype up to 1 kHz (0.08 dB across the tested range); Chromium's band-limited square/sawtooth have fewer harmonics than the model's Nyquist rule, so their peaks differ by up to about 0.1 dB at 220 Hz; after clipping the model removes harmonics above Nyquist while Web Audio's clipper aliases (clipping fails C4 anyway).
+- **Feedback is not simulated**: every loop is silenced, as stated in the studio.
+- **No synchronized playback.** Each listener's Web Audio graph is built locally from the shared patch; timing across clients is not aligned or claimed.
+- **Nothing was heard through a physical speaker** in the tests: offline buffers and live analysers measure the digital signal only. Headless Chromium has no audio device that anyone listened to.
+- **Same-device peer rooms** (no server) do not get the server's one-plug-per-jack refusal; the client still refuses an occupied jack, and the model ignores two plugs in one jack if a race ever produces them.
+- **The PF notes gate is personal**: it opens on this learner's own first Test in this browser session, not on a teammate's.
+- **Predictions, explanations and attempts are per learner and per tab session** (sessionStorage): they are not shared, synced or exported, so a teammate sees only the `test`/`reflect` activity traces.
+- **Desktop only.** The WebXR path does not include the studio.
+- **Software-rendered evidence.** Captures and frame counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured.
+
+---
+
+## Acceptance contracts for the next episodes
+
+Each starts only after the previous episode passes independent review. Episode 2's contract is implemented above; 3–5 are not.
 
 ### Presentation and workbench quality contract for Episodes 2–5
 
@@ -384,6 +513,8 @@ It is never a static illustration, and wrong builds stay visibly wrong. Each epi
 - The full regression suite on the final SHA.
 
 ### 2 · Sound Flow Studio
+
+*Implemented: see [Episode 2 · Sound Flow Studio](#episode-2--sound-flow-studio) above. The original contract is kept below for review.*
 
 **Content and audio**
 - Original, high-detail oscillator/source, filter, gain and speaker modules, with real patch jacks, cables and knobs.

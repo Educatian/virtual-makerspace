@@ -1,0 +1,34 @@
+  [ready] host entered: 3 s (+3 frames)
+  [ready] member entered: 6 s (+3 frames)
+PASS DI host sees the worked example; PF member does not
+PASS no AudioContext on either page before any click
+  [ready] host after plug A0: 17 s (+3 frames)
+  [ready] member after plug B0: 20 s (+3 frames)
+  [ready] member after plug B1: 12 s (+3 frames)
+  [ready] member after plug C0: 12 s (+3 frames)
+PASS pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker — {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]} | {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]}
+  [ready] member before occupied: 12 s (+3 frames)
+PASS occupied: the plug dropped on Filter IN (taken) stays out, for both; Filter IN keeps the red cable — member C [4,null], host C [4,null]; status "Filter IN already holds a plug (one plug per jack) · Blue cable end B stays out"
+  [ready] member after occupied: 10 s (+3 frames)
+PASS host Test on the default knobs: not met (C2 tone fails), measured values shown — ["C1:met","C2:not","C3:met","C4:met","C5:met"]
+PASS host's Source edit (220 Hz sawtooth, by keyboard) accepted and received by the member — {"hz":220,"wave":"sawtooth"}; host note: Set Source to sawtooth 220 Hz · shared with the room; host drafts {}
+PASS member's unapplied draft (650) survives the host's accepted cutoff 300; the member's model shows the room's 300 — draft "650"
+PASS member applies the draft: accepted, the host sees 650
+PASS member Undo: both back to 300
+PASS member Redo: both at 650
+PASS stale: one simultaneous gain edit is refused; that maker holds the room's value and keeps their draft — attempt 1: ["Set Drive gain to ×1.11 (+0.9 dB) · shared with the room","Not applied · a teammate changed it first, so their value is kept. Your draft is kept below; nothing changed."]; room gain 1.11; loser draft 2.11
+  [ready] host before hold: 10 s (+3 frames)
+PASS declined: while the host holds the yellow cable, the member's Unplug is disabled and says who holds it — {"disabled":true,"note":"free (on the mat or loose) ↔ Drive INNow: one end is loose: carries nothing.host is holding this cable.\n      Drag either plug in 3D into a jack. Plugging is shared with ever
+PASS after the hold: the patch is unchanged for both — {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]}
+PASS host: a click starts audio (one AudioContext, running) — {"contexts":1,"audio":"running"}
+PASS host: Mute applies at once
+locator.click: Error: strict mode violation: locator('[data-speaker]') resolved to 2 elements:
+    1) <article class="chat-message" data-speaker="guide" data-message-id="seed-1" data-author="Workshop Guide" data-created-at="1793168737366">…</article> aka getByText('WG Workshop Guide1:25 AM Room')
+    2) <button type="button" data-speaker="off" class="secondary-button" data-focus-key="speaker">Switch off for everyone</button> aka getByRole('button', { name: 'Switch off for everyone' })
+
+Call log:
+[2m  - waiting for locator('[data-speaker]')[22m
+
+    at /home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:300:42
+e2e sound: 15/16 checks passed (room SF9B; artifacts <scratch>/sound-e2e5)
+exit 0

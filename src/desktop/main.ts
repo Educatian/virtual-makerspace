@@ -31,6 +31,7 @@ import { AI_TEAMMATE_NAME, AiTeammate, TYPING_DETAIL, forgetAiTeammate } from ".
 import { confirmDialog, WorkbenchTools } from "./workbench-tools.js";
 import { RescueEpisode } from "../episodes/rescue-panel.ts";
 import { SnapinoInspector } from "./snapino-inspector.ts";
+import { SoundPanel } from "../sound/sound-panel.ts";
 import { transmitting as episodeTransmitting, type RescueState } from "../episodes/rescue-state.ts";
 import { sameProgram, sameTransform } from "./edit-history.ts";
 import type { SharedTransform } from "./collaboration.js";
@@ -91,6 +92,8 @@ let tools: WorkbenchTools | null = null;
 /** Episode 1, Rescue Signal Workshop (Snapino studio). */
 let episode: RescueEpisode | null = null;
 let inspector: SnapinoInspector | null = null;
+/** Episode 2, Sound Flow Studio: the Studio and Inspector tabs and this listener's audio. */
+let soundPanel: SoundPanel | null = null;
 let queuedEpisode: RescueState | null = null;
 /** A transmission drives the Snapino pins; Run's loop() must not touch them meanwhile. */
 let transmissionActive = false;
@@ -125,10 +128,11 @@ const STUDIO_PATH: Array<{ studio: StudioKind; name: string; icon: string; stage
   { studio: "snapino", name: "Snapino Bridge", icon: "ph-code-block", stage: "Skill build", time: "30 min", alt: "Snapino board with an Arduino Nano on a snap base, a lamp wired from pin D5 to GND" },
   { studio: "circuit", name: "Circuit Bench", icon: "ph-circuitry", stage: "Skill build", time: "45 min", alt: "3D workbench with a breadboard, LEDs, resistors and a battery" },
   { studio: "greenhouse", name: "Greenhouse", icon: "ph-plant", stage: "Challenge", time: "Multi-session", alt: "Smart greenhouse bench with sensors, pump, fan and solar panel" },
+  { studio: "sound", name: "Sound Flow Studio", icon: "ph-wave-sawtooth", stage: "Episode 2", time: "30 min", alt: "Desktop patch case with Source, Filter, Drive and Speaker modules, patched with red, yellow and blue cables" },
 ];
 
 function toStudio(value: string | null | undefined): StudioKind {
-  return value === "greenhouse" || value === "snap" || value === "snapino" ? value : "circuit";
+  return value === "greenhouse" || value === "snap" || value === "snapino" || value === "sound" ? value : "circuit";
 }
 
 interface StudioCopy {
@@ -196,6 +200,22 @@ const STUDIO_COPY: Record<StudioKind, StudioCopy> = {
     opened: "Snapino Bridge opened",
     testActivity: "Wiring test",
     testTrace: "Ran Snapino wiring test",
+  },
+  sound: {
+    subtitle: "Sound Flow Studio",
+    heading: "Sound Flow",
+    caption: "Patch a signal path: Source → Filter → Drive → Speaker, and hear or see what each step does",
+    testTooltip: "Test the patch against the brief",
+    challenge: "Brief: a dark, clean 220 Hz alarm tone at −12 to −3 dBFS",
+    challengeAction: "Open the brief",
+    challengeLabel: "Open the brief",
+    hypothesis: "If a low-pass filter sits between the Source and the Speaker with its cutoff between 220 and 660 Hz, the tone gets darker; too much Drive gain will clip it.",
+    chat: "Discuss your patch…",
+    seed: "Sound Flow Studio: each of you predicts what the Speaker will get, then patch and set the knobs together, test, explain what you heard or saw, and revise. Audio only starts when you press Start audio, and your mute and volume are yours alone.",
+    goal: "Co-build a signal path that meets the brief, and explain how each module changes the signal.",
+    opened: "Sound Flow Studio opened",
+    testActivity: "Patch test",
+    testTrace: "Ran a Sound Flow test",
   },
   snap: {
     subtitle: "Accessible Snap Lab",
@@ -720,6 +740,10 @@ function enterWorkspace(): void {
       inspector?.refresh();
       refreshGuideSeed();
     },
+    // Losing the room stops this listener's audio; reconnecting never restarts it (a click does).
+    onConnection: (online) => {
+      if (!online) soundPanel?.stopAudio("Connection to the room lost · audio stopped; press Start audio after reconnecting");
+    },
   }, authProfile.id);
 
   workbench = new DesktopWorkbenchScene(sceneHost, {
@@ -730,10 +754,16 @@ function enterWorkspace(): void {
       renderSelection();
       tools?.refreshPart();
       inspector?.refresh();
-      if (component && (activeStudio === "snapino" || activeStudio === "circuit")) focusInspectorTab();
+      soundPanel?.refresh();
+      if (component && (activeStudio === "snapino" || activeStudio === "circuit" || activeStudio === "sound")) focusInspectorTab();
       updatePresetButtons();
     },
     onSnapinoChange: () => inspector?.refresh(),
+    onSoundChange: (state, graph, signal) => {
+      soundPanel?.update(state, graph, signal);
+      tools?.noteChange();
+    },
+    onKnobPick: (moduleId, param) => soundPanel?.focusControl(moduleId, param),
     onStatus: showSceneStatus,
     onTransform: (componentId, transform) => room?.sendTransform(componentId, transform),
     onClaim: (componentId) => {
@@ -877,7 +907,7 @@ function enterWorkspace(): void {
       flow: () => workbench?.currentFlowState() ?? null,
       wireEnds: (id: string) => workbench?.wireEnds(id) ?? null,
       /** Camera presets and where the camera is (framing checks). */
-      preset: (name: "bench" | "top" | "table" | "receiver") => workbench?.viewPreset(name),
+      preset: (name: "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener") => workbench?.viewPreset(name),
       camera: () => workbench?.cameraState() ?? null,
       /** Studs the 3D bench is highlighting for the inspector right now. */
       highlights: () => workbench?.studHighlightState() ?? [],
@@ -895,6 +925,17 @@ function enterWorkspace(): void {
       },
       /** Drop a cable end into a socket through the real drag path (claim → move → release). */
       dropEnd: (componentId: string, index: 0 | 1, socket: number) => workbench?.qaDropEndpoint(componentId, index, socket) ?? false,
+      /** Sound Flow Studio: what the panel and the model show (no private text). */
+      sound: () => ({ panel: soundPanel?.qaState() ?? null, model: (() => {
+        const view = workbench?.soundSnapshot();
+        return view ? { state: view.state, chain: view.graph.chain, reaches: view.graph.reachesSpeaker, faults: view.graph.faults.map((fault) => fault.code), edges: view.graph.edges.map((edge) => ({ cable: edge.cable, status: edge.status })), loose: view.graph.loose } : null;
+      })(), highlights: workbench?.jackHighlightState() ?? [] }),
+      /** Screen points for real pointer drags/clicks on the Sound desk. */
+      jackPoint: (index: number, carried = false) => workbench?.jackScreenPoint(index, carried) ?? null,
+      /** Room revisions this client holds for the Sound parts, and its participant id (provenance). */
+      soundRevs: () => ({ participant: room?.participant.id ?? null, revs: Object.fromEntries(["snd-source", "snd-filter", "snd-drive", "snd-speaker", "snd-cable-a", "snd-cable-b", "snd-cable-c"].map((id) => [id, room?.sync.revs.get(id) ?? 0])) }),
+      plugPoint: (id: string, end: 0 | 1) => workbench?.plugScreenPoint(id, end) ?? null,
+      knobPoint: (id: string) => workbench?.moduleScreenPoint(id) ?? null,
       /** Seat a part locally (no room traffic) for close-up captures. */
       place: (componentId: string, a: number, b: number) => {
         const transform = workbench?.placementTransform(componentId, [a, b]);
@@ -923,6 +964,7 @@ function enterWorkspace(): void {
   tools.bind();
   createEpisode();
   createInspector();
+  createSoundPanel();
   workbench.reevaluate();
   // Offer local recovery once any shared state from teammates has had time to arrive.
   window.setTimeout(() => tools?.offerRecovery(), 2600);
@@ -1015,6 +1057,7 @@ function renderWorkspace(): void {
             <button class="studio-tab is-active" data-studio="circuit" data-tooltip="Circuit Bench" type="button" role="tab" aria-label="Circuit Bench" aria-selected="true"><i class="ph ph-circuitry"></i><span class="sr-only">Circuit</span></button>
             <button class="studio-tab" data-studio="greenhouse" data-tooltip="Greenhouse Studio" type="button" role="tab" aria-label="Greenhouse Studio" aria-selected="false"><i class="ph ph-plant"></i><span class="sr-only">Greenhouse</span></button>
             <button class="studio-tab" data-studio="snap" data-tooltip="Accessible Snap Lab" type="button" role="tab" aria-label="Accessible Snap Lab" aria-selected="false"><i class="ph ph-puzzle-piece"></i><span class="sr-only">Snap Lab</span></button>
+            <button class="studio-tab" data-studio="sound" data-tooltip="Sound Flow Studio" type="button" role="tab" aria-label="Sound Flow Studio" aria-selected="false"><i class="ph ph-wave-sawtooth"></i><span class="sr-only">Sound Flow</span></button>
           </div>
           <div class="rail-heading" data-tooltip="Drag components into 3D"><span><i class="ph ph-circles-three"></i><span class="sr-only">Components</span></span><small class="sr-only">Drag into 3D</small></div>
           <div class="component-list" id="component-list"></div>
@@ -1038,6 +1081,7 @@ function renderWorkspace(): void {
                 </div>
               </div>
               <button class="tool-button icon-only" id="episode-button" type="button" aria-label="Rescue Signal Workshop" data-tooltip="Episode 1 · Rescue Signal Workshop" hidden><i class="ph ph-broadcast"></i></button>
+              <button class="tool-button icon-only" id="sound-audio-toggle" type="button" aria-pressed="false" aria-label="Start audio (this device)" data-tooltip="Start audio (this device)" hidden><i class="ph ph-speaker-none"></i></button>
               <button class="tool-button icon-only" id="reset-view" type="button" aria-label="Reset view" data-tooltip="Reset camera"><i class="ph ph-crosshair"></i><span class="sr-only">Reset view</span></button>
               <button class="tool-button icon-only" id="check-circuit" type="button" aria-label="Test the current system" data-tooltip="Test system"><i class="ph ph-lightning"></i><span class="sr-only">Check circuit</span></button>
               <button class="tool-button icon-only" id="toggle-speech" type="button" aria-pressed="false" aria-label="Spoken status off" data-tooltip="Spoken status off"><i class="ph ph-speaker-simple-slash"></i></button>
@@ -1075,13 +1119,7 @@ function renderWorkspace(): void {
             </aside>
             <div class="selection-toolbar" id="selection-toolbar" hidden></div>
             ${WorkbenchTools.markup()}
-            <div class="view-presets" id="view-presets" role="toolbar" aria-label="Camera views" hidden>
-              <button type="button" data-view="bench" aria-label="Bench view (1)" data-tooltip="Bench · 1"><i class="ph ph-cube-focus" aria-hidden="true"></i><span>Bench</span></button>
-              <button type="button" data-view="top" aria-label="Top view (2)" data-tooltip="Top · 2"><i class="ph ph-grid-four" aria-hidden="true"></i><span>Top</span></button>
-              <button type="button" data-view="table" aria-label="Table with parts tray (3)" data-tooltip="Table and tray · 3"><i class="ph ph-frame-corners" aria-hidden="true"></i><span>Table</span></button>
-              <button type="button" data-view="receiver" aria-label="Receiver's view of the lamp (4)" data-tooltip="Receiver's view · 4"><i class="ph ph-eye" aria-hidden="true"></i><span>Lamp</span></button>
-              <button type="button" data-view="fit" aria-label="Fit the selected part (F)" data-tooltip="Fit selected part · F" disabled><i class="ph ph-crosshair-simple" aria-hidden="true"></i><span>Fit part</span></button>
-            </div>
+            <div class="view-presets" id="view-presets" role="toolbar" aria-label="Camera views" hidden></div>
             <div class="drop-callout" id="drop-callout"><i class="ph ph-cube"></i> Drop into the 3D workspace</div>
           </div>
 
@@ -1094,6 +1132,7 @@ function renderWorkspace(): void {
         <aside class="discussion-dock" id="discussion-dock" aria-label="Discussion">
           <div class="discussion-tabs" role="tablist">
             <button class="discussion-tab" data-tab="episode" data-tooltip="Rescue Signal Workshop" aria-label="Rescue Signal Workshop" type="button" hidden><i class="ph ph-broadcast"></i><span class="sr-only">Workshop</span></button>
+            <button class="discussion-tab" data-tab="sound" data-tooltip="Sound Flow Studio: brief, attempt, audio and signal" aria-label="Sound Flow Studio" type="button" hidden><i class="ph ph-wave-sawtooth"></i><span class="sr-only">Studio</span></button>
             <button class="discussion-tab" data-tab="inspect" data-tooltip="Inspector: the selected part, readings and the live diagram" aria-label="Inspector" type="button" hidden><i class="ph ph-circuitry"></i><span class="sr-only">Inspector</span></button>
             <button class="discussion-tab is-active" data-tab="chat" data-tooltip="Text chat" aria-label="Text chat" type="button"><i class="ph ph-chat-circle-text"></i><span class="sr-only">Chat</span></button>
             <button class="discussion-tab" data-tab="voice" data-tooltip="Voice chat" aria-label="Voice chat" type="button"><i class="ph ph-waveform"></i><span class="sr-only">Voice</span></button>
@@ -1118,9 +1157,14 @@ function renderWorkspace(): void {
             ${RescueEpisode.markup()}
           </div>
 
+          <div class="discussion-panel" data-panel="sound">
+            ${SoundPanel.studioMarkup()}
+          </div>
+
           <div class="discussion-panel" data-panel="inspect">
             ${WorkbenchTools.meterMarkup()}
             ${SnapinoInspector.markup()}
+            ${SoundPanel.inspectorMarkup()}
           </div>
 
           <div class="discussion-panel" data-panel="voice">
@@ -1215,7 +1259,8 @@ function renderComponentPalette(): void {
     const card = document.createElement("button");
     card.className = "component-card";
     card.type = "button";
-    card.draggable = true;
+    // Sound modules are fixtures on the desk: select them, never drag them.
+    card.draggable = component.kind !== "soundmodule";
     card.dataset.componentId = component.id;
     card.dataset.tooltip = `${component.name} · ${component.detail}`;
     card.title = card.dataset.tooltip;
@@ -1252,6 +1297,8 @@ function componentIcon(component: ComponentSpec): string {
   if (component.kind === "snapswitch") return "ph-toggle-right";
   if (component.kind === "snapmotor") return "ph-fan";
   if (component.kind === "snapled") return "ph-lightbulb";
+  if (component.kind === "patch") return "ph-plug";
+  if (component.kind === "soundmodule") return component.id === "snd-source" ? "ph-wave-sine" : component.id === "snd-filter" ? "ph-funnel-simple" : component.id === "snd-drive" ? "ph-lightning" : "ph-speaker-hifi";
   return "ph-lightbulb-filament";
 }
 
@@ -1302,7 +1349,7 @@ function bindWorkspaceEvents(): void {
     const view = (event.target as Element).closest<HTMLButtonElement>("button[data-view]")?.dataset.view;
     if (!view) return;
     if (view === "fit") workbench?.focusSelected();
-    else workbench?.viewPreset(view as "bench" | "top" | "table" | "receiver");
+    else workbench?.viewPreset(view as "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener");
   });
   document.querySelector("#episode-button")?.addEventListener("click", () => {
     if (!episode) return;
@@ -1360,7 +1407,11 @@ function bindWorkspaceEvents(): void {
     void tools?.confirmReset();
   });
   document.querySelector("#load-field-test")?.addEventListener("click", () => {
-    if (activeStudio === "greenhouse") workbench?.loadGreenhouseDemo();
+    if (activeStudio === "sound") {
+      if (dockCollapsed) setDockCollapsed(false);
+      switchDiscussionTab("sound");
+      document.querySelector<HTMLElement>("#sound-studio-title")?.scrollIntoView({ block: "nearest" });
+    } else if (activeStudio === "greenhouse") workbench?.loadGreenhouseDemo();
     else if (activeStudio === "snap") workbench?.loadSnapDemo();
     else if (activeStudio === "snapino") workbench?.loadSnapinoDemo();
     else workbench?.loadCircuitDemo();
@@ -1493,6 +1544,8 @@ function syncFullscreenButton(): void {
 function switchStudio(studio: StudioKind, remote = false): void {
   if (!workbench || studio === activeStudio) return;
   if (activeStudio === "snapino" && programRunning) snapinoRunner?.stop();
+  // Leaving the Sound desk stops this listener's audio; coming back never restarts it.
+  if (activeStudio === "sound") soundPanel?.stopAudio("Left Sound Flow Studio · audio stopped");
   activeStudio = studio;
   selectedComponent = null;
   powered = false;
@@ -1527,13 +1580,21 @@ function updateStudioUi(): void {
   const inspectTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="inspect"]');
   // One contextual inspector column: the circuit meter on the Circuit Bench, the bench inspector
   // and live diagram on Snapino.
-  if (inspectTab) inspectTab.hidden = activeStudio !== "snapino" && activeStudio !== "circuit";
+  if (inspectTab) inspectTab.hidden = activeStudio !== "snapino" && activeStudio !== "circuit" && activeStudio !== "sound";
   const snapinoInspector = document.querySelector<HTMLElement>("#snapino-inspector");
   if (snapinoInspector) snapinoInspector.hidden = activeStudio !== "snapino";
-  const presets = document.querySelector<HTMLElement>("#view-presets");
-  if (presets) presets.hidden = activeStudio !== "snapino";
+  const soundInspector = document.querySelector<HTMLElement>("#sound-inspector");
+  if (soundInspector) soundInspector.hidden = activeStudio !== "sound";
+  const soundTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="sound"]');
+  if (soundTab) soundTab.hidden = activeStudio !== "sound";
+  const audioToggle = document.querySelector<HTMLElement>("#sound-audio-toggle");
+  if (audioToggle) audioToggle.hidden = activeStudio !== "sound";
+  renderViewPresets();
   if (activeStudio !== "snapino") workbench?.setStudHighlights([]);
-  if ((activeStudio !== "snapino" && codeTab?.classList.contains("is-active")) || (inspectTab?.hidden && inspectTab.classList.contains("is-active"))) switchDiscussionTab("chat");
+  if (activeStudio !== "sound") workbench?.setJackHighlights([]);
+  if ((activeStudio !== "snapino" && codeTab?.classList.contains("is-active")) || (inspectTab?.hidden && inspectTab.classList.contains("is-active")) || (soundTab?.hidden && soundTab.classList.contains("is-active"))) switchDiscussionTab("chat");
+  if (activeStudio === "sound" && !document.querySelector(".discussion-tab.is-active:not([hidden])")?.matches('[data-tab="sound"], [data-tab="inspect"]')) switchDiscussionTab("sound");
+  soundPanel?.refresh();
   inspector?.refresh();
   updatePresetButtons();
   renderCodePanel();
@@ -1564,6 +1625,8 @@ function updateStudioUi(): void {
     checkButton.title = checkButton.dataset.tooltip;
     checkButton.setAttribute("aria-label", checkButton.dataset.tooltip);
   }
+  // No auto-built layout on the Sound desk (no solved patch in either condition): its orb
+  // opens the brief instead.
   if (challenge) challenge.hidden = false;
   if (challengeOrb) {
     challengeOrb.dataset.tooltip = copy.challenge;
@@ -1612,7 +1675,8 @@ function renderSelection(): void {
     return;
   }
   const owner = owners.get(selectedComponent.id);
-  const flexible = selectedComponent.kind === "wire" || selectedComponent.kind === "hose";
+  const flexible = selectedComponent.kind === "wire" || selectedComponent.kind === "hose" || selectedComponent.kind === "patch";
+  const fixture = selectedComponent.kind === "soundmodule";
   const endpointOwners = flexible
     ? ([0, 1] as const)
         .map((index) => ({ index, owner: owners.get(`${selectedComponent!.id}::endpoint-${index}`) }))
@@ -1620,11 +1684,11 @@ function renderSelection(): void {
     : [];
   toolbar.hidden = false;
   toolbar.innerHTML = `
-    <span class="selection-name"><i class="ph ${componentIcon(selectedComponent)}"></i><span><small>${flexible ? "Drag either glowing end" : "Selected"}</small><strong>${escapeHtml(selectedComponent.name)}</strong></span></span>
+    <span class="selection-name"><i class="ph ${componentIcon(selectedComponent)}"></i><span><small>${selectedComponent.kind === "patch" ? "Drag either plug into a jack" : flexible ? "Drag either glowing end" : fixture ? "Fixed module · knobs in the Inspector" : "Selected"}</small><strong>${escapeHtml(selectedComponent.name)}</strong></span></span>
     ${owner && owner.id !== room?.participant.id ? `<span class="owner-chip"><i class="ph ph-hand"></i>${escapeHtml(owner.name)} is moving</span>` : ""}
     ${endpointOwners.map(({ index, owner: endpointOwner }) => `<span class="owner-chip"><i class="ph ph-hand"></i>${escapeHtml(endpointOwner!.name)} · ${index === 0 ? "A" : "B"}</span>`).join("")}
     <button class="tool-button icon-only" id="focus-selected" type="button" aria-label="Focus selected component" data-tooltip="Focus"><i class="ph ph-crosshair-simple"></i></button>
-    ${flexible ? "" : `<button class="tool-button icon-only" id="reset-rotation" type="button" aria-label="Reset selected rotation" data-tooltip="Reset rotation"><i class="ph ph-arrow-counter-clockwise"></i></button>`}
+    ${flexible || fixture ? "" : `<button class="tool-button icon-only" id="reset-rotation" type="button" aria-label="Reset selected rotation" data-tooltip="Reset rotation"><i class="ph ph-arrow-counter-clockwise"></i></button>`}
     <button class="tool-button icon-only" id="discuss-selected" type="button" aria-label="Discuss selected component" data-tooltip="Discuss"><i class="ph ph-chat-circle-dots"></i></button>
   `;
   context.textContent = `Discussing: ${selectedComponent.name}`;
@@ -1828,6 +1892,12 @@ function phasePrompt(phase: CollaborationPhase): string {
       build: "The wirer snaps each load from its pin to GND while the coder writes the matching lines and reads them aloud.",
       test: "Predict what each pin will do, upload together, and compare the 3D board with the pin indicators.",
       reflect: "Explain the difference between wiring (where current can flow) and code (when a pin is HIGH).",
+    },
+    sound: {
+      frame: "Each maker records a prediction for the brief before anyone patches. Agree which module comes first.",
+      build: "One maker patches a cable at a time while the other names the jacks: OUT into IN.",
+      test: "Test the patch; listen or read the signal display; compare the result with your predictions.",
+      reflect: "Explain how the filter and the Drive changed the signal, and what you would change next.",
     },
     snap: {
       frame: "One maker traces the planned loop aloud from B1 + to B1 −. The partner checks it by touch labels before anything is snapped.",
@@ -2302,6 +2372,9 @@ function onKeyboardShortcut(event: KeyboardEvent): void {
   if (activeStudio === "snapino" && ["1", "2", "3", "4"].includes(event.key)) {
     workbench?.viewPreset((["bench", "top", "table", "receiver"] as const)[Number(event.key) - 1]);
   }
+  if (activeStudio === "sound" && ["1", "2", "3"].includes(event.key)) {
+    workbench?.viewPreset((["overview", "plan", "listener"] as const)[Number(event.key) - 1]);
+  }
   if (event.key === " " && workbench?.toggleSelectedSwitch()) event.preventDefault();
   if (event.key === "Escape") document.querySelector<HTMLDialogElement>("#reflection-dialog")?.close();
 }
@@ -2597,15 +2670,79 @@ function createInspector(): void {
  * Selecting a part focuses the inspector, unless that would pull the learner away from what
  * they are doing: the workshop or code tab, or a message or note being written.
  */
+/** Episode 2: the Sound Flow Studio dock tabs, wired to the room through WorkbenchTools. */
+function createSoundPanel(): void {
+  soundPanel = new SoundPanel({
+    workbench: () => workbench,
+    condition: () => ((params.get("condition") ?? "DI").toUpperCase() === "PF" ? "PF" : "DI"),
+    roomCode: () => currentRoomCode,
+    selectedId: () => (selectedComponent?.studio === "sound" ? selectedComponent.id : null),
+    select: (id) => workbench?.selectById(id),
+    holderOf: (id) => {
+      for (const resourceId of [id, `${id}::endpoint-0`, `${id}::endpoint-1`]) {
+        const owner = owners.get(resourceId);
+        if (owner && owner.id !== room?.participant.id) return owner.name;
+      }
+      return null;
+    },
+    submit: async (changes, label, traceId) => {
+      if (!tools) return { ok: false, reason: "offline" };
+      const ok = await tools.submit(changes, label, { traceId });
+      return { ok, reason: ok ? null : tools.lastRefusal ?? "held" };
+    },
+    returnToMat: (id) => tools?.returnToTray(id),
+    trace: (action, detail) => room?.recordTrace(action, collaborationPhase, activeStudio, { detail }),
+    status: showSceneStatus,
+    showTab: (tab) => {
+      if (dockCollapsed) setDockCollapsed(false);
+      switchDiscussionTab(tab);
+    },
+  });
+  soundPanel.bind();
+  document.querySelector("#sound-audio-toggle")?.addEventListener("click", () => soundPanel?.toggleFromToolbar());
+}
+
 function focusInspectorTab(): void {
   const active = document.querySelector<HTMLElement>(".discussion-tab.is-active")?.dataset.tab ?? "chat";
   const typing = document.activeElement?.matches("#discussion-dock textarea, #discussion-dock input") ?? false;
   const unsent = Boolean(document.querySelector<HTMLTextAreaElement>("#chat-input")?.value.trim());
-  if (active === "inspect" || active === "episode" || active === "code" || typing || unsent) {
+  if (active === "inspect" || active === "episode" || active === "code" || active === "sound" || typing || unsent) {
     if (active !== "inspect") document.querySelector('.discussion-tab[data-tab="inspect"]')?.classList.add("has-unread");
     return;
   }
   switchDiscussionTab("inspect");
+}
+
+/** Each studio's own camera views (number keys) plus Fit (F). */
+const VIEW_PRESETS: Partial<Record<StudioKind, Array<{ view: string; label: string; aria: string; icon: string }>>> = {
+  snapino: [
+    { view: "bench", label: "Bench", aria: "Bench view", icon: "ph-cube-focus" },
+    { view: "top", label: "Top", aria: "Top view", icon: "ph-grid-four" },
+    { view: "table", label: "Table", aria: "Table with parts tray", icon: "ph-frame-corners" },
+    { view: "receiver", label: "Lamp", aria: "Receiver's view of the lamp", icon: "ph-eye" },
+  ],
+  sound: [
+    { view: "overview", label: "Overview", aria: "Overview of the patch desk", icon: "ph-cube-focus" },
+    { view: "plan", label: "Plan", aria: "Plan view of the panels", icon: "ph-grid-four" },
+    { view: "listener", label: "Speaker", aria: "Listener's view of the Speaker", icon: "ph-speaker-high" },
+  ],
+};
+
+function renderViewPresets(): void {
+  const bar = document.querySelector<HTMLElement>("#view-presets");
+  if (!bar) return;
+  const presets = VIEW_PRESETS[activeStudio];
+  bar.hidden = !presets;
+  if (!presets) {
+    bar.innerHTML = "";
+    return;
+  }
+  const key = presets.map((preset) => preset.view).join();
+  if (bar.dataset.views === key) return;
+  bar.dataset.views = key;
+  bar.innerHTML = presets.map((preset, index) => `<button type="button" data-view="${preset.view}" aria-label="${escapeHtml(preset.aria)} (${index + 1})" data-tooltip="${escapeHtml(preset.label)} · ${index + 1}"><i class="ph ${preset.icon}" aria-hidden="true"></i><span>${escapeHtml(preset.label)}</span></button>`).join("")
+    + `<button type="button" data-view="fit" aria-label="Fit the selected part (F)" data-tooltip="Fit selected part · F" disabled><i class="ph ph-crosshair-simple" aria-hidden="true"></i><span>Fit part</span></button>`;
+  installNativeTooltips();
 }
 
 function updatePresetButtons(): void {
@@ -2647,6 +2784,8 @@ function disposeWorkspace(): void {
   episode = null;
   inspector?.dispose();
   inspector = null;
+  soundPanel?.dispose();
+  soundPanel = null;
   queuedEpisode = null;
   transmissionActive = false;
   wantEpisode = false;

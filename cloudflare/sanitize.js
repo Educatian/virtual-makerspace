@@ -6,8 +6,10 @@
  * type-checked, never coerced with Number()/String().
  *
  * `sanitizeProps` mirrors src/circuit/part-props.ts (same bounds and rounding); the check
- * script asserts both agree on a table of inputs.
+ * script asserts both agree on a table of inputs. Sound Flow Studio parts (Episode 2) are
+ * checked by sound-rules.js, shared with the client.
  */
+import { isSoundId, SOUND_IDS, sanitizeSoundTransform } from "./sound-rules.js";
 
 export const RESISTANCE_RANGE = { min: 10, max: 1_000_000 };
 export const VOLTAGE_RANGE = { min: 1, max: 12 };
@@ -72,9 +74,15 @@ export function sanitizeTransform(value, componentId = "") {
   }
   if (value.activeEndpoint !== undefined) {
     if (value.activeEndpoint !== 0 && value.activeEndpoint !== 1) return null;
+    // A cable-end move names its end and carries both end positions (as the app always sends):
+    // receivers apply only that end, so a payload without them is refused, not half-applied.
+    if (!transform.endpoints) return null;
     transform.activeEndpoint = value.activeEndpoint;
   }
   if (typeof value.on === "boolean") transform.on = value.on;
+  // Sound Flow Studio: fixture poses, jack indices and complete in-range knob values; an invalid
+  // value refuses the whole message (it is never clamped or silently dropped).
+  if (isSoundId(componentId)) return sanitizeSoundTransform(componentId, value, transform);
   if (value.props !== undefined) {
     const props = sanitizeProps(propKind(componentId), value.props);
     // Invalid electrical values are dropped (the part keeps its current value), never relayed.
@@ -89,6 +97,7 @@ export const COMPONENT_IDS = new Set([
   "soil-sensor", "temp-sensor", "light-sensor", "farm-controller", "water-pump", "irrigation-hose", "vent-fan", "solar-panel",
   "snap-b1", "snap-s1", "snap-l1", "snap-m1", "snap-w2", "snap-w3a", "snap-w3b", "snap-w4",
   "sno-l1", "sno-d1", "sno-m1", "sno-s1", "sno-w2a", "sno-w2b", "sno-w3", "sno-w4a", "sno-w4b",
+  ...SOUND_IDS,
 ]);
 
 /** A part id, or (with allowEndpoint) one cable end `id::endpoint-0|1`. */

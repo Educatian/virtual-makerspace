@@ -1,0 +1,18 @@
+  [ready] host entered: 7 s (+4 frames)
+  [ready] member entered: 6 s (+3 frames)
+PASS DI host sees the worked example; PF member does not
+PASS no AudioContext on either page before any click
+  [ready] host after plug A0: 21 s (+3 frames)
+  [ready] member after plug B0: 15 s (+3 frames)
+  [ready] member after plug B1: 11 s (+3 frames)
+  [ready] member after plug C0: 12 s (+3 frames)
+PASS pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker — {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]} | {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]}
+  [ready] member before occupied: 11 s (+3 frames)
+PASS occupied: the plug dropped on Filter IN (taken) stays out, for both; Filter IN keeps the red cable — member C [4,null], host C [4,null]; status "Filter IN already holds a plug (one plug per jack) · Blue cable end B stays out"
+  [ready] member after occupied: 12 s (+3 frames)
+PASS host Test on the default knobs: not met (C2 tone fails), measured values shown — ["C1:met","C2:not","C3:met","C4:met","C5:met"]
+FAIL host's Source edit (220 Hz sawtooth, by keyboard) accepted and received by the member — {"hz":440,"wave":"sine"}
+locator.click: Target page, context or browser has been closed
+    at selectFromRail (/home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:128:61)
+    at async file:///home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:204:3
+e2e sound: 5/7 checks passed (room SC4T; artifacts <scratch>/sound-e2e1)

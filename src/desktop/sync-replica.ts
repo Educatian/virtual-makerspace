@@ -36,7 +36,11 @@ export interface EditProgram {
 /** `conditional: false` = upload/stop that applies whatever the program revision is. */
 export type EditProgramRequest = EditProgram & { conditional?: boolean };
 
-export type EditRefusal = "held" | "stale" | "offline" | "timeout" | "disconnected";
+/**
+ * "invalid": the room's validation refused the batch (a value out of range, an unknown jack, a
+ * moved fixture). "occupied": a Sound Flow Studio jack already holds another cable's plug.
+ */
+export type EditRefusal = "held" | "stale" | "invalid" | "occupied" | "offline" | "timeout" | "disconnected";
 export type EditResult = { ok: true } | { ok: false; reason: EditRefusal; holderName?: string; componentId?: string };
 
 export type Stamp = [number, string];
@@ -54,7 +58,7 @@ export type SyncEffect =
    * still has later moves of the part in flight (sent after a new claim); those decide, so keep
    * the local position and take only values — the last one's ack or refusal settles it.
    */
-  | { type: "revert"; componentId: string; transform: SharedTransform | null; holderName?: string; superseded?: boolean }
+  | { type: "revert"; componentId: string; transform: SharedTransform | null; holderName?: string; superseded?: boolean; reason?: "occupied" }
   | { type: "claim-denied"; componentId: string; holderName: string }
   | { type: "claim-result"; resourceId: string; granted: boolean }
   /** Every move of a released drag was answered: `ok` if none was refused. */
@@ -277,9 +281,10 @@ export class SyncReplica {
         const count = this.unacked.get(componentId) ?? 0;
         const transform = (raw.transform as SharedTransform | null) ?? null;
         const holderName = typeof raw.holderName === "string" ? raw.holderName : undefined;
+        const reason = raw.reason === "occupied" ? "occupied" as const : undefined;
         effects.push(count > 1
-          ? { type: "revert", componentId, transform, holderName, superseded: true }
-          : { type: "revert", componentId, transform, holderName });
+          ? { type: "revert", componentId, transform, holderName, superseded: true, ...(reason ? { reason } : {}) }
+          : { type: "revert", componentId, transform, holderName, ...(reason ? { reason } : {}) });
         this.settleOwn(componentId, effects);
         break;
       }
@@ -357,7 +362,7 @@ export class SyncReplica {
           }
           const programRev = rev(raw.programRev);
           if (programRev !== null) this.programRev = programRev;
-          const reason = raw.reason === "held" || raw.reason === "stale" ? raw.reason : "stale";
+          const reason = raw.reason === "held" || raw.reason === "stale" || raw.reason === "invalid" || raw.reason === "occupied" ? raw.reason : "stale";
           effects.push({
             type: "resolve",
             opId,

@@ -1,0 +1,155 @@
+{
+ "room": "IWTT",
+ "results": [
+  {
+   "name": "bench built through the room (layout button + one atomic edit)",
+   "ok": true,
+   "detail": "{\"hostAnswer\":false,\"member\":[\"sno-l1 [12,30]\",\"sno-s1 [14,32]\",\"sno-w4a [32,28]\",\"sno-w2b [28,10]\"]}"
+  },
+  {
+   "name": "pointer click on the 3D lamp selects it and focuses the inspector tab",
+   "ok": true,
+   "detail": "{\"title\":\"Lamp L1\",\"tab\":\"inspect\"}"
+  },
+  {
+   "name": "the lamp's rung is selected and both of its nets are highlighted on the diagram",
+   "ok": true,
+   "detail": "D5,GND"
+  },
+  {
+   "name": "3D highlights = the studs of the lamp's two nets (independent rebuild), terminals marked",
+   "ok": true,
+   "detail": "4 rings"
+  },
+  {
+   "name": "3D ring tones = diagram row tones (A amber/solid, B cyan/dashed), with letter badges",
+   "ok": true,
+   "detail": "{\"domTones\":{\"D5\":\"a\",\"GND\":\"b\"},\"badges\":[\"A\",\"B\"],\"toneMismatch\":[]}"
+  },
+  {
+   "name": "the click did not move the lamp (both clients)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "Tab reaches the S1 rung on the diagram",
+   "ok": true,
+   "detail": "15 Tab presses"
+  },
+  {
+   "name": "Enter on the rung selects S1 (inspector + its two studs ringed in 3D)",
+   "ok": true,
+   "detail": "[14,32]"
+  },
+  {
+   "name": "Tab reaches the inspector's Switch S1 button",
+   "ok": true,
+   "detail": "2 Tab presses"
+  },
+  {
+   "name": "Enter on Switch S1 on: accepted, S1 on for both clients",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host: inspector reports the room accepted it (immediately, or when a late answer lands)",
+   "ok": true,
+   "detail": "The room accepted it (its answer came late): S1 is on for everyone."
+  },
+  {
+   "name": "diagram on both: S1 closed, D2's net at 5 V",
+   "ok": true,
+   "detail": "is-supply/is-supply"
+  },
+  {
+   "name": "code panel on both: D2 input reads HIGH",
+   "ok": true,
+   "detail": "D3LOW · outputD5LOW · outputD6LOW · outputD2HIGH · input · S1 | D3LOW · outputD5LOW · outputD6LOW · outputD2HIGH · input · S1"
+  },
+  {
+   "name": "both clients' diagrams list the same connections",
+   "ok": true,
+   "detail": "Lamp L1: D5 (D5) to GND (D-4), offSlide switch S1: 5V (5V) to D2 (D-6), closed"
+  },
+  {
+   "name": "the unsaved code draft is untouched by the accepted edit",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the member, with nothing selected, has no stud rings (selection is local)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "while the member holds S1, the host's inspector says so and the switch is disabled",
+   "ok": true,
+   "detail": "{\"held\":\" member is holding this part\",\"button\":true,\"disabled\":true}"
+  },
+  {
+   "name": "a double-click on held S1 changes nothing for anyone",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "after the member lets go, S1 is still seated on both",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "flip attempt 1: a refused flip's client holds the room's state; no note claims a change that did not happen",
+   "ok": true,
+   "detail": "[\"Not changed: the room did not accept the flip, so S1 is still off here and for everyone.\",\"The room accepted it: S1 is off for everyone.\"]"
+  },
+  {
+   "name": "concurrent flips: one accepted, the other refused as stale (observed)",
+   "ok": true,
+   "detail": "attempt 1, refused on host"
+  },
+  {
+   "name": "after the refusal both clients hold the same S1 state (the refused flip left no local change)",
+   "ok": true,
+   "detail": "{\"attempt\":1,\"refusedBy\":\"host\",\"notes\":[\"Not changed: the room did not accept the flip, so S1 is still off here and for everyone.\",\"The room accepted it: S1 is off for everyone.\"],\"states\":[false,false]}"
+  },
+  {
+   "name": "Bench view: the base and carrier sit inside the free view and fill most of its width",
+   "ok": true,
+   "detail": "bench 504 px of 588 px free"
+  },
+  {
+   "name": "Top view: camera above the bench, columns left to right",
+   "ok": true,
+   "detail": "{\"position\":[-0.75,6.907275873779922,1.538094714912727],\"target\":[-0.75,0.375,0.029999999999999912],\"moving\":false}"
+  },
+  {
+   "name": "Table view: pulled back past the bench view (tray included)",
+   "ok": true,
+   "detail": "12.47 vs 8.06"
+  },
+  {
+   "name": "key 4: receiver's view of the lamp",
+   "ok": true,
+   "detail": "[-1.23,0.5,-0.48]"
+  },
+  {
+   "name": "key 1: back to the bench view",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "F fits the selected part (closer than the bench view)",
+   "ok": true,
+   "detail": "3.21"
+  },
+  {
+   "name": "renderer counters recorded per view",
+   "ok": true,
+   "detail": "bench: 552 calls, 98122 tris; top: 482 calls, 95906 tris; table: 740 calls, 109282 tris; receiver: 367 calls, 86026 tris; fit: 413 calls, 86762 tris"
+  },
+  {
+   "name": "no page errors on either client",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

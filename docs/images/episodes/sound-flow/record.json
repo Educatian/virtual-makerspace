@@ -1,0 +1,445 @@
+{
+ "app": "63a3421",
+ "base": "http://127.0.0.1:4173 (static server over dist/)",
+ "shots": [
+  {
+   "name": "01-overview",
+   "file": "01-overview.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 202,
+   "triangles": 40832,
+   "camera": {
+    "position": [
+     0.31966859048492413,
+     8.073342952424621,
+     6.133798640507849
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "03-plan",
+   "file": "03-plan.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 203,
+   "triangles": 41036,
+   "camera": {
+    "position": [
+     -1.2000000000000002,
+     8.146007932082911,
+     1.4305230705870127
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.4749999999999999,
+     -0.19999999999999996
+    ],
+    "moving": false
+   },
+   "note": "key 2"
+  },
+  {
+   "name": "04-listener",
+   "file": "04-listener.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 191,
+   "triangles": 35638,
+   "camera": {
+    "position": [
+     2.7039895772050286,
+     3.482079852064566,
+     3.027697907036478
+    ],
+    "target": [
+     0.6500000000000001,
+     0.45,
+     -0.19999999999999996
+    ],
+    "moving": false
+   },
+   "note": "key 3"
+  },
+  {
+   "name": "05-closeup-jacks",
+   "file": "05-closeup-jacks.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 125,
+   "triangles": 27130,
+   "camera": {
+    "position": [
+     -1.4,
+     1.5,
+     1.85
+    ],
+    "target": [
+     -1.4,
+     0.62,
+     0.62
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "06-closeup-knob",
+   "file": "06-closeup-knob.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 69,
+   "triangles": 13218,
+   "camera": {
+    "position": [
+     -3.3999999999999995,
+     1.55,
+     0.5999999999999999
+    ],
+    "target": [
+     -3.6999999999999997,
+     0.65,
+     -0.45
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "07-closeup-speaker",
+   "file": "07-closeup-speaker.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 76,
+   "triangles": 17770,
+   "camera": {
+    "position": [
+     1.6000000000000003,
+     1.7000000000000002,
+     1.2
+    ],
+    "target": [
+     1.2000000000000002,
+     0.6000000000000001,
+     -0.30000000000000004
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "08-wrong-patch",
+   "file": "08-wrong-patch.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 207,
+   "triangles": 41600,
+   "camera": {
+    "position": [
+     0.3203241852176619,
+     8.076620926088308,
+     6.136175171414024
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "08b-wrong-patch-inspector",
+   "file": "08b-wrong-patch-inspector.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#sound-inspector",
+   "calls": 207,
+   "triangles": 41600,
+   "camera": {
+    "position": [
+     0.3203241852176619,
+     8.076620926088308,
+     6.136175171414024
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "09-working",
+   "file": "09-working.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 207,
+   "triangles": 41472,
+   "camera": {
+    "position": [
+     0.3203241852176619,
+     8.076620926088308,
+     6.136175171414024
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "09b-signal-display",
+   "file": "09b-signal-display.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#ss-scope >> xpath=ancestor::section[1]",
+   "calls": 207,
+   "triangles": 41472,
+   "camera": {
+    "position": [
+     0.3203241852176619,
+     8.076620926088308,
+     6.136175171414024
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "09c-test-result",
+   "file": "09c-test-result.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#ss-result",
+   "calls": 207,
+   "triangles": 41472,
+   "camera": {
+    "position": [
+     0.3203241852176619,
+     8.076620926088308,
+     6.136175171414024
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "10-recovered",
+   "file": "10-recovered.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 207,
+   "triangles": 41472,
+   "camera": {
+    "position": [
+     0.3203241852176619,
+     8.076620926088308,
+     6.136175171414024
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "02-overview-1280",
+   "file": "02-overview-1280.jpg",
+   "viewport": {
+    "width": 1280,
+    "height": 720
+   },
+   "element": null,
+   "calls": 202,
+   "triangles": 40832,
+   "camera": {
+    "position": [
+     0.18708236048801719,
+     7.410411802440083,
+     5.653173556769062
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "11-phone-top",
+   "file": "11-phone-top.jpg",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "element": null,
+   "calls": 201,
+   "triangles": 41220,
+   "camera": {
+    "position": [
+     1.0377633544097802,
+     11.66381677204891,
+     8.73689215973546
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "12-phone-dock",
+   "file": "12-phone-dock.jpg",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "element": null,
+   "calls": 201,
+   "triangles": 41220,
+   "camera": {
+    "position": [
+     1.037763354409781,
+     11.66381677204891,
+     8.736892159735463
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": "after wheel + Tab"
+  },
+  {
+   "name": "13-pf-studio",
+   "file": "13-pf-studio.jpg",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#sound-studio",
+   "calls": 202,
+   "triangles": 40832,
+   "camera": {
+    "position": [
+     0.31966859048492413,
+     8.073342952424621,
+     6.133798640507849
+    ],
+    "target": [
+     -1.2000000000000002,
+     0.475,
+     0.6250000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  }
+ ],
+ "checks": [
+  {
+   "name": "1440\u00d7900 overview: the desk fills \u2265 60 % of the free width",
+   "ok": true,
+   "detail": "0.865"
+  },
+  {
+   "name": "wrong patch: the loop and the loose end are drawn and diagnosed; nothing reaches the Speaker",
+   "ok": true,
+   "detail": "[\"loose-end\",\"loop\",\"unpatched-input\"]"
+  },
+  {
+   "name": "working: the brief is met, the display shows a rendered, unclipped tone at the Speaker",
+   "ok": true,
+   "detail": "{\"met\":true,\"display\":{\"reaches\":true,\"clipped\":false,\"peak\":0.495988130569458,\"source\":\"rendered\"},\"audio\":\"running\"}"
+  },
+  {
+   "name": "1280\u00d7720 overview: the desk fills \u2265 60 % of the free width",
+   "ok": true,
+   "detail": "0.857"
+  },
+  {
+   "name": "phone: no horizontal overflow",
+   "ok": true,
+   "detail": "0"
+  },
+  {
+   "name": "phone: Test patch reached by keyboard after wheel scrolling; target \u2265 44 px",
+   "ok": true,
+   "detail": "{\"x\":23,\"y\":799.84375,\"width\":116.59375,\"height\":44}"
+  },
+  {
+   "name": "PF: no worked example",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "issues": [],
+ "ok": true
+}

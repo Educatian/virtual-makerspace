@@ -20,6 +20,10 @@
  * - Program uploads/stops may be unconditional (`expectRev: null`): still ordered by the room
  *   and applied by everyone (sender included) only when relayed/accepted.
  *
+ * - Sound Flow Studio patch cables (sound-rules.js): one plug per jack. A live move or an edit
+ *   that would put a second plug into a jack is refused (`transform-rejected` / `edit-result`
+ *   reason "occupied") with the room's state, like any other refusal.
+ *
  * Pure: no sockets or storage. `handle()` returns what to send and what to persist.
  */
 
@@ -30,6 +34,7 @@ import {
   onTransmitterChanged,
   reduceRescue,
 } from "../src/episodes/rescue-state.ts";
+import { isSoundCable, nextCableSockets, soundJackConflict } from "./sound-rules.js";
 
 const resourceParts = (resourceId) => {
   const match = /^(.*)::endpoint-([01])$/.exec(resourceId);
@@ -173,6 +178,10 @@ export class RoomCore {
           out.sender.push({ kind: "transform-rejected", ...this.authoritative(message.componentId), holderId: conflict?.participantId ?? "", holderName: conflict?.participantName ?? "" });
           return out;
         }
+        if (this.jackTaken(message.componentId, message.transform, new Map())) {
+          out.sender.push({ kind: "transform-rejected", ...this.authoritative(message.componentId), holderId: "", holderName: "", reason: "occupied" });
+          return out;
+        }
         const entry = this.store(message.componentId, message.transform);
         out.persist.state = [[message.componentId, entry]];
         out.others.push({ ...message, rev: entry.rev });
@@ -201,6 +210,11 @@ export class RoomCore {
           if (this.rev(change.componentId) !== change.expectRev) return refuse("stale", { componentId: change.componentId });
         }
         if (message.program && message.program.expectRev !== null && message.program.expectRev !== this.programRev) return refuse("stale", { componentId: "program" });
+        // One plug per jack, judged on the state this whole batch would leave.
+        const batch = new Map(message.changes.filter((change) => isSoundCable(change.componentId)).map((change) => [change.componentId, nextCableSockets(this.state.get(change.componentId)?.transform, change.transform)]));
+        for (const change of message.changes) {
+          if (this.jackTaken(change.componentId, change.transform, batch)) return refuse("occupied", { componentId: change.componentId });
+        }
         const applied = message.changes.map((change) => {
           const entry = this.store(change.componentId, change.transform);
           return { componentId: change.componentId, transform: entry.transform, rev: entry.rev };
@@ -294,19 +308,37 @@ export class RoomCore {
     if (episode) this.episode = episode;
   }
 
+  /**
+   * Whether storing `transform` would put a second plug into a jack (sound patch cables only),
+   * judged on the cable's merged sockets (a cable-end move keeps the room's other end), so two
+   * people each moving one end of the same cable into the same jack are refused.
+   */
+  jackTaken(componentId, transform, batch) {
+    if (!isSoundCable(componentId)) return false;
+    const sockets = batch.get(componentId) ?? nextCableSockets(this.state.get(componentId)?.transform, transform);
+    const socketsOf = (id) => (batch.has(id) ? batch.get(id) : this.state.get(id)?.transform.sockets ?? null);
+    return soundJackConflict(componentId, sockets, socketsOf) !== null;
+  }
+
   store(componentId, transform) {
     const previous = this.state.get(componentId);
     let next = { ...transform };
     const end = transform.activeEndpoint;
-    if ((end === 0 || end === 1) && previous?.transform.endpoints && transform.endpoints) {
-      // A cable-end move changes only that end: two people may each hold one end, and each
-      // sender's view of the other end can be behind. Keep the room's other end.
-      const base = previous.transform;
-      const endpoints = [base.endpoints[0], base.endpoints[1]];
-      endpoints[end] = transform.endpoints[end];
+    // A Sound patch cable the room has never stored starts unplugged on every client (the mat).
+    const unstoredSoundCable = !previous && isSoundCable(componentId) ? { ...transform, sockets: null } : null;
+    if ((end === 0 || end === 1) && (previous || unstoredSoundCable)) {
+      // A cable-end move changes only that end, the one the sender holds: two people may each
+      // hold one end, and each sender's view of the other end can be behind. The room's other
+      // end is always kept, whatever the message says about it (the claim covers one end only).
+      const base = previous ? previous.transform : unstoredSoundCable;
       const sockets = Array.isArray(base.sockets) ? [base.sockets[0], base.sockets[1]] : [null, null];
       sockets[end] = transform.sockets?.[end] ?? null;
-      next = { ...base, endpoints, sockets: sockets.some((socket) => socket !== null) ? sockets : null };
+      next = { ...base, sockets: sockets.some((socket) => socket !== null) ? sockets : null };
+      if (base.endpoints) {
+        const endpoints = [base.endpoints[0], base.endpoints[1]];
+        if (transform.endpoints) endpoints[end] = transform.endpoints[end];
+        next.endpoints = endpoints;
+      } else if (transform.endpoints) next.endpoints = transform.endpoints;
     }
     delete next.activeEndpoint;
     // Live drags omit electrical values and switch state (they never change them): keep the accepted ones.

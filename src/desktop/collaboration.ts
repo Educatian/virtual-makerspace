@@ -1,4 +1,5 @@
 import type { SnapinoStatement } from "./snapino.js";
+import type { SoundProps } from "../../cloudflare/sound-rules.js";
 import { acceptClockSample, CLOCK_GOOD_RTT } from "./room-clock.ts";
 import {
   SyncReplica,
@@ -43,8 +44,10 @@ export interface SharedTransform {
    * Edited electrical values for Circuit Bench parts (resistor ohms, battery volts). Absent
    * means "unchanged" (older clients never send it); every snapshot includes it explicitly.
    * Validated with the same bounds by the Worker relay (cloudflare/worker.js sanitizeProps).
+   * Sound Flow Studio modules carry their knob values here (hz/wave, cutoff, gain), validated by
+   * cloudflare/sound-rules.js on the server.
    */
-  props?: { ohms?: number; volts?: number };
+  props?: { ohms?: number; volts?: number } & SoundProps;
 }
 
 export interface Participant {
@@ -64,7 +67,7 @@ export interface Participant {
 
 export type CollaborationRole = "builder" | "verifier";
 export type CollaborationPhase = "frame" | "build" | "test" | "reflect";
-export type StudioChoice = "circuit" | "greenhouse" | "snap" | "snapino";
+export type StudioChoice = "circuit" | "greenhouse" | "snap" | "snapino" | "sound";
 export type ParticipantActivity =
   | "available"
   | "inspecting"
@@ -99,7 +102,7 @@ export interface ActivityTrace {
   createdAt: number;
   action: TraceAction;
   phase: CollaborationPhase;
-  studio: "circuit" | "greenhouse" | "snap" | "snapino";
+  studio: StudioChoice;
   objectId?: string;
   objectName?: string;
   detail?: string;
@@ -214,7 +217,7 @@ export interface RoomEvents {
    */
   onApply: (componentId: string, transform: SharedTransform, options: { force: boolean; propsOnly: boolean; participantId: string }) => void;
   /** The room refused this participant's move or claim; `transform` null = the part's default. */
-  onRevert: (componentId: string, transform: SharedTransform | null, options: { superseded: boolean; holderName?: string }) => void;
+  onRevert: (componentId: string, transform: SharedTransform | null, options: { superseded: boolean; holderName?: string; reason?: "occupied" }) => void;
   onClaimDenied: (resourceId: string, holderName: string) => void;
   /**
    * The room's full state arrived (server mode, on every (re)join). Parts not in
@@ -224,6 +227,8 @@ export interface RoomEvents {
   onRoomState: (state: { fresh: boolean; componentIds: string[]; ownMovesInFlight: string[] }) => void;
   /** The episode state changed (or arrived on join). Use `serverTime()` to place it in time. */
   onEpisode: (state: RescueState) => void;
+  /** The realtime socket opened (true) or dropped (false); server mode only. */
+  onConnection?: (online: boolean) => void;
 }
 
 const noOpEvents: RoomEvents = {
@@ -782,7 +787,7 @@ export class DesktopRoom {
           break;
         }
         case "revert":
-          this.events.onRevert(effect.componentId, effect.transform, { superseded: Boolean(effect.superseded), holderName: effect.holderName });
+          this.events.onRevert(effect.componentId, effect.transform, { superseded: Boolean(effect.superseded), holderName: effect.holderName, reason: effect.reason });
           break;
         case "claim-denied":
           if (this.claims.get(effect.componentId) === this.participant.id) {
@@ -1160,6 +1165,7 @@ export class DesktopRoom {
       this.startClockSync(socket);
       // The room answers hello with its authoritative state (room-state): no peer copy needed.
       this.events.onVoiceStatus("Realtime room connected");
+      this.events.onConnection?.(true);
     });
     socket.addEventListener("message", this.handleMessage);
     socket.addEventListener("close", () => {
@@ -1182,6 +1188,7 @@ export class DesktopRoom {
       }
       this.resetRemoteSessionState();
       this.events.onVoiceStatus("Realtime room disconnected · reconnecting");
+      this.events.onConnection?.(false);
       this.scheduleReconnect();
     });
     socket.addEventListener("error", () => {

@@ -1,0 +1,963 @@
+{
+ "room": "S8MD",
+ "base": "http://vm.test:8800",
+ "results": [
+  {
+   "name": "DI host sees the worked example; PF member does not",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T12:13:31.544Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "no AudioContext on either page before any click",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T12:14:01.824Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker",
+   "ok": true,
+   "detail": "{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]} | {\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]}",
+   "actor": "host + member",
+   "at": "2026-10-28T12:32:16.552Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 20
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 20
+     }
+    }
+   }
+  },
+  {
+   "name": "occupied: the plug dropped on Filter IN (taken) stays out, for both; Filter IN keeps the red cable",
+   "ok": true,
+   "detail": "member C [4,null], host C [4,null]; status \"Filter IN already holds a plug (one plug per jack) · Blue cable end B stays out\"",
+   "actor": "member",
+   "at": "2026-10-28T12:34:11.072Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 30
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 30
+     }
+    }
+   }
+  },
+  {
+   "name": "host Test on the default knobs: not met (C2 tone fails), measured values shown",
+   "ok": true,
+   "detail": "[\"C1:met\",\"C2:not\",\"C3:met\",\"C4:met\",\"C5:met\"]",
+   "actor": "host",
+   "at": "2026-10-28T12:37:37.195Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "host's Source edit (220 Hz sawtooth, by keyboard) accepted and received by the member",
+   "ok": true,
+   "detail": "{\"hz\":220,\"wave\":\"sawtooth\"}; host note: Set Source to sawtooth 220 Hz · shared with the room; host drafts {}",
+   "actor": "host",
+   "at": "2026-10-28T12:40:17.596Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "member's unapplied draft (650) survives the host's accepted cutoff 300; the member's model shows the room's 300",
+   "ok": true,
+   "detail": "draft \"650\"",
+   "actor": "host vs member",
+   "at": "2026-10-28T12:44:56.584Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "member applies the draft: accepted, the host sees 650",
+   "ok": true,
+   "detail": "",
+   "actor": "member",
+   "at": "2026-10-28T12:45:17.345Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 2,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 2,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "member Undo: both back to 300",
+   "ok": true,
+   "detail": "",
+   "actor": "member",
+   "at": "2026-10-28T12:45:56.151Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 3,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 3,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "member Redo: both at 650",
+   "ok": true,
+   "detail": "",
+   "actor": "member",
+   "at": "2026-10-28T12:46:31.613Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 4,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 4,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "stale: one simultaneous gain edit is refused; that maker holds the room's value and keeps their draft",
+   "ok": true,
+   "detail": "attempt 1: [\"Not applied · a teammate changed it first, so their value is kept; nothing changed. Your draft is kept below.\",\"Set Drive gain to ×2.11 (+6.5 dB) · shared with the room\"]; room gain 2.11; loser draft 1.11",
+   "actor": "host",
+   "at": "2026-10-28T12:53:25.982Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 22,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "declined: while the host holds the yellow cable, the member's Unplug is disabled and says who holds it",
+   "ok": true,
+   "detail": "{\"disabled\":true,\"note\":\"free (on the mat or loose) ↔ Drive INNow: one end is loose: carries nothing.host is holding this cable.\\n      Drag either plug in 3D into a jack. Plugging is shared with ever",
+   "actor": "member",
+   "at": "2026-10-28T13:02:22.852Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 23,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 23,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "after the hold: the patch is unchanged for both",
+   "ok": true,
+   "detail": "{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]}",
+   "actor": "",
+   "at": "2026-10-28T13:02:45.449Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "host: a click starts audio (one AudioContext, running)",
+   "ok": true,
+   "detail": "{\"contexts\":1,\"audio\":\"running\"}",
+   "actor": "host",
+   "at": "2026-10-28T13:03:50.016Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "host: Mute applies at once",
+   "ok": true,
+   "detail": "",
+   "actor": "host",
+   "at": "2026-10-28T13:04:24.677Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "teammate edits never unmute, raise or restart the host's audio; the member never had audio",
+   "ok": true,
+   "detail": "{\"host\":{\"contexts\":1,\"muted\":true,\"volume\":0.5},\"member\":0}",
+   "actor": "",
+   "at": "2026-10-28T13:06:43.043Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 2,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "member: losing the connection stops audio; after reconnecting it holds the room's gain (1.60) and audio stays off until a click",
+   "ok": true,
+   "detail": "{\"dropped\":\"off\",\"gain\":1.6,\"audio\":\"off\",\"contexts\":1}",
+   "actor": "member",
+   "at": "2026-10-28T13:10:22.353Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "late joiner receives the canonical patch and knobs; no audio on its page",
+   "ok": true,
+   "detail": "{\"cables\":{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]},\"source\":{\"hz\":220,\"wave\":\"sawtooth\"},\"filter\":{\"cutoff\":300},\"drive\":{\"gain\":1.6},\"speakerOn\":true}",
+   "actor": "late",
+   "at": "2026-10-28T13:11:30.758Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "late": {
+     "participant": "late@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "host Test on the fixed patch: all five criteria met",
+   "ok": true,
+   "detail": "[\"C1:Source → Filter → Drive → Speaker\",\"C2:sawtooth at 220 Hz\",\"C3:660 Hz is 22.3 dB below 220 Hz\",\"C4:no clipping\",\"C5:peak −6.6 dBFS\"]",
+   "actor": "host",
+   "at": "2026-10-28T13:14:04.224Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "host: explanation saved → brief met and explained",
+   "ok": true,
+   "detail": "",
+   "actor": "host",
+   "at": "2026-10-28T13:15:01.358Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "PF member: explanatory notes withheld before their first Test, unlocked after it",
+   "ok": true,
+   "detail": "",
+   "actor": "member",
+   "at": "2026-10-28T13:16:15.731Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "export: version 2 Sound project, allowed keys only, patch and knobs, no names/chat/predictions",
+   "ok": true,
+   "detail": "[\"format\",\"version\",\"solver\",\"studio\",\"savedAt\",\"parts\"]",
+   "actor": "host",
+   "at": "2026-10-28T13:17:20.966Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "an older version-1 Circuit Bench file is refused here with the reason",
+   "ok": true,
+   "detail": "Import refused · this project is for the circuit studio; switch studios first",
+   "actor": "host",
+   "at": "2026-10-28T13:18:02.160Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 5,
+      "snd-drive": 3,
+      "snd-speaker": 2,
+      "snd-cable-a": 20,
+      "snd-cable-b": 24,
+      "snd-cable-c": 41
+     }
+    }
+   }
+  },
+  {
+   "name": "Reset bench: every cable on the mat and every knob at its default, for both",
+   "ok": true,
+   "detail": "{\"cables\":{\"snd-cable-a\":[null,null],\"snd-cable-b\":[null,null],\"snd-cable-c\":[null,null]},\"source\":{\"hz\":440,\"wave\":\"sine\"},\"filter\":{\"cutoff\":2000},\"drive\":{\"gain\":1},\"speakerOn\":true}",
+   "actor": "host",
+   "at": "2026-10-28T13:19:43.724Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 2,
+      "snd-filter": 6,
+      "snd-drive": 4,
+      "snd-speaker": 2,
+      "snd-cable-a": 21,
+      "snd-cable-b": 25,
+      "snd-cable-c": 42
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 2,
+      "snd-filter": 6,
+      "snd-drive": 4,
+      "snd-speaker": 2,
+      "snd-cable-a": 21,
+      "snd-cable-b": 25,
+      "snd-cable-c": 42
+     }
+    }
+   }
+  },
+  {
+   "name": "import of the exported file restores the patch and knobs for both (one room edit)",
+   "ok": true,
+   "detail": "{\"cables\":{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]},\"source\":{\"hz\":220,\"wave\":\"sawtooth\"},\"filter\":{\"cutoff\":300},\"drive\":{\"gain\":1.6},\"speakerOn\":true}",
+   "actor": "host",
+   "at": "2026-10-28T13:20:45.225Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 3,
+      "snd-filter": 7,
+      "snd-drive": 5,
+      "snd-speaker": 2,
+      "snd-cable-a": 22,
+      "snd-cable-b": 26,
+      "snd-cable-c": 43
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 3,
+      "snd-filter": 7,
+      "snd-drive": 5,
+      "snd-speaker": 2,
+      "snd-cable-a": 22,
+      "snd-cable-b": 26,
+      "snd-cable-c": 43
+     }
+    }
+   }
+  },
+  {
+   "name": "after everyone left the room reset; returning, the host is offered its saved bench",
+   "ok": true,
+   "detail": "{\"snd-cable-a\":[null,null],\"snd-cable-b\":[null,null],\"snd-cable-c\":[null,null]}",
+   "actor": "host",
+   "at": "2026-10-28T13:21:24.414Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "restore: the room holds the recovered patch; the member rejoining sees it",
+   "ok": true,
+   "detail": "{\"cables\":{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]},\"source\":{\"hz\":220,\"wave\":\"sawtooth\"},\"filter\":{\"cutoff\":300},\"drive\":{\"gain\":1.6},\"speakerOn\":true}",
+   "actor": "host",
+   "at": "2026-10-28T13:22:29.858Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 1,
+      "snd-cable-b": 1,
+      "snd-cable-c": 1
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 1,
+      "snd-cable-b": 1,
+      "snd-cable-c": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "rejoining never starts audio",
+   "ok": true,
+   "detail": "{\"host\":0,\"member\":0}",
+   "actor": "",
+   "at": "2026-10-28T13:22:46.389Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 1,
+      "snd-cable-b": 1,
+      "snd-cable-c": 1
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 1,
+      "snd-cable-b": 1,
+      "snd-cable-c": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T13:22:53.073Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 1,
+      "snd-cable-b": 1,
+      "snd-cable-c": 1
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 1,
+      "snd-filter": 1,
+      "snd-drive": 1,
+      "snd-speaker": 0,
+      "snd-cable-a": 1,
+      "snd-cable-b": 1,
+      "snd-cable-c": 1
+     }
+    }
+   }
+  }
+ ]
+}
