@@ -891,8 +891,11 @@ function refusalCopy(label: string, result: Exclude<EditResult, { ok: true }>): 
       return `${label} not sent · reconnecting to the room, nothing changed`;
     case "timeout":
       return `${label} not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)`;
+    case "disconnected":
+      // The connection closed while the edit was out: the room may have accepted it before.
+      return `${label} not confirmed · the connection closed before the room answered; if the room accepted it, it will appear for everyone after reconnecting (not added to undo)`;
     default:
-      return `${label} not confirmed by the room · nothing changed`;
+      return `${label} not confirmed by the room · if it accepted it, it will appear for everyone (not added to undo)`;
   }
 }
 

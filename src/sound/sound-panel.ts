@@ -116,14 +116,20 @@ export function clearSubmittedDrafts(drafts: Map<string, string>, module: string
   return newer;
 }
 
+/** Refusals that are definite: the room answered no (held, stale, invalid, occupied), or the edit was never sent (offline). */
+const DEFINITE_REFUSALS: ReadonlySet<string> = new Set(["held", "stale", "invalid", "occupied", "offline"]);
+
 /**
- * Why an edit was not applied. A timeout is uncertain: the room may still have accepted it, so it
- * never says "nothing changed"; every other refusal is definite.
+ * Why an edit was not applied. Only a definite refusal says "nothing changed". A timeout, a
+ * connection that closed while the edit was out, or any other unconfirmed result is uncertain:
+ * the room may have accepted it (its answer was lost), so the copy says the value appears on its
+ * own if it did.
  */
 export function notAppliedCopy(reason: string | null | undefined, verb: string, draftNote: string): string {
-  if (reason === "timeout") return `${verb} yet · the room did not confirm it in time. If it accepted it, the new value will appear here on its own; otherwise nothing changed.${draftNote ? ` ${draftNote}.` : ""}`;
-  const why = REFUSALS[reason ?? ""] ?? "the room did not confirm it";
-  return `${verb} · ${why}; nothing changed.${draftNote ? ` ${draftNote}.` : ""}`;
+  const note = draftNote ? ` ${draftNote}.` : "";
+  if (reason && DEFINITE_REFUSALS.has(reason)) return `${verb} · ${REFUSALS[reason]}; nothing changed.${note}`;
+  const why = reason === "timeout" ? "the room did not confirm it in time" : reason === "disconnected" ? "the connection closed before the room's answer arrived" : "the room did not confirm it";
+  return `${verb} yet · ${why}. If the room accepted it, the new value will appear here on its own; otherwise nothing changed.${note}`;
 }
 
 /** DI only: why a criterion failed, in teaching terms (shown after a Test). */
@@ -191,7 +197,11 @@ export class SoundPanel {
   /** Last markup written per region: unchanged markup is never rewritten (focus and typing stay). */
   private readonly written = new Map<string, string>();
 
-  constructor(private readonly host: SoundPanelHost) {
+  // A plain field (no TypeScript parameter property), so Node's --experimental-strip-types can run it.
+  private readonly host: SoundPanelHost;
+
+  constructor(host: SoundPanelHost) {
+    this.host = host;
     this.engine = new SoundEngine((status, detail) => this.onAudioStatus(status, detail));
     this.session = this.loadSession();
   }
