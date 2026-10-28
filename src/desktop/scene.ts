@@ -25,6 +25,7 @@ import {
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
+  NormalBlending,
   Object3D,
   PerspectiveCamera,
   PCFSoftShadowMap,
@@ -70,10 +71,42 @@ import {
 } from "./bench-models.js";
 import { RemoteHands, type HandOwner } from "./remote-hands.js";
 import { NET_TONES, type NetTone, type NetToneStyle } from "./selection-style.ts";
+import {
+  isSoundCable,
+  isSoundModule,
+  sanitizeSoundProps,
+  SOUND_DEFAULT_PROPS,
+  SOUND_MODULE_POSES,
+  SOUND_SPEAKER_DEFAULT_ON,
+  soundPropKind,
+  type SoundModuleId,
+  type SoundPropKind,
+  type SoundProps,
+} from "../../cloudflare/sound-rules.js";
+import {
+  CABLE_SPECS,
+  createSoundDeskFixture,
+  createSoundModule,
+  buildPatchCable,
+  DESK_BOUNDS,
+  DESK_FRAME,
+  JACK_Y,
+  layoutPatchCable,
+  MAT_FRAME,
+  MODULE_WIDTH,
+  PANEL_REST_Y,
+  PANEL_TOP,
+  showModuleSignal,
+  showModuleValues,
+  SOUND_DRAG_Y,
+  soundJackPositions,
+  TABLE_REST_Y,
+} from "../sound/sound-desk.ts";
+import { analyzeSignal, derivePatchGraph, jackLabel, soundStateFrom, type SignalAnalysis, type SoundGraph, type SoundPatchState } from "../sound/sound-model.ts";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
 import { analyzeSnapino, SNAPINO_LOADS, SNAPINO_PADS, type SnapinoBench } from "../circuit/snapino-circuit.ts";
 
-export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino";
+export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino" | "sound";
 export type ComponentKind =
   | "led"
   | "resistor"
@@ -90,7 +123,16 @@ export type ComponentKind =
   | "snapswitch"
   | "snaplamp"
   | "snapmotor"
-  | "snapled";
+  | "snapled"
+  /** Sound Flow Studio: a fixed module on the patch desk (knobs, jacks), never moved. */
+  | "soundmodule"
+  /** Sound Flow Studio: a patch cable whose two plugs go into jacks. */
+  | "patch";
+
+/** Parts that bend between two independently draggable ends. */
+export const isFlexibleKind = (kind: ComponentKind): boolean => kind === "wire" || kind === "hose" || kind === "patch";
+/** Every editable value a part may carry (Circuit Bench and Sound Flow Studio). */
+type AnyProps = PartProps & SoundProps;
 
 export interface ComponentSpec {
   id: string;
@@ -144,6 +186,10 @@ export interface SceneEvents {
   onEnvironmentState: (state: EnvironmentState) => void;
   /** The Snapino bench re-evaluated (placements, switch or pin levels may have changed). */
   onSnapinoChange?: () => void;
+  /** Sound Flow Studio: the patch or a knob changed (here or remotely); the model's view of it. */
+  onSoundChange?: (state: SoundPatchState, graph: SoundGraph, signal: SignalAnalysis) => void;
+  /** Sound Flow Studio: a knob was clicked in 3D (focus its control in the inspector). */
+  onKnobPick?: (moduleId: string, param: "hz" | "wave" | "cutoff" | "gain" | "on") => void;
 }
 
 /** A stud the Snapino inspector highlights: tone "a"/"b" for a part's two nets, "fault" for a bypass. */
@@ -154,7 +200,7 @@ export interface StudHighlight {
   terminal: boolean;
 }
 
-export type CameraPreset = "bench" | "top" | "table" | "receiver";
+export type CameraPreset = "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener";
 
 /** Ring geometry per tone pattern: a solid ring, eight dashes, or two concentric rings. */
 function ringPattern(pattern: NetToneStyle["pattern"]): BufferGeometry {
@@ -271,7 +317,16 @@ const SNAPINO_COMPONENTS: ComponentSpec[] = [
 ];
 /** Base-grid stud index (row * 9 + col) under each Snapino pad — row B, columns 2–7. */
 
-const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS, ...SNAPINO_COMPONENTS];
+// Sound Flow Studio (Episode 2): four fixed modules and three patch cables (cloudflare/sound-rules.js).
+const SOUND_COMPONENTS: ComponentSpec[] = [
+  { id: "snd-source", name: "Source", detail: "Oscillator · OUT", kind: "soundmodule", color: 0x0f9f8f, leadSeparation: MODULE_WIDTH["snd-source"], studio: "sound" },
+  { id: "snd-filter", name: "Filter", detail: "Low-pass · IN → OUT", kind: "soundmodule", color: 0xd98a10, leadSeparation: MODULE_WIDTH["snd-filter"], studio: "sound" },
+  { id: "snd-drive", name: "Drive", detail: "Gain + clip · IN → OUT", kind: "soundmodule", color: 0xd23b33, leadSeparation: MODULE_WIDTH["snd-drive"], studio: "sound" },
+  { id: "snd-speaker", name: "Speaker", detail: "Monitor · IN", kind: "soundmodule", color: 0x7c8aa0, leadSeparation: MODULE_WIDTH["snd-speaker"], studio: "sound" },
+  ...CABLE_SPECS.map((cable, index): ComponentSpec => ({ id: cable.id, name: ["Red cable", "Yellow cable", "Blue cable"][index], detail: `Patch cable · ${(cable.rest * 4).toFixed(0)} cm`, kind: "patch", color: cable.color, leadSeparation: cable.rest, studio: "sound" })),
+];
+
+const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS, ...SNAPINO_COMPONENTS, ...SOUND_COMPONENTS];
 
 const socketRows = (): number[] => [
   -1.58,
@@ -309,6 +364,12 @@ export class DesktopWorkbenchScene {
   private readonly snapGroup = new Group();
   private readonly snapinoGroup = new Group();
   private readonly snapBaseGroup = new Group();
+  private readonly soundGroup = new Group();
+  private readonly soundSockets: Vector3[] = soundJackPositions();
+  /** Sound Flow Studio: rings on jacks for the inspector cross-link (one instanced mesh per tone). */
+  private jackHighlights: Record<NetTone, InstancedMesh> | null = null;
+  private lastJackHighlights: StudHighlight[] = [];
+  private soundView: { state: SoundPatchState; graph: SoundGraph; signal: SignalAnalysis } | null = null;
   private snapinoPins: PinStates = { ...LOW_PINS };
   private snapinoInputHigh = false;
   private snapinoRunningLoads: string[] = [];
@@ -440,10 +501,11 @@ export class DesktopWorkbenchScene {
 
     this.setupLighting();
     this.setupTable();
-    this.scene.add(this.circuitGroup, this.greenhouseGroup, this.snapGroup, this.snapinoGroup, this.snapBaseGroup);
+    this.scene.add(this.circuitGroup, this.greenhouseGroup, this.snapGroup, this.snapinoGroup, this.snapBaseGroup, this.soundGroup);
     this.setupBreadboard();
     this.setupGreenhouse();
     this.setupSnapBase();
+    this.soundGroup.add(createSoundDeskFixture());
     this.setupComponents();
     this.setupSnapMarkers();
     this.bindInteractions();
@@ -477,19 +539,26 @@ export class DesktopWorkbenchScene {
     this.snapGroup.visible = studio === "snap";
     this.snapinoGroup.visible = studio === "snapino";
     this.snapBaseGroup.visible = studio === "snap" || studio === "snapino";
-    this.sockets = studio === "greenhouse"
-      ? this.greenhouseSockets
-      : studio === "snap" || studio === "snapino"
-        ? this.snapSockets
-        : this.circuitSockets;
+    this.soundGroup.visible = studio === "sound";
+    this.sockets = this.socketsForStudio(studio);
+    // Plugs are carried above the Sound desk's knobs; everywhere else just above the board.
+    this.dragPlane.constant = -this.dragY;
+    // Drop guidance on the Sound desk is printed-style (no additive glow).
+    for (const mesh of [...this.previewMarkers, ...this.previewBeams]) {
+      mesh.material.blending = studio === "sound" ? NormalBlending : AdditiveBlending;
+      mesh.material.needsUpdate = true;
+    }
+    if (this.jackHighlights) for (const mesh of Object.values(this.jackHighlights)) mesh.visible = false;
     this.camera.position.set(studio === "circuit" ? 6.4 : 7.2, studio === "circuit" ? 6.1 : 5.8, studio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(studio === "circuit" ? 0.1 : 0, studio === "circuit" ? 0.2 : 0.55, studio === "circuit" ? 0 : -0.1);
     this.orbit.update();
     this.cameraTween = null;
     if (this.studHighlights) for (const mesh of Object.values(this.studHighlights)) mesh.visible = false;
+    if (this.jackHighlights && studio === "sound") this.setJackHighlights(this.lastJackHighlights);
     if (this.flowMarkers) this.flowMarkers.visible = this.flowEnabled && this.flowWires.length > 0 && studio === "circuit";
     // The Snapino bench fills the free view (the panels' insets are applied by then).
     if (studio === "snapino") requestAnimationFrame(() => this.activeStudio === "snapino" && this.viewPreset("bench"));
+    if (studio === "sound") requestAnimationFrame(() => this.activeStudio === "sound" && this.viewPreset("overview"));
     this.evaluateCurrentSystem();
     if (announce) {
       this.events.onStatus(
@@ -499,7 +568,9 @@ export class DesktopWorkbenchScene {
             ? "Snap Lab ready · snap a battery, switch, lamp, and motor onto the base grid"
             : studio === "snapino"
               ? "Snapino Bridge ready · wire a load from a D pin to GND, then upload code"
-              : "Circuit Bench ready",
+              : studio === "sound"
+                ? "Sound Flow Studio ready · patch Source → Filter / Drive → Speaker, OUT to IN"
+                : "Circuit Bench ready",
         "valid",
       );
     }
@@ -528,6 +599,10 @@ export class DesktopWorkbenchScene {
    * table with the parts tray, and the receiver's view of the lamp.
    */
   viewPreset(preset: CameraPreset): void {
+    if (this.activeStudio === "sound") {
+      this.soundPreset(preset);
+      return;
+    }
     if (preset === "receiver") {
       const from = { position: this.camera.position.clone(), target: this.orbit.target.clone() };
       this.viewForReceiver();
@@ -548,6 +623,32 @@ export class DesktopWorkbenchScene {
       ? new Vector3(0, Math.cos(MathUtils.degToRad(13)), Math.sin(MathUtils.degToRad(13)))
       : new Vector3(0.52, 0.62, 0.79).normalize();
     const fit = this.fitBox(bench, direction, preset === "top" ? 0.9 : 0.92);
+    this.moveCamera(fit.position, fit.target);
+  }
+
+  /**
+   * Sound Flow Studio views: the whole desk with its cable mat (overview), straight down on the
+   * panels (plan), and the listener's view of the Speaker module (listener). Other studios'
+   * preset names map onto these.
+   */
+  private soundPreset(preset: CameraPreset): void {
+    const name = preset === "plan" || preset === "top" ? "plan" : preset === "listener" || preset === "receiver" ? "listener" : "overview";
+    const desk = new Box3(DESK_FRAME.min.clone(), DESK_FRAME.max.clone());
+    let box = desk.clone().union(new Box3(MAT_FRAME.min.clone(), MAT_FRAME.max.clone()));
+    let direction = new Vector3(0.16, 0.8, 0.58).normalize();
+    let fill = 0.94;
+    if (name === "plan") {
+      box = desk;
+      direction = new Vector3(0, Math.cos(MathUtils.degToRad(9)), Math.sin(MathUtils.degToRad(9)));
+      fill = 0.96;
+    } else if (name === "listener") {
+      const pose = SOUND_MODULE_POSES["snd-speaker"];
+      const half = MODULE_WIDTH["snd-speaker"] / 2;
+      box = new Box3(new Vector3(pose[0] - half - 0.9, 0, pose[2] - 1.4), new Vector3(pose[0] + half, 0.9, pose[2] + 1.4));
+      direction = new Vector3(0.42, 0.62, 0.66).normalize();
+      fill = 0.9;
+    }
+    const fit = this.fitBox(box, direction, fill);
     this.moveCamera(fit.position, fit.target);
   }
 
@@ -617,7 +718,10 @@ export class DesktopWorkbenchScene {
    * free view left between the panels. Corners of the bench box projected with the live camera.
    */
   benchScreenRect(): { bench: { x: number; y: number; width: number; height: number }; free: { x: number; width: number; height: number } } {
-    const box = new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.3, 2.01));
+    // The episode's artifact: the snap base and carrier, or the Sound desk with its cable mat.
+    const box = this.activeStudio === "sound"
+      ? new Box3(DESK_FRAME.min.clone(), DESK_FRAME.max.clone()).union(new Box3(MAT_FRAME.min.clone(), MAT_FRAME.max.clone()))
+      : new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.3, 2.01));
     const canvas = this.renderer.domElement.getBoundingClientRect();
     this.camera.updateMatrixWorld(true);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -836,8 +940,8 @@ export class DesktopWorkbenchScene {
   }
 
   resetView(): void {
-    if (this.activeStudio === "snapino") {
-      this.viewPreset("bench");
+    if (this.activeStudio === "snapino" || this.activeStudio === "sound") {
+      this.viewPreset(this.activeStudio === "sound" ? "overview" : "bench");
       return;
     }
     this.cameraTween = null;
@@ -901,7 +1005,7 @@ export class DesktopWorkbenchScene {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     if (this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
       component.position.copy(this.dragPoint);
-      component.position.y = DRAG_Y;
+      component.position.y = this.dragY;
       component.updateMatrixWorld(true);
       this.finishPlacement(component);
       this.events.onRelease(componentId);
@@ -972,7 +1076,7 @@ export class DesktopWorkbenchScene {
     if (transform.props) {
       const spec = component.userData.spec as ComponentSpec;
       const kind = propKind(spec);
-      const clean = kind ? sanitizeProps(kind, transform.props) : null;
+      const clean = kind ? sanitizeAnyProps(kind, transform.props) : null;
       if (clean) {
         component.userData.props = clean;
         this.refreshPartAppearance(component);
@@ -1006,7 +1110,7 @@ export class DesktopWorkbenchScene {
     const component = this.components.get(componentId);
     const socket = this.sockets[socketIndex];
     const spec = component?.userData.spec as ComponentSpec | undefined;
-    if (!component || !socket || (spec?.kind !== "wire" && spec?.kind !== "hose")) return false;
+    if (!component || !socket || !spec || !isFlexibleKind(spec.kind)) return false;
     const resourceId = this.endpointResourceId(componentId, index);
     if (!this.events.onClaim(resourceId)) return false;
     this.getEndpointPositions(component)[index].copy(component.worldToLocal(socket.clone()));
@@ -1058,6 +1162,7 @@ export class DesktopWorkbenchScene {
     if (props) transform.props = props;
     else delete transform.props;
     if (spec.kind === "snapswitch") transform.on = false;
+    if (spec.id === "snd-speaker") transform.on = SOUND_SPEAKER_DEFAULT_ON;
     return transform;
   }
 
@@ -1177,17 +1282,18 @@ export class DesktopWorkbenchScene {
     const midpoint = a.clone().add(b).multiplyScalar(0.5);
     const direction = b.clone().sub(a);
     const rotationY = Math.atan2(-direction.z, direction.x);
+    const lift = spec.studio === "sound" ? SOUND_DRAG_Y : DRAG_Y;
     const transform: SharedTransform = {
-      position: [midpoint.x, DRAG_Y, midpoint.z],
+      position: [midpoint.x, lift, midpoint.z],
       rotation: [0, rotationY, 0],
       sockets: [sockets[0], sockets[1]],
     };
     const props = this.getPartProps(componentId);
     if (props) transform.props = props;
     if (spec.kind === "snapswitch") transform.on = Boolean(component.userData.switchOn);
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    if (isFlexibleKind(spec.kind)) {
       const frame = new Object3D();
-      frame.position.set(midpoint.x, DRAG_Y, midpoint.z);
+      frame.position.set(midpoint.x, lift, midpoint.z);
       frame.rotation.set(0, rotationY, 0);
       frame.updateMatrixWorld(true);
       transform.endpoints = [
@@ -1211,42 +1317,47 @@ export class DesktopWorkbenchScene {
     };
     const props = this.getPartProps(componentId);
     if (props) transform.props = props;
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    if (isFlexibleKind(spec.kind)) {
       const half = spec.leadSeparation / 2;
       transform.endpoints = [[-half, 0, 0], [half, 0, 0]];
     }
+    if (spec.id === "snd-speaker") transform.on = Boolean(component.userData.switchOn);
     return transform;
   }
 
   private socketsForStudio(studio: StudioKind): Vector3[] {
+    if (studio === "sound") return this.soundSockets;
     if (studio === "greenhouse") return this.greenhouseSockets;
     if (studio === "snap" || studio === "snapino") return this.snapSockets;
     return this.circuitSockets;
   }
 
   /** What a project file may contain for `studio`: its part ids, value kinds and socket range. */
-  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, "resistor" | "battery" | null>; socketCount: number; switches: string[]; sharedSockets: boolean } {
-    const parts: Record<string, "resistor" | "battery" | null> = {};
+  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, "resistor" | "battery" | SoundPropKind | null>; socketCount: number; switches: string[]; sharedSockets: boolean; fixtures: string[] } {
+    const parts: Record<string, "resistor" | "battery" | SoundPropKind | null> = {};
     for (const spec of COMPONENTS) if (spec.studio === studio) parts[spec.id] = propKind(spec);
     return {
       studio,
       parts,
       socketCount: this.socketsForStudio(studio).length,
-      switches: COMPONENTS.filter((spec) => spec.studio === studio && spec.kind === "snapswitch").map((spec) => spec.id),
-      // Snap Lab and Snapino parts stack on shared studs; breadboard and greenhouse holes do not.
+      switches: COMPONENTS.filter((spec) => spec.studio === studio && (spec.kind === "snapswitch" || spec.id === "snd-speaker")).map((spec) => spec.id),
+      // Snap Lab and Snapino parts stack on shared studs; breadboard holes, greenhouse ports and
+      // Sound jacks take one plug each.
       sharedSockets: studio === "snap" || studio === "snapino",
+      // Sound modules are fixtures: never seated in sockets, never moved.
+      fixtures: COMPONENTS.filter((spec) => spec.studio === studio && spec.kind === "soundmodule").map((spec) => spec.id),
     };
   }
 
   /** The values a part starts with (used by reset). */
-  defaultPartProps(componentId: string): PartProps | null {
+  defaultPartProps(componentId: string): AnyProps | null {
     const spec = this.components.get(componentId)?.userData.spec as ComponentSpec | undefined;
     return spec ? defaultProps(spec) : null;
   }
 
-  /** Current electrical values of a resistor or battery; null for parts without any. */
-  getPartProps(componentId: string): PartProps | null {
-    const props = this.components.get(componentId)?.userData.props as PartProps | undefined;
+  /** Current values of a resistor, a battery or a Sound module's knobs; null for parts without any. */
+  getPartProps(componentId: string): AnyProps | null {
+    const props = this.components.get(componentId)?.userData.props as AnyProps | undefined;
     return props ? { ...props } : null;
   }
 
@@ -1310,6 +1421,7 @@ export class DesktopWorkbenchScene {
     component.userData.switchOn = on;
     const knob = component.getObjectByName("switch_knob");
     if (knob) knob.position.x = on ? 0.1 : -0.1;
+    if ((component.userData.spec as ComponentSpec | undefined)?.id === "snd-speaker") showModuleValues(component, undefined, on);
   }
 
   private readonly onDoubleClick = (event: MouseEvent): void => {
@@ -1600,6 +1712,15 @@ export class DesktopWorkbenchScene {
         specs: SNAPINO_COMPONENTS,
         group: this.snapinoGroup,
       },
+      // Modules at their fixture poses (the room refuses any other); cables on the felt mat.
+      sound: {
+        positions: [
+          ...(["snd-source", "snd-filter", "snd-drive", "snd-speaker"] as const).map((id) => [...SOUND_MODULE_POSES[id]] as [number, number, number]),
+          ...CABLE_SPECS.map((cable) => [...cable.home] as [number, number, number]),
+        ],
+        specs: SOUND_COMPONENTS,
+        group: this.soundGroup,
+      },
     };
     COMPONENTS.forEach((spec) => {
       const component = this.createComponent(spec);
@@ -1611,11 +1732,14 @@ export class DesktopWorkbenchScene {
       component.userData.home = component.position.clone();
       const kind = propKind(spec);
       if (kind) component.userData.props = defaultProps(spec);
+      if (spec.kind === "soundmodule") showModuleValues(component, component.userData.props as AnyProps | undefined, SOUND_SPEAKER_DEFAULT_ON);
+      if (spec.id === "snd-speaker") component.userData.switchOn = SOUND_SPEAKER_DEFAULT_ON;
+      if (spec.kind === "patch") layoutPatchCable(component, [false, false]);
       component.traverse((child) => {
         child.userData.componentRoot = component;
         if (child instanceof Mesh) {
           // Decals, glows, hit targets and indicators (unlit materials) never cast shadows.
-          const unlit = child.material instanceof MeshBasicMaterial || child.userData.contactShadow;
+          const unlit = child.material instanceof MeshBasicMaterial || child.userData.contactShadow || child.userData.noShadow;
           child.castShadow = !unlit;
           child.receiveShadow = !unlit;
         }
@@ -1645,6 +1769,13 @@ export class DesktopWorkbenchScene {
       group.add(model);
       group.userData.refreshAppearance = model.userData.refreshAppearance;
     }
+
+    if (spec.kind === "soundmodule") {
+      const module = createSoundModule(spec.id as SoundModuleId);
+      group.add(module);
+      group.userData.soundVisuals = module.userData.soundVisuals;
+    }
+    if (spec.kind === "patch") buildPatchCable(group, spec.color, spec.leadSeparation);
 
     if (spec.kind === "wire" || spec.kind === "hose") {
       const half = spec.leadSeparation / 2;
@@ -2146,6 +2277,13 @@ export class DesktopWorkbenchScene {
     }
 
     const id = component.userData.componentId as string;
+    if ((component.userData.spec as ComponentSpec).kind === "soundmodule") {
+      // Fixtures: select (and focus a clicked control); a drag from here orbits the camera.
+      this.select(component);
+      const control = this.pickSoundControl(event.clientX, event.clientY);
+      if (control) this.events.onKnobPick?.(id, control);
+      return;
+    }
     const resourceId = endpointHit ? this.endpointResourceId(id, endpointHit.index) : id;
     const endpointOwner = endpointHit
       ? this.remoteOwners.get(resourceId)
@@ -2196,7 +2334,7 @@ export class DesktopWorkbenchScene {
     }
 
     component.userData.sockets = null;
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    if (isFlexibleKind(spec.kind)) {
       this.flexMotion.set(id, { previous: component.position.clone(), sway: 0, velocity: 0 });
       this.updateFlexibleWireGeometry(component, false);
     } else {
@@ -2232,7 +2370,7 @@ export class DesktopWorkbenchScene {
     this.dragging.position.copy(this.dragPoint).add(this.dragOffset);
     this.dragging.position.x = MathUtils.clamp(this.dragging.position.x, -4.7, 4.6);
     this.dragging.position.z = MathUtils.clamp(this.dragging.position.z, -3.25, 3.25);
-    this.dragging.position.y = DRAG_Y;
+    this.dragging.position.y = this.dragY;
     if (this.magnetismEnabled) this.applyMagneticAssist(this.dragging);
     this.updateFlexibleMotion(this.dragging);
     this.dragging.updateMatrixWorld(true);
@@ -2281,7 +2419,7 @@ export class DesktopWorkbenchScene {
         const spec = component.userData.spec as ComponentSpec;
         // Circuit Bench parts use the procedural bench models (bench-models.ts): exact scale,
         // polarity cues and value-driven bands that the baked GLB parts cannot show.
-        if (spec.kind === "wire" || spec.kind === "hose" || spec.studio === "circuit") continue;
+        if (isFlexibleKind(spec.kind) || spec.studio === "circuit" || spec.studio === "sound") continue;
         const source = parts.scene.getObjectByName(`part_${spec.model ?? id}`);
         if (!source) continue;
         const detailed = source.clone(true);
@@ -2453,7 +2591,7 @@ export class DesktopWorkbenchScene {
     const desired = this.dragPoint.clone();
     desired.x = MathUtils.clamp(desired.x, -4.7, 4.6);
     desired.z = MathUtils.clamp(desired.z, -3.25, 3.25);
-    desired.y = DRAG_Y;
+    desired.y = this.dragY;
 
     const endpoints = this.getEndpointPositions(component);
     const fixedWorld = component.localToWorld(endpoints[index === 0 ? 1 : 0].clone());
@@ -2462,10 +2600,10 @@ export class DesktopWorkbenchScene {
     const maxReach = restLength * 1.85;
     if (offset.length() > maxReach) desired.copy(fixedWorld).add(offset.setLength(maxReach));
 
-    const nearest = this.nearestSocket(desired);
+    const nearest = this.nearestSocket(desired, this.occupiedJacks(component));
     const sockets = this.cloneEndpointSockets(component.userData.sockets as EndpointSockets) ?? [null, null];
     const otherSocket = sockets[index === 0 ? 1 : 0];
-    if (this.magnetismEnabled && nearest.index !== otherSocket && nearest.distance < MAGNETIC_RADIUS) {
+    if (this.magnetismEnabled && nearest.index >= 0 && nearest.index !== otherSocket && nearest.distance < MAGNETIC_RADIUS) {
       const field = MathUtils.clamp(1 - nearest.distance / MAGNETIC_RADIUS, 0, 1);
       desired.lerp(this.sockets[nearest.index], field * field * 0.46);
     }
@@ -2490,10 +2628,12 @@ export class DesktopWorkbenchScene {
   private finishEndpointPlacement(state: EndpointDragState): void {
     const { component, index } = state;
     const endpoints = this.getEndpointWorldPositions(component);
-    const nearest = this.nearestSocket(endpoints[index]);
+    const occupied = this.occupiedJacks(component);
+    const nearest = this.nearestSocket(endpoints[index], occupied);
     const sockets = this.cloneEndpointSockets(component.userData.sockets as EndpointSockets) ?? [null, null];
     const otherSocket = sockets[index === 0 ? 1 : 0];
-    const snapped = nearest.distance <= SNAP_THRESHOLD && nearest.index !== otherSocket;
+    const snapped = nearest.index >= 0 && nearest.distance <= SNAP_THRESHOLD && nearest.index !== otherSocket;
+    const blocked = !snapped && occupied.size > 0 ? this.nearestSocket(endpoints[index]) : null;
     if (snapped) {
       const socket = this.sockets[nearest.index];
       this.getEndpointPositions(component)[index].copy(component.worldToLocal(socket.clone()));
@@ -2508,11 +2648,15 @@ export class DesktopWorkbenchScene {
     } else {
       sockets[index] = null;
       component.userData.sockets = sockets.some((socket) => socket !== null) ? sockets : null;
+      if ((component.userData.spec as ComponentSpec).kind === "patch") this.restPatchEnd(component, index);
       this.updateFlexibleWireGeometry(component, sockets.some((socket) => socket !== null));
       this.hideSnapPreview();
+      const full = blocked && blocked.distance <= SNAP_THRESHOLD && occupied.has(blocked.index);
       this.events.onStatus(
-        `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} remains free`,
-        "neutral",
+        full
+          ? `${jackLabel(blocked.index)} already holds a plug (one plug per jack) · ${component.userData.spec.name} end ${index === 0 ? "A" : "B"} stays out`
+          : `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} remains free`,
+        full ? "warning" : "neutral",
       );
     }
     component.updateMatrixWorld(true);
@@ -2522,6 +2666,15 @@ export class DesktopWorkbenchScene {
     this.events.onAttempt(
       this.captureAttempt(powered ? "Circuit powered" : `${component.userData.spec.name} endpoint moved`),
     );
+  }
+
+  /** An unplugged plug comes to rest: on a module panel over the desk, else on the table. */
+  private restPatchEnd(component: Group, index: 0 | 1): void {
+    const endpoint = this.getEndpointPositions(component)[index];
+    const world = component.localToWorld(endpoint.clone());
+    const overDesk = world.x > DESK_BOUNDS.minX && world.x < DESK_BOUNDS.maxX && world.z > DESK_BOUNDS.minZ && world.z < DESK_BOUNDS.maxZ;
+    world.y = overDesk ? PANEL_REST_Y : TABLE_REST_Y;
+    endpoint.copy(component.worldToLocal(world));
   }
 
   private cloneEndpointSockets(sockets: EndpointSockets): EndpointSockets {
@@ -2546,13 +2699,36 @@ export class DesktopWorkbenchScene {
     return null;
   }
 
+  /** Which Sound module control (knob or switch) is under the pointer, if any. */
+  private pickSoundControl(clientX: number, clientY: number): "hz" | "wave" | "cutoff" | "gain" | "on" | null {
+    this.updatePointer(clientX, clientY);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const targets: Object3D[] = [];
+    for (const component of this.components.values()) {
+      const visuals = component.userData.soundVisuals as { knobs: Record<string, Group>; lever?: Group } | undefined;
+      if (!visuals || !component.parent?.visible) continue;
+      for (const [param, knob] of Object.entries(visuals.knobs)) {
+        knob.userData.soundControl = param;
+        targets.push(knob);
+      }
+      if (visuals.lever?.parent) {
+        visuals.lever.parent.userData.soundControl = "on";
+        targets.push(visuals.lever.parent);
+      }
+    }
+    const hit = this.raycaster.intersectObjects(targets, true)[0];
+    let node: Object3D | null = hit?.object ?? null;
+    while (node && node.userData.soundControl === undefined) node = node.parent;
+    return (node?.userData.soundControl as "hz" | "wave" | "cutoff" | "gain" | "on" | undefined) ?? null;
+  }
+
   private pickEndpoint(clientX: number, clientY: number): { component: Group; index: 0 | 1 } | null {
     this.updatePointer(clientX, clientY);
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const targets: Mesh[] = [];
     for (const component of this.components.values()) {
       const spec = component.userData.spec as ComponentSpec;
-      if (spec.studio !== this.activeStudio || (spec.kind !== "wire" && spec.kind !== "hose")) continue;
+      if (spec.studio !== this.activeStudio || !isFlexibleKind(spec.kind)) continue;
       targets.push(...((component.userData.endpointHitTargets ?? []) as Mesh[]));
     }
     const hit = this.raycaster.intersectObjects(targets, false)[0];
@@ -2569,9 +2745,10 @@ export class DesktopWorkbenchScene {
     this.selectionBox.setFromObject(component);
     this.selectionBox.visible = true;
     const spec = component.userData.spec as ComponentSpec;
-    const flexible = spec.kind === "wire" || spec.kind === "hose";
+    const flexible = isFlexibleKind(spec.kind);
     this.setEndpointIndicators(component, flexible);
-    if (flexible) this.transform.detach();
+    // Sound modules are fixtures: no rotation gizmo.
+    if (flexible || spec.kind === "soundmodule") this.transform.detach();
     else this.transform.attach(component);
     this.events.onSelection(spec);
   }
@@ -2593,7 +2770,7 @@ export class DesktopWorkbenchScene {
 
   private finishPlacement(component: Group): void {
     const spec = component.userData.spec as ComponentSpec;
-    const flexible = spec.kind === "wire" || spec.kind === "hose";
+    const flexible = isFlexibleKind(spec.kind);
     const snap = this.findSnap(component);
     if (snap) {
       const [socketA, socketB] = snap;
@@ -2615,7 +2792,9 @@ export class DesktopWorkbenchScene {
       component.updateMatrixWorld(true);
       this.flashMagneticConnection(a, b);
       this.events.onStatus(
-        this.activeStudio === "greenhouse"
+        this.activeStudio === "sound"
+          ? `${component.userData.spec.name} plugged into ${jackLabel(socketA)} and ${jackLabel(socketB)}`
+          : this.activeStudio === "greenhouse"
           ? `${component.userData.spec.name} magnetically connected to the farm terminal`
           : this.activeStudio === "snap" || this.activeStudio === "snapino"
             ? `${component.userData.spec.name} snapped onto the base grid`
@@ -2624,6 +2803,10 @@ export class DesktopWorkbenchScene {
       );
     } else {
       component.userData.sockets = null;
+      if (spec.kind === "patch") {
+        this.restPatchEnd(component, 0);
+        this.restPatchEnd(component, 1);
+      }
       if (flexible) this.updateFlexibleWireGeometry(component, false);
       else this.updateFlexibleWire(component, spec.leadSeparation, false);
       this.events.onStatus("Placement remains free · move both leads closer to sockets", "neutral");
@@ -2644,16 +2827,18 @@ export class DesktopWorkbenchScene {
   private findSocketPair(component: Group, threshold: number): [number, number] | null {
     const spec = component.userData.spec as ComponentSpec;
     const [leadA, leadB] = this.getEndpointWorldPositions(component);
-    const nearestA = this.nearestSocket(leadA);
-    const nearestB = this.nearestSocket(leadB);
+    const occupied = this.occupiedJacks(component);
+    const nearestA = this.nearestSocket(leadA, occupied);
+    const nearestB = this.nearestSocket(leadB, occupied);
     if (
+      nearestA.index < 0 || nearestB.index < 0 ||
       nearestA.index === nearestB.index ||
       nearestA.distance > threshold ||
       nearestB.distance > threshold
     ) {
       return null;
     }
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    if (isFlexibleKind(spec.kind)) {
       const span = this.sockets[nearestA.index].distanceTo(this.sockets[nearestB.index]);
       if (span > spec.leadSeparation * 1.86) return null;
     }
@@ -2677,8 +2862,8 @@ export class DesktopWorkbenchScene {
     if (strength <= 0) return;
 
     const target = a.clone().add(b).multiplyScalar(0.5);
-    target.y = DRAG_Y;
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    target.y = this.dragY;
+    if (isFlexibleKind(spec.kind)) {
       const current = leadA.clone().add(leadB).multiplyScalar(0.5);
       component.position.addScaledVector(target.sub(current), strength);
     } else {
@@ -2695,10 +2880,31 @@ export class DesktopWorkbenchScene {
     return from + delta * amount;
   }
 
-  private nearestSocket(point: Vector3): { index: number; distance: number } {
+  /**
+   * Sound jacks holding another cable's plug (one plug per jack, as the room enforces). Empty
+   * elsewhere: breadboard holes are judged by the circuit model, snap studs stack.
+   */
+  private occupiedJacks(component: Group): Set<number> {
+    const taken = new Set<number>();
+    if ((component.userData.spec as ComponentSpec).kind !== "patch") return taken;
+    for (const [id, other] of this.components) {
+      if (other === component || !isSoundCable(id)) continue;
+      const sockets = other.userData.sockets as EndpointSockets;
+      for (const socket of sockets ?? []) if (socket !== null) taken.add(socket);
+    }
+    return taken;
+  }
+
+  /** Height a dragged part or end is carried at in the active studio. */
+  private get dragY(): number {
+    return this.activeStudio === "sound" ? SOUND_DRAG_Y : DRAG_Y;
+  }
+
+  private nearestSocket(point: Vector3, exclude?: Set<number>): { index: number; distance: number } {
     let bestIndex = -1;
     let bestDistance = Number.POSITIVE_INFINITY;
     for (let index = 0; index < this.sockets.length; index += 1) {
+      if (exclude?.has(index)) continue;
       const socket = this.sockets[index];
       const dx = point.x - socket.x;
       const dz = point.z - socket.z;
@@ -2802,7 +3008,7 @@ export class DesktopWorkbenchScene {
 
   private getEndpointWorldPositions(component: Group): EndpointPair {
     const spec = component.userData.spec as ComponentSpec;
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    if (isFlexibleKind(spec.kind)) {
       const endpoints = this.getEndpointPositions(component);
       return [
         component.localToWorld(endpoints[0].clone()),
@@ -2819,13 +3025,13 @@ export class DesktopWorkbenchScene {
 
   private updateFlexibleWireFromSockets(component: Group): void {
     const spec = component.userData.spec as ComponentSpec;
-    if (spec.kind !== "wire" && spec.kind !== "hose") return;
+    if (!isFlexibleKind(spec.kind)) return;
     this.updateFlexibleWireGeometry(component, Boolean(component.userData.sockets));
   }
 
   private updateFlexibleMotion(component: Group): void {
     const spec = component.userData.spec as ComponentSpec;
-    if (spec.kind !== "wire" && spec.kind !== "hose") return;
+    if (!isFlexibleKind(spec.kind)) return;
     const id = component.userData.componentId as string;
     const state = this.flexMotion.get(id) ?? { previous: component.position.clone(), sway: 0, velocity: 0 };
     const delta = component.position.clone().sub(state.previous);
@@ -2846,7 +3052,7 @@ export class DesktopWorkbenchScene {
     motion = 0,
   ): void {
     const spec = component.userData.spec as ComponentSpec;
-    if (spec.kind !== "wire" && spec.kind !== "hose") return;
+    if (!isFlexibleKind(spec.kind)) return;
     const safeSpan = Math.min(span, spec.leadSeparation * 1.85);
     const half = safeSpan / 2;
     const endpoints = this.getEndpointPositions(component);
@@ -2862,7 +3068,12 @@ export class DesktopWorkbenchScene {
     motion = 0,
   ): void {
     const spec = component.userData.spec as ComponentSpec;
-    if (spec.kind !== "wire" && spec.kind !== "hose") return;
+    if (!isFlexibleKind(spec.kind)) return;
+    if (spec.kind === "patch") {
+      const sockets = component.userData.sockets as EndpointSockets;
+      layoutPatchCable(component, [sockets?.[0] != null, sockets?.[1] != null], sway, motion);
+      return;
+    }
     const body = component.userData.wireBody as Mesh<TubeGeometry, MeshStandardMaterial> | undefined;
     const tips = component.userData.wireTips as Mesh[] | undefined;
     const collars = component.userData.wireCollars as Mesh[] | undefined;
@@ -2936,6 +3147,7 @@ export class DesktopWorkbenchScene {
     if (this.activeStudio === "greenhouse") return this.evaluateGreenhouse(announce);
     if (this.activeStudio === "snap") return this.evaluateSnap(announce);
     if (this.activeStudio === "snapino") return this.evaluateSnapino(announce);
+    if (this.activeStudio === "sound") return this.evaluateSound();
     return this.evaluateCircuit(announce);
   }
 
@@ -3028,11 +3240,126 @@ export class DesktopWorkbenchScene {
     if (scorch) scorch.opacity = (1 - health) * 0.55;
   }
 
+  /**
+   * Sound Flow Studio: the room's patch state through the model (sound-model.ts), shown on the
+   * desk's LEDs and handed to the panel and the audio engine. Returns whether a tone reaches the
+   * Speaker.
+   */
+  private evaluateSound(): boolean {
+    const parts: Record<string, { sockets?: [number | null, number | null] | null; props?: unknown; on?: boolean }> = {};
+    for (const spec of SOUND_COMPONENTS) {
+      const component = this.components.get(spec.id);
+      if (!component) continue;
+      parts[spec.id] = { sockets: component.userData.sockets as EndpointSockets, props: component.userData.props, on: component.userData.switchOn as boolean | undefined };
+    }
+    const state = soundStateFrom(parts);
+    const graph = derivePatchGraph(state);
+    const signal = analyzeSignal(state, graph);
+    this.soundView = { state, graph, signal };
+    for (const id of ["snd-source", "snd-filter", "snd-drive", "snd-speaker"] as const) {
+      const module = this.components.get(id);
+      const stage = signal.stages.find((entry) => entry.module === id);
+      if (module) showModuleSignal(module, id === "snd-speaker" ? (state.speakerOn ? stage?.peak ?? 0 : 0) : stage?.peak ?? 0, id === "snd-drive" && (stage?.clipped ?? 0) > 0);
+    }
+    this.events.onSoundChange?.(state, graph, signal);
+    return Boolean(signal.speakerIn && state.speakerOn);
+  }
+
+  /** The Sound desk as the model sees it right now (null before the first evaluation). */
+  soundSnapshot(): { state: SoundPatchState; graph: SoundGraph; signal: SignalAnalysis } | null {
+    if (!this.soundView) this.evaluateSound();
+    return this.soundView;
+  }
+
+  /**
+   * Sound inspector cross-link: printed rings on jacks (tone "a" solid: the selected item's own
+   * jacks; "b" dashed: the far ends of its cables; "fault": a jack of a wrong cable).
+   */
+  setJackHighlights(highlights: StudHighlight[]): void {
+    this.lastJackHighlights = highlights.filter((entry) => this.soundSockets[entry.socket]).map((entry) => ({ ...entry }));
+    if (!this.jackHighlights) {
+      this.jackHighlights = {} as Record<NetTone, InstancedMesh>;
+      for (const tone of Object.keys(NET_TONES) as NetTone[]) {
+        const style = NET_TONES[tone];
+        const material = new MeshBasicMaterial({ name: `jack_ring_${tone}`, color: style.hex, transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, side: DoubleSide });
+        const mesh = new InstancedMesh(ringPattern(style.pattern), material, 6);
+        mesh.name = `jack_highlight_${tone}`;
+        mesh.count = 0;
+        mesh.renderOrder = 3;
+        mesh.userData.noPick = true;
+        mesh.frustumCulled = false;
+        this.soundGroup.add(mesh);
+        this.jackHighlights[tone] = mesh;
+      }
+    }
+    const dummy = new Object3D();
+    for (const tone of Object.keys(this.jackHighlights) as NetTone[]) {
+      const mesh = this.jackHighlights[tone];
+      let count = 0;
+      for (const highlight of this.lastJackHighlights) {
+        if (highlight.tone !== tone) continue;
+        const socket = this.soundSockets[highlight.socket];
+        dummy.position.set(socket.x, PANEL_TOP + 0.004, socket.z);
+        dummy.rotation.set(-Math.PI / 2, 0, 0);
+        // Around the hex nut (radius 0.13): the snap ring geometry is 0.07–0.11, so ×2.
+        dummy.scale.setScalar(highlight.terminal ? 2.15 : 1.9);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(count, dummy.matrix);
+        count += 1;
+      }
+      mesh.count = count;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.visible = count > 0 && this.activeStudio === "sound";
+    }
+  }
+
+  /** QA: the jacks highlighted right now. */
+  jackHighlightState(): StudHighlight[] {
+    const shown = this.jackHighlights && Object.values(this.jackHighlights).some((mesh) => mesh.visible);
+    return shown ? this.lastJackHighlights.map((entry) => ({ ...entry })) : [];
+  }
+
+  /**
+   * QA (real pointer input): where a jack is on screen, in client px. `carried`: the point on the
+   * drag plane right above the jack, where a dragged plug must be released to land in it.
+   */
+  jackScreenPoint(index: number, carried = false): { x: number; y: number } | null {
+    const socket = this.soundSockets[index];
+    if (!socket) return null;
+    return this.projectWorld(carried ? new Vector3(socket.x, SOUND_DRAG_Y, socket.z) : socket);
+  }
+
+  /** QA (real pointer input): where a cable end's plug can be grabbed on screen, in client px. */
+  plugScreenPoint(componentId: string, index: 0 | 1): { x: number; y: number } | null {
+    const component = this.components.get(componentId);
+    const hit = ((component?.userData.endpointHitTargets ?? []) as Mesh[])[index];
+    if (!component || !hit) return null;
+    component.updateMatrixWorld(true);
+    return this.projectWorld(hit.getWorldPosition(new Vector3()));
+  }
+
+  /** QA: a knob or control's screen position (real pointer clicks on 3D controls). */
+  moduleScreenPoint(componentId: string): { x: number; y: number } | null {
+    const component = this.components.get(componentId);
+    if (!component) return null;
+    const visuals = component.userData.soundVisuals as { knobs: Record<string, Group> } | undefined;
+    const knob = visuals ? Object.values(visuals.knobs)[0] : null;
+    return this.projectWorld((knob ?? component).getWorldPosition(new Vector3()).setY(PANEL_TOP + 0.2));
+  }
+
+  private projectWorld(point: Vector3): { x: number; y: number } {
+    this.camera.updateMatrixWorld(true);
+    const projected = point.clone().project(this.camera);
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    return { x: canvas.left + ((projected.x + 1) / 2) * canvas.width, y: canvas.top + ((1 - projected.y) / 2) * canvas.height };
+  }
+
   /** Reflects edited values on the model (resistor bands / label). */
   private refreshPartAppearance(component: Group): void {
     const refresh = component.userData.refreshAppearance as ((props: PartProps) => void) | undefined;
-    const props = component.userData.props as PartProps | undefined;
+    const props = component.userData.props as AnyProps | undefined;
     if (refresh && props) refresh(props);
+    if ((component.userData.spec as ComponentSpec).kind === "soundmodule") showModuleValues(component, props);
   }
 
   /**
@@ -3310,8 +3637,9 @@ export class DesktopWorkbenchScene {
     };
     const spec = component.userData.spec as ComponentSpec;
     if (spec.kind === "snapswitch") transform.on = Boolean(component.userData.switchOn);
-    if (component.userData.props) transform.props = { ...(component.userData.props as PartProps) };
-    if (spec.kind === "wire" || spec.kind === "hose") {
+    if (spec.id === "snd-speaker") transform.on = Boolean(component.userData.switchOn);
+    if (component.userData.props) transform.props = { ...(component.userData.props as AnyProps) };
+    if (isFlexibleKind(spec.kind)) {
       const endpoints = this.getEndpointPositions(component);
       transform.endpoints = [
         endpoints[0].toArray() as [number, number, number],
@@ -3501,14 +3829,21 @@ export class DesktopWorkbenchScene {
   }
 }
 
-function propKind(spec: ComponentSpec): "resistor" | "battery" | null {
+function propKind(spec: ComponentSpec): "resistor" | "battery" | SoundPropKind | null {
+  if (spec.studio === "sound") return soundPropKind(spec.id);
   if (spec.studio !== "circuit") return null;
   if (spec.kind === "resistor") return "resistor";
   if (spec.kind === "battery") return "battery";
   return null;
 }
 
-function defaultProps(spec: ComponentSpec): PartProps | null {
+/** Values for either studio's kinds (the Circuit Bench's or the Sound desk's), or null. */
+function sanitizeAnyProps(kind: "resistor" | "battery" | SoundPropKind, raw: unknown): AnyProps | null {
+  return kind === "resistor" || kind === "battery" ? sanitizeProps(kind, raw) : sanitizeSoundProps(kind, raw);
+}
+
+function defaultProps(spec: ComponentSpec): AnyProps | null {
+  if (isSoundModule(spec.id) && spec.id !== "snd-speaker") return { ...SOUND_DEFAULT_PROPS[spec.id as Exclude<SoundModuleId, "snd-speaker">] };
   if (spec.id === "resistor-220") return { ohms: 220 };
   if (spec.id === "resistor-1k") return { ohms: 1000 };
   if (spec.id === "battery-9v") return { volts: 9 };
