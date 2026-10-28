@@ -1,0 +1,194 @@
+{
+ "build": "after",
+ "base": "http://localhost:4176",
+ "shots": {
+  "same-01-overview": {
+   "calls": 687,
+   "triangles": 104890,
+   "geometries": 354,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "camera (7.2, 5.8, 8.6) → (0, 0.55, −0.1): the old default"
+  },
+  "same-02-studs-and-lamp": {
+   "calls": 351,
+   "triangles": 82170,
+   "geometries": 354,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "close three-quarter view over rows C–F"
+  },
+  "same-03-grid-labels-low": {
+   "calls": 405,
+   "triangles": 87810,
+   "geometries": 361,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "low angle on the row letters and column numbers"
+  },
+  "same-04-top": {
+   "calls": 333,
+   "triangles": 81218,
+   "geometries": 361,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "near-top view of the stud grid"
+  },
+  "composition-1440-workshop": {
+   "calls": 509,
+   "triangles": 94506,
+   "geometries": 279,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "default framing and panels, workshop open"
+  },
+  "after-inspector-1440": {
+   "calls": 518,
+   "triangles": 96682,
+   "geometries": 290,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "lamp selected: rung, nets and stud rings"
+  },
+  "after-top-preset-1440": {
+   "calls": 464,
+   "triangles": 94706,
+   "geometries": 298,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "Top view preset, lamp still selected"
+  },
+  "after-inspector-1280": {
+   "calls": 516,
+   "triangles": 96466,
+   "geometries": 289,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "lamp selected: rung, nets and stud rings"
+  },
+  "after-inspector-390": {
+   "calls": 419,
+   "triangles": 88186,
+   "geometries": 222,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "lamp selected: rung, nets and stud rings"
+  },
+  "after-diagram-PF-bypassed": {
+   "calls": 483,
+   "triangles": 92514,
+   "geometries": 266,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "PF condition, L1 bypassed by W2b"
+  },
+  "after-diagram-DI-bypassed": {
+   "calls": 483,
+   "triangles": 92514,
+   "geometries": 266,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "DI condition, L1 bypassed by W2b"
+  }
+ },
+ "checks": [
+  {
+   "name": "bench view fills more of the free view than the old default camera",
+   "ok": true,
+   "detail": "85% vs 47% of the free width"
+  },
+  {
+   "name": "1440px: no horizontal page scroll; chat tab reachable",
+   "ok": true,
+   "detail": "{\"left\":1046,\"width\":380}"
+  },
+  {
+   "name": "1440px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px",
+   "ok": true,
+   "detail": "smallest 44 px"
+  },
+  {
+   "name": "1440px: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1280px: no horizontal page scroll; chat tab reachable",
+   "ok": true,
+   "detail": "{\"left\":920,\"width\":346}"
+  },
+  {
+   "name": "1280px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px",
+   "ok": true,
+   "detail": "smallest 44 px"
+  },
+  {
+   "name": "1280px: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "390px: no horizontal page scroll; chat tab reachable",
+   "ok": true,
+   "detail": "{\"left\":0,\"width\":390}"
+  },
+  {
+   "name": "390px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px",
+   "ok": true,
+   "detail": "smallest 44 px"
+  },
+  {
+   "name": "390px: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "PF: the bypassed lamp is drawn as built (a loop on one net)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "PF before any compared round: fault notes withheld, with the reason shown",
+   "ok": true,
+   "detail": "{\"loop\":true,\"flags\":0,\"faults\":[],\"withheld\":\" Fault notes appear after your team's first compared round. The diagram already shows every connection exactly as built.\"}"
+  },
+  {
+   "name": "DI: the bypassed lamp is drawn as built (a loop on one net)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "DI: the bypass is flagged and explained",
+   "ok": true,
+   "detail": "{\"loop\":true,\"flags\":1,\"faults\":[\"pin-ground\",\"bypassed\"],\"withheld\":null}"
+  }
+ ],
+ "composition": {
+  "after": {
+   "bench": {
+    "x": 152.00062084469016,
+    "y": 297.8759664017435,
+    "width": 803.5883055536506,
+    "height": 527.6668647360195
+   },
+   "free": {
+    "x": 98,
+    "width": 948,
+    "height": 900
+   }
+  },
+  "oldCameraInThisLayout": {
+   "bench": {
+    "x": 300.8928695322811,
+    "y": 377.9036426979042,
+    "width": 444.18088042472095,
+    "height": 218.4628176207944
+   },
+   "free": {
+    "x": 98,
+    "width": 948,
+    "height": 900
+   }
+  }
+ }
+}

@@ -1,0 +1,14 @@
+[
+ {
+  "attempt": 1,
+  "before": true,
+  "notes": [
+   "The room accepted it: S1 is off for everyone.",
+   "Not changed: the room did not accept the flip, so S1 is still off here and for everyone."
+  ],
+  "after": [
+   false,
+   false
+  ]
+ }
+]

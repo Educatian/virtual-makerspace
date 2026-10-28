@@ -21,6 +21,15 @@ import { SOLVER_VERSION } from "../circuit/dc-engine.ts";
 import { sanitizeProps, type PartProps, type PropKind } from "../circuit/part-props.ts";
 import type { SharedTransform, StudioChoice } from "./collaboration.js";
 import { sanitizeProgram, type SnapinoStatement } from "./snapino.ts";
+import { isMission, isWord, MAX_WORDS, MISSIONS, type Word } from "../episodes/rescue-signal.ts";
+
+/** Episode 1's design in a Snapino project: the mission and the sender's intended words. */
+export interface ProjectEpisode {
+  id: "rescue-signal";
+  v: 1;
+  mission: string;
+  intent: Word[];
+}
 
 export const PROJECT_FORMAT = "virtual-makerspace.project";
 export const PROJECT_VERSION = 1;
@@ -46,6 +55,11 @@ export interface ProjectFile {
   program?: SnapinoStatement[];
   /** Unsaved edits in the exporter's code editor, if they differ from `program`. */
   draftProgram?: SnapinoStatement[];
+  /**
+   * Rescue Signal Workshop design (Snapino only): mission and intended words. Rounds,
+   * readings and explanations are session activity and are never exported.
+   */
+  episode?: ProjectEpisode;
 }
 
 /** What the importing scene accepts for a studio. */
@@ -69,6 +83,7 @@ export function buildProject(
   program?: readonly SnapinoStatement[] | null,
   now = new Date(),
   draftProgram?: readonly SnapinoStatement[] | null,
+  episode?: { mission: string; intent: readonly Word[] } | null,
 ): ProjectFile {
   const parts: ProjectPart[] = [];
   for (const [id, kind] of Object.entries(catalog.parts)) {
@@ -96,6 +111,9 @@ export function buildProject(
   if (catalog.studio === "snapino" && draftProgram) {
     const clean = sanitizeProgram(draftProgram);
     if (clean && JSON.stringify(clean) !== JSON.stringify(project.program ?? [])) project.draftProgram = clean;
+  }
+  if (catalog.studio === "snapino" && episode && isMission(episode.mission) && episode.intent.length <= MAX_WORDS && episode.intent.every(isWord)) {
+    project.episode = { id: "rescue-signal", v: 1, mission: episode.mission, intent: [...episode.intent] };
   }
   return project;
 }
@@ -191,6 +209,14 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
     if (!draft) return { ok: false, error: "The unsaved Snapino draft is invalid." };
     project.draftProgram = draft;
   }
+  if (input.episode !== undefined) {
+    if (studio !== "snapino") return { ok: false, error: "Only Snapino projects carry a Rescue Signal design." };
+    const raw = input.episode as Record<string, unknown> | null;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.id !== "rescue-signal" || raw.v !== 1) return { ok: false, error: "The Rescue Signal design is not a supported version." };
+    if (!isMission(raw.mission)) return { ok: false, error: "The Rescue Signal design names an unknown mission." };
+    if (!Array.isArray(raw.intent) || raw.intent.length > MAX_WORDS || !raw.intent.every(isWord)) return { ok: false, error: "The Rescue Signal design uses words outside the protocol." };
+    project.episode = { id: "rescue-signal", v: 1, mission: raw.mission, intent: [...(raw.intent as Word[])] };
+  }
   return { ok: true, project };
 }
 
@@ -201,6 +227,7 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
  */
 export function isDefaultProject(project: ProjectFile, defaultsFor: (id: string) => PartProps | null): boolean {
   if (project.program?.length || project.draftProgram?.length) return false;
+  if (project.episode && (project.episode.intent.length > 0 || project.episode.mission !== MISSIONS[0].id)) return false;
   return project.parts.every((part) => {
     if (part.sockets) return false;
     if (part.on === true) return false;

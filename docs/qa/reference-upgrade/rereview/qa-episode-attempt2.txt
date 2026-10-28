@@ -1,0 +1,98 @@
+{
+ "e01-overview-design": {
+  "calls": 487,
+  "triangles": 92850,
+  "geometries": 268,
+  "textures": 13,
+  "pixelRatio": 1
+ },
+ "e02-lamp-lit-close": {
+  "calls": 241,
+  "triangles": 65946,
+  "geometries": 268,
+  "textures": 13,
+  "pixelRatio": 1,
+  "bulbBrightness": 193.3
+ },
+ "e03-lamp-unlit-close": {
+  "calls": 241,
+  "triangles": 65946,
+  "geometries": 268,
+  "textures": 13,
+  "pixelRatio": 1,
+  "bulbBrightness": 158
+ },
+ "e04-lamp-snaps-low": {
+  "calls": 303,
+  "triangles": 68546,
+  "geometries": 297,
+  "textures": 13,
+  "pixelRatio": 1
+ },
+ "e05-receiver-view-lit": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 1
+ },
+ "e06-transmitting": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 1,
+  "endedBy": "ran to its end before Stop",
+  "capturedAtMs": 116302
+ },
+ "e07-solo-check-delivered": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "e08-open-circuit-solo-check": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "e09-recovered-solo-check": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "e12-pin-short-bypassed-solo-check": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "e13-5v-still-lit-solo-check": {
+  "calls": 372,
+  "triangles": 86246,
+  "geometries": 333,
+  "textures": 13,
+  "pixelRatio": 0.7
+ },
+ "e10-phone-design": {
+  "calls": 325,
+  "triangles": 76082,
+  "geometries": 184,
+  "textures": 13,
+  "pixelRatio": 1
+ },
+ "e11-phone-collapsed-3d": {
+  "calls": 227,
+  "triangles": 70370,
+  "geometries": 195,
+  "textures": 13,
+  "pixelRatio": 1
+ }
+}
+e06 was not captured during the lit transmission (116302 of 110000 ms, lit after the shot: false)

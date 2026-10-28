@@ -9,19 +9,35 @@
 //
 // vm.test (not localhost) is required: on localhost the client skips the WebSocket and
 // syncs tabs over BroadcastChannel only.
+//
+// Readiness (see scripts/lib/e2e-readiness.mjs): under SwiftShader a page's main thread blocks for
+// minutes while new shader programs link. Each step that brings new parts or materials on screen
+// is followed by a measured wait for rendered frames and a responsive page; failures write
+// diagnostics (DOM, frame/heartbeat gaps, long tasks, screenshot) to the artifacts folder
+// (second argument, default: the OS temp folder).
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { dumpDiagnostics, instrument, settled } from "./lib/e2e-readiness.mjs";
 
 const base = process.argv[2] ?? "http://vm.test:8800";
 const room = `T${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[01IO]/g, "Z")}`;
+assert.notEqual(room, "7K3M");
+const artifacts = process.argv[3] ?? `${tmpdir()}/vm-e2e-room-sync-${room}`;
+const ready = (page, label) => settled(page, label, { diagnostics: artifacts });
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ["--host-resolver-rules=MAP vm.test 127.0.0.1", "--unsafely-treat-insecure-origin-as-secure=http://vm.test:8799", "--ignore-certificate-errors", "--no-proxy-server", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
 });
 // DOM-level clicks: a software-rendered WebGL page rarely reports "stable" frames to Playwright.
+// Timer polling (not animation frames); on a timeout, diagnostics are written before failing.
 const press = async (page, name) => {
   const handle = await page.waitForFunction((label) => [...document.querySelectorAll("button")].find((candidate) =>
-    !candidate.disabled && (candidate.getAttribute("aria-label") === label || candidate.textContent.trim() === label)), name, { timeout: 120_000 });
+    !candidate.disabled && (candidate.getAttribute("aria-label") === label || candidate.textContent.trim() === label)), name, { timeout: 120_000, polling: 250 })
+    .catch(async (error) => {
+      await dumpDiagnostics(page, artifacts, `press-${name}`);
+      throw error;
+    });
   await handle.evaluate((button) => button.click());
 };
 const until = async (read, test, timeout = 15_000) => {
@@ -38,10 +54,13 @@ const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); c
 
 async function maker(email) {
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    // 1000×700 like the other two-browser tests: at 1440×900 two software-rendered Snapino pages
+    // took ~15 s per frame each on the 2-core test machine (measured; see e2e-readiness.mjs).
+    viewport: { width: 1000, height: 700 },
     ignoreHTTPSErrors: true,
   });
   await context.addCookies([{ name: "e2e_email", value: encodeURIComponent(email), url: base }]);
+  await instrument(context);
   // plain-http test origin is not a secure context; production (https) has randomUUID natively
   await context.addInitScript(() => {
     if (!crypto.randomUUID) {
@@ -51,7 +70,9 @@ async function maker(email) {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(120000);
+  page.e2eLabel = email.split("@")[0];
   page.on("pageerror", (e) => console.error(`[${email}] pageerror:`, e.message));
+  page.on("crash", () => console.error(`[${email}] page crashed`));
   return page;
 }
 const heading = (page) => page.locator("#viewport-heading").textContent();
@@ -68,7 +89,7 @@ await host.goto(`${base}/?room=${room}&quality=low`);
 await host.getByRole("radio", { name: /Snapino Bridge/ }).click();
 await press(host, "Enter Room");
 await host.waitForSelector("#viewport-heading");
-await host.waitForTimeout(3000);
+await ready(host, "host entered");
 check("host enters the chosen studio", (await heading(host)) === "Snapino", await heading(host));
 check("host sees studio tabs", await host.locator(".studio-switch").isVisible());
 
@@ -81,19 +102,21 @@ check("member lobby shows the room's studio", note.includes("Snapino Bridge"), n
 check("other studio cards are locked", await member.getByRole("radio", { name: /Greenhouse/ }).isDisabled());
 await press(member, "Enter Room");
 await member.waitForSelector("#viewport-heading", { timeout: 300000 });
-await member.waitForTimeout(3000);
+await ready(member, "member entered");
 check("member enters the room's studio", (await heading(member)) === "Snapino", await heading(member));
 check("member has no studio tabs", await member.locator(".studio-switch").isHidden());
 
 // Host wires the lamp; member's scene receives the transforms
 await press(host, "Load Snapino lamp");
-await member.waitForTimeout(1500);
+// The lamp and wires appear on both benches: new materials compile on first draw.
+await ready(host, "host after the lamp was placed");
+await ready(member, "member after the lamp was placed");
 await press(member, "Snapino code");
 await press(host, "Snapino code");
 
 // Host uploads; member's board runs it and the lamp powers on the member's side
 await press(host, "Run blocks");
-await member.waitForTimeout(1200);
+await ready(member, "member after the program started");
 const memberStatus = await until(() => member.locator("#code-status").textContent(), (text) => (text ?? "").includes("Running"));
 check("member receives the upload", (memberStatus ?? "").includes("Running"), memberStatus);
 check("member's D5 blinks", await sawD5Toggle(member));
@@ -112,7 +135,7 @@ const late = await maker("late@example.test");
 await late.goto(`${base}/?room=${room}&quality=low`);
 await press(late, "Enter Room");
 await late.waitForSelector("#viewport-heading", { state: "attached", timeout: 300000 });
-await late.waitForTimeout(3000);
+await ready(late, "late joiner entered");
 await press(late, "Snapino code");
 const lateStatus = await until(() => late.locator("#code-status").textContent(), (text) => (text ?? "").includes("Running"));
 check("late joiner loads the persisted running program", (lateStatus ?? "").includes("Running"), lateStatus);
@@ -124,6 +147,7 @@ check("stop propagates to host", (hostStatus ?? "").includes("Stopped"), hostSta
 
 // Host moves the room; the other maker follows and cannot move it
 await host.evaluate(() => document.querySelector('.studio-tab[data-studio="circuit"]')?.click());
+await ready(late, "late joiner after the studio switch");
 const lateHeading = await until(() => heading(late), (text) => text === "Circuit Bench");
 check("host studio switch moves the other maker", lateHeading === "Circuit Bench", lateHeading);
 check("the other maker has no studio tabs", await late.locator(".studio-switch").isHidden());

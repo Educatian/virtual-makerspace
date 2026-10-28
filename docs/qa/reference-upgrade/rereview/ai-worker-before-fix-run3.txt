@@ -1,0 +1,12 @@
+PASS Worker refuses an AI teammate whose host isn't in the room — {"probeRoom":"VWXS","created":{"status":200,"body":"{\"room\":\"VWXS\",\"joined\":true,\"created\":true,\"persisted\":false,\"role\":\"owner\",\"studio\":\"circuit\",\"program\":null,\"programRunning\":false}"},"agentSocket":403}
+PASS Bolt joins over the Worker as an agent named Bolt — [{"name":"Host · You","agent":false},{"name":"Bolt AI","agent":true}]
+PASS Bolt's greeting relays through the Durable Object
+FAIL Bolt builds over WebSocket after being taught — Bolt said: ["I'll build my plan now.","So the current has to come back to the battery. Got it.","So the resistor keeps too much current from reaching the LED. Got it.","Someone was holding a part, so I left it. Have a look, then we can test."]; build log: [{"run":4,"event":"build started (4 moves, superseding)","at":1793122309430},{"run":3,"part":"battery-9v","claim":"granted","release":"refused","at":1793122309436},{"run":3,"event":"ended: superseded by a newer build","at":1793122313214},{"run":4,"part":"battery-9v","claim":"granted","release":"refused","at":1793122323012},{"run":4,"part":"resistor-1k","claim":"granted","release":"accepted","at":1793122338537},{"run":4,"part":"led-red","claim":"granted","release":"accepted","at":1793122354522},{"run":4,"part":"wire-blue","claim":"granted","release":"accepted","at":1793122368204},{"run":4,"event":"built (1 skipped)","at":1793122372195}]
+PASS host scene lights safely from Bolt's relayed moves
+PASS a late joiner sees Bolt as an agent — [{"name":"host","agent":false},{"name":"Bolt AI","agent":true},{"name":"member · You","agent":false}]
+PASS the late joiner gets Bolt's circuit from the room's authoritative state
+PASS the late joiner is not offered a second Bolt
+PASS a resistor value edit relays through the Durable Object — Safe · 14.6 mA
+PASS a later joiner's room-state carries the edited value — Safe · 14.6 mA
+
+9/10 checks passed

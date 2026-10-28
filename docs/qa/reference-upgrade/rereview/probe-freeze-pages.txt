@@ -1,0 +1,14 @@
+  [ready] host entered: 7 s (+3 frames)
+  [ready] member entered: 218 s (+5 frames)
+roles set 329 s
+phone state 712 s undefined
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.evaluate: Target page, context or browser has been closed
+    at settled (<repo>/scripts/lib/e2e-readiness.mjs:64:33)
+    at async file://<repo>/node_modules/.cache/probe-freeze.mjs:246:1
+
+Node.js v22.22.0
+probe exit 124

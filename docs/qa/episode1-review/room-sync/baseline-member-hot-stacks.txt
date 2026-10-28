@@ -1,0 +1,31 @@
+101102 ms self time:
+  D RoomEnvironment-CyYoPcqO.js:3894:286
+  Xg.getUniforms RoomEnvironment-CyYoPcqO.js:3901:286
+  uh RoomEnvironment-CyYoPcqO.js:3953:49229
+  Cv.renderBufferDirect RoomEnvironment-CyYoPcqO.js:3953:37895
+  _c RoomEnvironment-CyYoPcqO.js:3953:46198
+  $s RoomEnvironment-CyYoPcqO.js:3953:45942
+  sa RoomEnvironment-CyYoPcqO.js:3953:44116
+  Cv.render RoomEnvironment-CyYoPcqO.js:3953:41196
+  Er.render main-fTPaV1K-.js:57:12939
+  lh RoomEnvironment-CyYoPcqO.js:3953:40867
+  i RoomEnvironment-CyYoPcqO.js:39:161257
+  (root) :-1:-1
+
+78074 ms self time:
+  (program) :-1:-1
+  (root) :-1:-1
+
+65503 ms self time:
+  D RoomEnvironment-CyYoPcqO.js:3894:286
+  Xg.getUniforms RoomEnvironment-CyYoPcqO.js:3901:286
+  uh RoomEnvironment-CyYoPcqO.js:3953:49229
+  Cv.renderBufferDirect RoomEnvironment-CyYoPcqO.js:3953:37895
+  _c RoomEnvironment-CyYoPcqO.js:3953:46198
+  $s RoomEnvironment-CyYoPcqO.js:3953:45942
+  gc RoomEnvironment-CyYoPcqO.js:3953:44455
+  Cv.render RoomEnvironment-CyYoPcqO.js:3953:41196
+  Er.render main-fTPaV1K-.js:57:12939
+  lh RoomEnvironment-CyYoPcqO.js:3953:40867
+  i RoomEnvironment-CyYoPcqO.js:39:161257
+  (root) :-1:-1

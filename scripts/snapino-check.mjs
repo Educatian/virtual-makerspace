@@ -6,7 +6,9 @@ const { sanitizeProgram, toArduino, clampMs, SnapinoRunner, EXAMPLES } = await i
 assert.deepEqual(sanitizeProgram(EXAMPLES.blink.program), EXAMPLES.blink.program);
 assert.equal(sanitizeProgram([{ op: "write", pin: "D9", value: true }]), null);
 assert.equal(sanitizeProgram([{ op: "eval", code: "x" }]), null);
-assert.equal(sanitizeProgram(new Array(25).fill({ op: "wait", ms: 100 })), null);
+// The block cap is 48 (raised from 24 so a three-word Rescue Signal message fits); 49 is refused.
+assert.equal(sanitizeProgram(new Array(48).fill({ op: "wait", ms: 100 }))?.length, 48);
+assert.equal(sanitizeProgram(new Array(49).fill({ op: "wait", ms: 100 })), null);
 assert.deepEqual(sanitizeProgram([{ op: "wait", ms: 1 }]), [{ op: "wait", ms: 50 }]);
 assert.equal(clampMs(99999), 5000);
 

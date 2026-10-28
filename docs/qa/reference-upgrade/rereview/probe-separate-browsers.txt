@@ -1,0 +1,8 @@
+  [ready] host entered: 7 s (+3 frames)
+  [ready] member entered: 16 s (+3 frames)
+roles set 245 s
+phone state 33 s {"sender":{"id":"host@example.test:1d575b5d-b44e-4dab-ba76-a6e0796305ea","name":"host"},"receiver":{"id":"member@example.test:c9d36f89-2137-4a1a-b9af-7c88af98c0ec","name":"member"}}
+  [ready] phone entered: 8 s (+3 frames)
+phone ready 41 s
+after thaw host role sender member role receiver phone view {"sender":{"id":"host@example.test:1d575b5d-b44e-4dab-ba76-a6e0796305ea","name":"host"},"receiver":{"id":"member@example.test:c9d36f89-2137-4a1a-b9af-7c88af98c0ec","name":"member"}} errors 0 0
+probe exit 0

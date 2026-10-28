@@ -1,0 +1,27 @@
+PASS both makers are in the Snapino room
+PASS P/S reaches the teammate (wiring + running program) — member [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500},{"op":"write","pin":"D5","value":false},{"op":"wait","ms":500}] running=true · host [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500},{"op":"write","pin":"D5","value":false},{"op":"wait","ms":500}]
+PASS import Q/T reaches both peers — member [["sno-l1",{"sockets":[30,12]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}] · host [["sno-l1",{"sockets":[30,12]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}] · before [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]]
+PASS an imported program is loaded stopped (policy)
+PASS the import is one undo step for the importer
+PASS Undo restores P/S on the teammate — [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sock
+PASS Undo restores P/S on the importer
+PASS an undone program stays stopped (policy)
+PASS Redo brings Q/T back on both peers
+PASS a program-only import reaches the teammate
+PASS and is traced as one edit — 1 → 2 "Loaded a project" edit traces
+PASS its undo is exactly one step back to T
+PASS a stale undo never overwrites the teammate's newer program R — Can't undo "Loaded a project" — a teammate changed the program since, so their work is kept
+PASS and the parts stay as the room has them
+PASS R is running on both peers before the import
+PASS same parts + same running program: the import stops it on the teammate
+PASS and on the importer — Loaded a project · same program, now stopped for everyone
+PASS a stop alone adds no undo step
+PASS changed parts + same running program: parts and stop arrive together on the teammate
+PASS and on the importer
+PASS export carries the room's program (R) and the unsaved draft (D) separately
+PASS autosave holds the latest room program and the draft
+PASS rejoining after everyone left: the bench was reset but the room kept its program
+PASS recovery is offered (saved parts and program differ from the room's)
+PASS restoring brings back the saved parts and program as one edit
+
+25/25 passed · room HDNL

@@ -1,4 +1,5 @@
 import type { SnapinoStatement } from "./snapino.js";
+import { acceptClockSample, CLOCK_GOOD_RTT } from "./room-clock.ts";
 import {
   SyncReplica,
   type EditChange,
@@ -10,6 +11,20 @@ import {
 } from "./sync-replica.ts";
 
 export type { EditResult } from "./sync-replica.ts";
+import {
+  initialRescueState,
+  onParticipantLeft,
+  onTransmitterChanged,
+  reduceRescue,
+  sanitizeRescueState,
+  supersedes,
+  transmitting,
+  type RescueAction,
+  type RescueRefusal,
+  type RescueState,
+} from "../episodes/rescue-state.ts";
+
+export type EpisodeResult = { ok: true } | { ok: false; reason: RescueRefusal | "offline" | "timeout" | "disconnected" };
 
 /** How long an edit waits for the room's answer before it counts as failed. */
 const EDIT_TIMEOUT_MS = 8_000;
@@ -156,7 +171,11 @@ type RoomMessage =
       clock?: number;
       /** Peer mode: the Snapino program the tabs run. */
       program?: { program: SnapinoStatement[]; running: boolean };
+      /** Peer mode: the episode state and its stamp. */
+      episode?: { state: RescueState; stamp: Stamp };
     }
+  | { kind: "episode"; participantId: string; opId: string; action: RescueAction }
+  | { kind: "episode-peer"; participantId: string; state: RescueState; stamp: Stamp; program?: { program: SnapinoStatement[]; running: boolean } }
   | {
       kind: "signal";
       participantId: string;
@@ -203,6 +222,8 @@ export interface RoomEvents {
    * bench state at all — a returning bench may seed it.
    */
   onRoomState: (state: { fresh: boolean; componentIds: string[]; ownMovesInFlight: string[] }) => void;
+  /** The episode state changed (or arrived on join). Use `serverTime()` to place it in time. */
+  onEpisode: (state: RescueState) => void;
 }
 
 const noOpEvents: RoomEvents = {
@@ -223,6 +244,7 @@ const noOpEvents: RoomEvents = {
   onRevert: () => undefined,
   onClaimDenied: () => undefined,
   onRoomState: () => undefined,
+  onEpisode: () => undefined,
 };
 
 /** Messages from the room itself (server mode) that the sync rules interpret. */
@@ -236,6 +258,9 @@ const SERVER_REPLY_KINDS = new Set([
   "room-state",
   "program",
   "program-ack",
+  "episode-state",
+  "episode-result",
+  "clock",
 ]);
 
 export class DesktopRoom {
@@ -269,6 +294,18 @@ export class DesktopRoom {
   private readonly editWaiters = new Map<string, { resolve: (result: EditResult) => void; timer: number }>();
   private readonly claimWaiters = new Map<string, Array<(granted: boolean) => void>>();
   private readonly settleWaiters = new Map<string, Array<(ok: boolean) => void>>();
+  private readonly episodeWaiters = new Map<string, { resolve: (result: EpisodeResult) => void; timer: number }>();
+  /** The latest episode state (room-authoritative in server mode). */
+  episode: RescueState | null = null;
+  /** Server clock minus this tab's clock, from the last message that carried `serverNow`. */
+  private serverOffset = 0;
+  private offsetAt = 0;
+  /** Round trip of the clock sample the offset currently comes from (Infinity: none yet). */
+  private clockRtt = Infinity;
+  private clockTimers: number[] = [];
+  private clockRetries = 0;
+  /** Peer mode: reads this tab's Snapino parts for a transmission snapshot. */
+  episodeBench: (id: string) => { sockets?: unknown; on?: unknown } | null = () => null;
 
   constructor(
     roomCode: string,
@@ -359,6 +396,10 @@ export class DesktopRoom {
       return { componentId: id, transform: copy };
     });
     const { message, immediate } = this.sync.createEdit(opId, clean, program);
+    if (this.sync.mode === "peer") {
+      if (program) this.noteTransmitterChange("program-changed");
+      else if (clean.some((change) => change.componentId.startsWith("sno-"))) this.noteTransmitterChange("bench-changed");
+    }
     return new Promise((resolve) => {
       const timer = this.sync.mode === "server"
         ? window.setTimeout(() => this.runEffects(this.sync.expire(opId)), EDIT_TIMEOUT_MS)
@@ -367,6 +408,154 @@ export class DesktopRoom {
       this.post(message as RoomMessage);
       this.runEffects(immediate);
     });
+  }
+
+  /** The room's clock (server mode: estimated from its last message; peer mode: this device). */
+  serverTime(): number {
+    return Date.now() + this.serverOffset;
+  }
+
+  /**
+   * Each server message gives `serverNow - localNow`, which under-estimates the offset by that
+   * message's one-way latency. Keep the least-delayed (highest) estimate, so an unrelated update
+   * during a transmission can only move the lamp's clock forward by a latency improvement, never
+   * back. A (re)join starts fresh; between transmissions a minute-old estimate may be replaced
+   * (local clock drift).
+   */
+  private noteServerNow(serverNow: unknown, fresh = false): void {
+    if (typeof serverNow !== "number" || !Number.isFinite(serverNow)) return;
+    // Once a round-trip clock sample exists it is the better estimate (see noteClockSample).
+    if (this.clockRtt !== Infinity && !fresh) return;
+    const now = Date.now();
+    const candidate = serverNow - now;
+    const running = this.episode ? transmitting(this.episode, now + this.serverOffset) : false;
+    if (fresh || this.offsetAt === 0 || candidate > this.serverOffset || (!running && now - this.offsetAt > 60_000)) {
+      this.serverOffset = candidate;
+      this.offsetAt = now;
+    }
+  }
+
+  /**
+   * Round-trip clock sample (`clock` ping, echoed by the room with its time): the room stamped
+   * `serverNow` somewhere inside [t0, t1], so offset = serverNow − (t0 + t1) / 2 with an error of at
+   * most rtt / 2. The smallest round trip seen wins (a sample delayed by a busy page has a long
+   * round trip and is ignored); a minute-old estimate may be replaced (clock drift).
+   */
+  private noteClockSample(t0: unknown, serverNow: unknown): void {
+    if (typeof t0 !== "number" || typeof serverNow !== "number" || !Number.isFinite(t0) || !Number.isFinite(serverNow)) return;
+    const t1 = Date.now();
+    const rtt = t1 - t0;
+    const current = this.clockRtt === Infinity ? null : { rtt: this.clockRtt, at: this.offsetAt };
+    if (acceptClockSample(current, rtt, t1)) {
+      this.serverOffset = serverNow - (t0 + t1) / 2;
+      this.offsetAt = t1;
+      this.clockRtt = rtt;
+    }
+    if (this.clockRtt <= CLOCK_GOOD_RTT) this.clockRetries = 0;
+    // A busy page (first draws, a slow device) answers late, so its first samples have long round
+    // trips. Keep sampling every 2 s (at most 30 extra pings in a row) until one is under 500 ms.
+    if (this.clockRtt > CLOCK_GOOD_RTT && this.clockRetries < 30 && this.socket) {
+      this.clockRetries += 1;
+      const socket = this.socket;
+      this.clockTimers.push(window.setTimeout(() => {
+        if (this.socket === socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "clock", t0: Date.now() }));
+      }, 2000));
+    }
+  }
+
+  /** The current clock estimate's round trip (error bound: half of it); null if none yet. */
+  get clockSampleRtt(): number | null {
+    return this.clockRtt === Infinity ? null : this.clockRtt;
+  }
+
+  private startClockSync(socket: WebSocket): void {
+    this.stopClockSync();
+    this.clockRetries = 0;
+    const ping = (): void => {
+      if (this.socket === socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "clock", t0: Date.now() }));
+    };
+    // A few samples soon after connecting, then one every 20 s (a tiny message).
+    for (const delay of [0, 1000, 3000, 7000]) this.clockTimers.push(window.setTimeout(ping, delay));
+    this.clockTimers.push(window.setInterval(ping, 20_000));
+  }
+
+  private stopClockSync(): void {
+    for (const timer of this.clockTimers) {
+      window.clearTimeout(timer);
+      window.clearInterval(timer);
+    }
+    this.clockTimers = [];
+  }
+
+  /**
+   * One Rescue Signal action. Server mode: the room validates and orders it, and the new state
+   * arrives through `onEpisode` (for everyone, this tab included) before this resolves. Peer
+   * mode: applied here with the same reducer and shared with same-device tabs (Lamport order).
+   */
+  episodeAction(action: RescueAction): Promise<EpisodeResult> {
+    if (this.closed) return Promise.resolve({ ok: false, reason: "disconnected" });
+    if (this.sync.mode === "peer") {
+      const base = this.episode ?? initialRescueState();
+      const result = reduceRescue(base, action, { id: this.participant.id, name: this.participant.name }, Date.now(), this.episodeBench);
+      if (!result.ok) return Promise.resolve({ ok: false, reason: result.reason });
+      const stamp = this.sync.stampTransform("episode");
+      this.applyEpisode(result.state);
+      if (result.program) this.events.onProgram(result.program.program, false, this.participant.id);
+      this.post({ kind: "episode-peer", participantId: this.participant.id, state: result.state, stamp, ...(result.program ? { program: result.program } : {}) });
+      return Promise.resolve({ ok: true });
+    }
+    if (this.offline) return Promise.resolve({ ok: false, reason: "offline" });
+    const opId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        this.episodeWaiters.delete(opId);
+        resolve({ ok: false, reason: "timeout" });
+      }, EDIT_TIMEOUT_MS);
+      this.episodeWaiters.set(opId, { resolve, timer });
+      this.post({ kind: "episode", participantId: this.participant.id, opId, action });
+    });
+  }
+
+  /**
+   * Peer mode only (the room server does this itself): this tab changed a Snapino part or the
+   * program, so a running transmission ends — here and, by stamp, on the other tabs.
+   */
+  noteTransmitterChange(reason: "bench-changed" | "program-changed"): void {
+    if (this.sync.mode !== "peer" || !this.episode) return;
+    const next = onTransmitterChanged(this.episode, Date.now(), reason);
+    if (!next) return;
+    const stamp = this.sync.stampTransform("episode");
+    this.applyEpisode(next);
+    this.post({ kind: "episode-peer", participantId: this.participant.id, state: next, stamp });
+  }
+
+  private applyEpisode(state: RescueState): void {
+    // Never go back in time (a late duplicate of an older state); revisions survive resets.
+    if (this.sync.mode === "server" && !supersedes(this.episode, state)) return;
+    this.episode = state;
+    this.events.onEpisode(state);
+  }
+
+  /** Server-mode episode messages (states and results). */
+  private receiveEpisode(message: Record<string, unknown>): void {
+    this.noteServerNow(message.serverNow);
+    if (message.kind === "episode-result") {
+      const waiter = this.episodeWaiters.get(String(message.opId));
+      if (!waiter) return;
+      this.episodeWaiters.delete(String(message.opId));
+      window.clearTimeout(waiter.timer);
+      waiter.resolve(message.ok === true ? { ok: true } : { ok: false, reason: (typeof message.reason === "string" ? message.reason : "inactive") as RescueRefusal });
+      return;
+    }
+    const state = sanitizeRescueState(message.state);
+    if (!state) return;
+    const program = message.program as { program?: unknown; running?: unknown; rev?: unknown } | undefined;
+    if (program && typeof program.rev === "number" && Number.isSafeInteger(program.rev) && Array.isArray(program.program)) {
+      // A transmission made its program the room's (stopped): keep the program revision current.
+      this.sync.programRev = program.rev;
+      this.events.onProgram(program.program as SnapinoStatement[], false, "");
+    }
+    this.applyEpisode(state);
   }
 
   /** Asks the room for its full state again (e.g. after a refused seed). */
@@ -405,6 +594,7 @@ export class DesktopRoom {
     }
     const stamp = this.sync.stampTransform(componentId);
     this.post({ kind: "transform", participantId: this.participant.id, componentId, transform, sequence, stamp });
+    if (componentId.startsWith("sno-")) this.noteTransmitterChange("bench-changed");
   }
 
   setActivity(activity: ParticipantActivity, activityDetail?: string): void {
@@ -491,6 +681,7 @@ export class DesktopRoom {
       transforms,
       clock: this.sync.clock,
       ...(program ? { program } : {}),
+      ...(this.episode ? { episode: { state: this.episode, stamp: this.sync.stampTransform("episode") } } : {}),
     });
   }
 
@@ -688,11 +879,17 @@ export class DesktopRoom {
   }
 
   close(): void {
+    this.stopClockSync();
     for (const waiter of this.editWaiters.values()) {
       window.clearTimeout(waiter.timer);
       waiter.resolve({ ok: false, reason: "disconnected" });
     }
     this.editWaiters.clear();
+    for (const waiter of this.episodeWaiters.values()) {
+      window.clearTimeout(waiter.timer);
+      waiter.resolve({ ok: false, reason: "disconnected" });
+    }
+    this.episodeWaiters.clear();
     for (const timer of this.transformTimers.values()) window.clearTimeout(timer);
     this.transformTimers.clear();
     this.pendingTransforms.clear();
@@ -730,6 +927,27 @@ export class DesktopRoom {
     // Room replies addressed to this participant (server mode): acks, refusals, edits, state.
     if (this.sync.mode === "server" && typeof kind === "string" && SERVER_REPLY_KINDS.has(kind)) {
       if (kind === "edit" && (message as { participantId?: unknown }).participantId === this.participant.id) return;
+      if (kind === "episode-state" || kind === "episode-result") {
+        this.receiveEpisode(message as unknown as Record<string, unknown>);
+        return;
+      }
+      if (kind === "clock") {
+        const raw = message as unknown as Record<string, unknown>;
+        this.noteClockSample(raw.t0, raw.serverNow);
+        return;
+      }
+      if (kind === "room-state") {
+        const raw = message as unknown as Record<string, unknown>;
+        this.noteServerNow(raw.serverNow, true);
+        this.runEffects(this.sync.receive(raw));
+        const episode = sanitizeRescueState(raw.episode);
+        if (episode) {
+          // A (re)join: the room's episode replaces whatever this tab had.
+          this.episode = null;
+          this.applyEpisode(episode);
+        }
+        return;
+      }
       this.runEffects(this.sync.receive(message as unknown as Record<string, unknown>));
       return;
     }
@@ -755,6 +973,11 @@ export class DesktopRoom {
         this.emitParticipants();
         break;
       case "goodbye":
+        if (this.sync.mode === "peer" && this.episode) {
+          // Same-device tabs: every tab frees the leaver's roles the same way.
+          const next = onParticipantLeft(this.episode, message.participantId);
+          if (next) this.applyEpisode(next);
+        }
         this.participants.delete(message.participantId);
         for (const [resourceId, ownerId] of this.claims) {
           if (ownerId !== message.participantId) continue;
@@ -795,6 +1018,14 @@ export class DesktopRoom {
         // Peer mode: a same-device tab's edit, applied by Lamport order.
         this.runEffects(this.sync.receive(message as unknown as Record<string, unknown>));
         break;
+      case "episode-peer": {
+        if (this.sync.mode !== "peer") break;
+        const state = sanitizeRescueState(message.state);
+        if (!state || !this.sync.acceptTransform("episode", message.stamp)) break;
+        if (message.program && Array.isArray(message.program.program)) this.events.onProgram(message.program.program, false, message.participantId);
+        this.applyEpisode(state);
+        break;
+      }
       case "claim":
         this.claims.set(message.componentId, message.participantId);
         this.events.onClaim(message.componentId, {
@@ -856,6 +1087,8 @@ export class DesktopRoom {
           this.awaitingState = false;
           this.sync.observeClock(message.clock);
           this.events.onState(message.transforms, message.program);
+          const episode = message.episode ? sanitizeRescueState(message.episode.state) : null;
+          if (episode && this.sync.acceptTransform("episode", message.episode?.stamp)) this.applyEpisode(episode);
         }
         break;
       case "signal":
@@ -924,6 +1157,7 @@ export class DesktopRoom {
       this.awaitingState = true;
       socket.send(JSON.stringify({ kind: "hello", participant: this.participant } satisfies RoomMessage));
       this.flushSocketOutbox(socket);
+      this.startClockSync(socket);
       // The room answers hello with its authoritative state (room-state): no peer copy needed.
       this.events.onVoiceStatus("Realtime room connected");
     });
@@ -931,6 +1165,8 @@ export class DesktopRoom {
     socket.addEventListener("close", () => {
       if (this.socket !== socket) return;
       this.socket = null;
+      this.stopClockSync();
+      this.clockRtt = Infinity;
       if (this.closed) return;
       // Pending edits and drags fail; the room-state on reconnect is authoritative again.
       this.sync.resetForReconnect();
@@ -938,6 +1174,11 @@ export class DesktopRoom {
       for (const [resourceId, waiting] of this.claimWaiters) {
         this.claimWaiters.delete(resourceId);
         for (const resolve of waiting) resolve(false);
+      }
+      for (const [opId, waiter] of this.episodeWaiters) {
+        this.episodeWaiters.delete(opId);
+        window.clearTimeout(waiter.timer);
+        waiter.resolve({ ok: false, reason: "disconnected" });
       }
       this.resetRemoteSessionState();
       this.events.onVoiceStatus("Realtime room disconnected · reconnecting");
@@ -948,6 +1189,20 @@ export class DesktopRoom {
         this.events.onVoiceStatus("Realtime room unavailable · reconnecting");
       }
     });
+  }
+
+  /** Visual/e2e QA only (wired behind ?qa): drop the socket as a network failure would. The
+   * normal path follows — the room releases this participant, the client reconnects with backoff
+   * and the room-state it receives is authoritative again. */
+  /** True when room messages can be sent now (same-device peer rooms are always "online"). */
+  get online(): boolean {
+    return !this.socketUrl || this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  dropConnectionForQa(): boolean {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false;
+    this.socket.close(4000, "qa-drop");
+    return true;
   }
 
   private scheduleReconnect(): void {
@@ -982,7 +1237,7 @@ export class DesktopRoom {
   private queueSocketMessage(message: RoomMessage): void {
     // Bench changes are never queued while offline: edits fail at once, moves are dropped, and
     // the room's state decides on reconnect.
-    if (["hello", "goodbye", "state-request", "state-response", "signal", "attention", "claim", "release", "transform", "edit", "program", "room-state-request"].includes(message.kind)) {
+    if (["hello", "goodbye", "state-request", "state-response", "signal", "attention", "claim", "release", "transform", "edit", "program", "room-state-request", "episode", "episode-peer"].includes(message.kind)) {
       return;
     }
 

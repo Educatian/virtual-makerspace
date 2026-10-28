@@ -1,0 +1,1 @@
+{"error":"page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://learn-arduino-red.vercel.app/#rgb\nCall log:\n\u001b[2m  - navigating to \"https://learn-arduino-red.vercel.app/#rgb\", waiting until \"load\"\u001b[22m\n"}

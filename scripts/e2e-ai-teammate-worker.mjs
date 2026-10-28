@@ -9,10 +9,23 @@
 // relays its moves, and that a late joiner gets the board from the human host, not from Bolt.
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import WebSocket from "ws";
+import http from "node:http";
 
 const base = process.argv[2] ?? "http://vm.test:8800";
-const room = `W${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[01IO]/g, "Z")}`;
+// Local QA origins only: this test never talks to a deployed room.
+assert.ok(["vm.test", "localhost", "127.0.0.1"].includes(new URL(base).hostname), `refusing non-local origin ${base}`);
+const code = (prefix) => `${prefix}${Math.random().toString(36).slice(2, 5).toUpperCase().replace(/[01IO]/g, "Z")}`;
+const room = code("W");
+// The unaffiliated-agent probe uses its own fresh, unused random room (never the main room, never 7K3M).
+let probeRoom = code("V");
+while (probeRoom === room) probeRoom = code("V");
+assert.notEqual(room, "7K3M");
+assert.notEqual(probeRoom, "7K3M");
+const artifacts = process.argv[3] ?? `${tmpdir()}/vm-e2e-ai-worker-${room}`;
+mkdirSync(artifacts, { recursive: true });
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || undefined,
   // --no-proxy-server: keep the local WebSocket off any machine-wide HTTP proxy.
@@ -20,7 +33,7 @@ const browser = await chromium.launch({
 });
 const results = [];
 const check = (name, ok, detail = "") => {
-  results.push({ name, ok });
+  results.push({ name, ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
 };
 
@@ -36,7 +49,7 @@ async function maker(email, query = "") {
   const page = await context.newPage();
   page.setDefaultTimeout(300_000);
   page.on("pageerror", (error) => console.error(`[${email}] pageerror:`, error.message));
-  await page.goto(`${base}/?room=${room}&studio=circuit${query}`);
+  await page.goto(`${base}/?room=${room}&studio=circuit&qa${query}`);
   await page.waitForSelector("#enter-room");
   await page.waitForFunction(() => !document.querySelector("#enter-room")?.disabled);
   await page.evaluate(() => document.querySelector("#enter-room").click());
@@ -68,17 +81,34 @@ const roster = (page) => page.evaluate(() => {
   }));
 });
 
-// An agent socket with no host in the room is refused.
+// An agent socket with no host in the room is refused. The probe room is created fresh first (by the
+// local admin, through the same join request the lobby makes) and left empty, so the refusal has to
+// come from the host-presence rule (403), not from an unknown room (404). An earlier version probed
+// a room that did not exist: 404, and the check failed (run 1 of the re-review set).
+const probeCreated = await new Promise((resolve) => {
+  const target = new URL(`/api/rooms/${probeRoom}/join`, base);
+  const request = http.request({
+    host: "127.0.0.1", port: Number(target.port || 80), method: "POST", path: target.pathname,
+    headers: { Host: target.host, Origin: base, Cookie: "e2e_email=host%40example.test", "content-type": "application/json" },
+  }, (response) => {
+    let body = "";
+    response.on("data", (chunk) => { body += chunk; });
+    response.on("end", () => resolve({ status: response.statusCode, body: body.slice(0, 200) }));
+  });
+  request.on("error", (error) => resolve({ status: null, body: error.message }));
+  request.end(JSON.stringify({ studio: "circuit" }));
+});
+let probeStatus = null;
 const refused = await new Promise((resolve) => {
   const socket = new WebSocket(
-    `${base.replace("http", "ws")}/api/room?room=7K3M&participant=solo@example.test:x&agent=1`,
+    `${base.replace("http", "ws")}/api/room?room=${probeRoom}&participant=solo@example.test:x&agent=1`,
     { headers: { Origin: base, Host: new URL(base).host, Cookie: "e2e_email=solo%40example.test" }, lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]) },
   );
-  socket.on("open", () => { socket.close(); resolve(false); });
-  socket.on("unexpected-response", (_request, response) => resolve(response.statusCode === 403));
+  socket.on("open", () => { probeStatus = 101; socket.close(); resolve(false); });
+  socket.on("unexpected-response", (_request, response) => { probeStatus = response.statusCode; resolve(response.statusCode === 403); });
   socket.on("error", (error) => { console.error("agent socket error:", error.message); resolve(false); });
 });
-check("Worker refuses an AI teammate whose host isn't in the room", refused);
+check("Worker refuses an AI teammate whose host isn't in the room", probeCreated.status === 200 && refused, JSON.stringify({ probeRoom, created: probeCreated, agentSocket: probeStatus }));
 
 const host = await maker("host@example.test", "&teammate=ai");
 await host.waitForFunction(() => document.querySelector(".chat-message .avatar.is-agent"), null, { timeout: 120_000 });
@@ -93,10 +123,15 @@ await waitFor(host, /come back to the battery\. Got it/);
 // Without a resistor the LED would sit straight across 9 V (a burnout, not a success).
 await say(host, "Add a resistor because it limits the current so the LED doesn't burn out.");
 // Teaching mid-build supersedes the running build, so expect at least one finished build.
-check("Bolt builds over WebSocket after being taught", await waitFor(host, /^Done\./, 1, 300_000));
+const built = await waitFor(host, /^Done\./, 1, 300_000);
+// Retained for every run (pass or fail): what Bolt said, each part's claim and release outcome,
+// and the host's authoritative bench afterwards.
+const boltRecord = { lines: await boltLines(host), build: await host.evaluate(() => window.__vmQa?.bolt?.() ?? null) };
+check("Bolt builds over WebSocket after being taught", built, built ? "" : `Bolt said: ${JSON.stringify(boltRecord.lines.slice(-4))}; build log: ${JSON.stringify((boltRecord.build ?? []).slice(-8))}`);
 let lit = false;
 for (let i = 0; i < 60 && !lit; i += 1) { lit = await powered(host); if (!lit) await host.waitForTimeout(2000); }
 check("host scene lights safely from Bolt's relayed moves", lit);
+boltRecord.afterLit = { lines: await boltLines(host), build: await host.evaluate(() => window.__vmQa?.bolt?.() ?? null), bench: await host.evaluate(() => window.__vmQa?.bench?.() ?? null) };
 
 const member = await maker("member@example.test");
 await member.waitForTimeout(8000);
@@ -124,6 +159,7 @@ await late.waitForTimeout(8000);
 check("a later joiner's room-state carries the edited value", await waitForMeter(late, /Safe · 14/), await meter(late));
 
 await browser.close();
+writeFileSync(`${artifacts}/results.json`, JSON.stringify({ room, probeRoom, results, bolt: boltRecord }, null, 1));
 const failed = results.filter((result) => !result.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 process.exit(failed.length ? 1 : 0);

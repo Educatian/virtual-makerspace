@@ -333,4 +333,24 @@ for (const [kind, raw] of [
   ok(!isDefaultProject(buildProject({ studio: "snapino", parts: {}, socketCount: 63 }, {}, Q), () => null), "a program alone is not empty");
 }
 
+// ── Episode 1 design in project files ──────────────────────────────────────────────────────
+{
+  const sno = { studio: "snapino", parts: { "sno-l1": null }, socketCount: 63, switches: [], sharedSockets: true };
+  const withDesign = buildProject(sno, {}, [{ op: "wait", ms: 50 }], new Date(0), null, { mission: "ridge", intent: ["INJURED", "NORTH"] });
+  eq(withDesign.episode, { id: "rescue-signal", v: 1, mission: "ridge", intent: ["INJURED", "NORTH"] }, "a Snapino project carries the design");
+  const back = parseProject(JSON.stringify(withDesign), () => sno);
+  eq(back.ok && back.project.episode, withDesign.episode, "and it round-trips");
+  for (const episode of [{ id: "rescue-signal", v: 2, mission: "ridge", intent: [] }, { id: "rescue-signal", v: 1, mission: "moon", intent: [] }, { id: "rescue-signal", v: 1, mission: "ridge", intent: ["HELLO"] },
+    { id: "rescue-signal", v: 1, mission: "ridge", intent: ["HELP", "HELP", "HELP", "HELP"] }, { id: "rescue-signal", v: 1, mission: { toString: 0 }, intent: [] }, "rescue", null, [] ]) {
+    let result;
+    assert.doesNotThrow(() => { result = parseProject(JSON.stringify({ ...withDesign, episode }), () => sno); });
+    eq(result.ok, false, `design ${JSON.stringify(episode)} refused`);
+  }
+  const circuitWithDesign = { ...JSON.parse(JSON.stringify(buildProject(catalogFor("circuit"), {}))), episode: withDesign.episode };
+  eq(parseProject(JSON.stringify(circuitWithDesign), catalogFor).ok, false, "only Snapino projects carry a design");
+  ok(!isDefaultProject({ ...buildProject(sno, {}, null), episode: withDesign.episode }, () => null), "a design with words is worth saving");
+  ok(isDefaultProject({ ...buildProject(sno, {}, null), episode: { id: "rescue-signal", v: 1, mission: "ridge", intent: [] } }, () => null), "the default design alone is not");
+  ok(parseProject(JSON.stringify(buildProject(sno, {}, [{ op: "wait", ms: 50 }])), () => sno).ok, "older Snapino projects without a design still import");
+}
+
 console.log(`project state: ${checks} checks passed`);

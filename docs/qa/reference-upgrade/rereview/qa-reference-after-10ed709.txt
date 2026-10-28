@@ -1,0 +1,85 @@
+  [ready] composition-1440-workshop: 11 s (+3 frames)
+  [ready] composition-1440-workshop (again): 56 s (+5 frames)
+  shot composition-1440-workshop: 509 calls, 94506 triangles
+  [ready] old camera: 46 s (+3 frames)
+PASS bench view fills more of the free view than the old default camera — 85% vs 47% of the free width
+  [ready] placed: 11 s (+3 frames)
+PASS 1440px: no horizontal overflow; chat tab present — {"left":1046,"width":380}
+PASS 1440px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px — smallest 44 px
+  [ready] after-inspector-1440: 54 s (+3 frames)
+  [ready] after-inspector-1440 (again): 56 s (+3 frames)
+  shot after-inspector-1440: 519 calls, 96778 triangles
+  [ready] after-top-preset-1440: 67 s (+3 frames)
+  [ready] after-top-preset-1440 (again): 69 s (+3 frames)
+  shot after-top-preset-1440: 465 calls, 94802 triangles
+PASS 1440px: no page errors
+  [ready] placed: 10 s (+3 frames)
+PASS 1280px: no horizontal overflow; chat tab present — {"left":920,"width":346}
+PASS 1280px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px — smallest 44 px
+  [ready] after-inspector-1280: 39 s (+3 frames)
+  [ready] after-inspector-1280 (again): 38 s (+3 frames)
+  shot after-inspector-1280: 517 calls, 96562 triangles
+PASS 1280px: no page errors
+  [ready] phone placed: 3 s (+3 frames)
+PASS phone: the 3D bench starts within the first 260 px (compact chrome) — {"frameTop":192,"dockTop":774,"tabsTop":775,"innerHeight":844,"scrollHeight":1294}
+PASS phone: the dock's tab row is on the first screen — {"frameTop":192,"dockTop":774,"tabsTop":775,"innerHeight":844,"scrollHeight":1294}
+  [ready] after-phone-first-screen: 15 s (+3 frames)
+  [ready] after-phone-first-screen (again): 12 s (+3 frames)
+  shot after-phone-first-screen: 409 calls, 85794 triangles
+PASS phone: wheel scrolling reaches the dock; the Inspector tab and a diagram rung work with the pointer — {"scrolled":450,"scrollY":744,"tab":"inspect","selectedTab":"behavior","focused":"behavior","partVisible":true,"tabsVisible":true,"highlights":4,"overflow":false}
+PASS phone: the inspector's reference tabs work from the keyboard (ArrowRight moves to Behaviour & limits) — {"scrollY":744,"tab":"inspect","selectedTab":"behavior","focused":"behavior","partVisible":true,"tabsVisible":true,"highlights":4,"overflow":false}
+PASS phone: no horizontal overflow (vertical scrolling is the intended way to the dock)
+  [ready] after-phone-inspector-selected: 11 s (+3 frames)
+  [ready] after-phone-inspector-selected (again): 11 s (+3 frames)
+  shot after-phone-inspector-selected: 418 calls, 88066 triangles
+  [ready] after-phone-3d-selected: 11 s (+3 frames)
+  [ready] after-phone-3d-selected (again): 12 s (+3 frames)
+  shot after-phone-3d-selected: 418 calls, 88066 triangles
+PASS phone: no page errors
+  [ready] phone workshop: 2 s (+3 frames)
+PASS phone: the workshop folds with its own toggle (pointer) — {"collapsed":true,"expanded":"false"}
+  [ready] after-phone-workshop-folded: 11 s (+3 frames)
+  [ready] after-phone-workshop-folded (again): 10 s (+3 frames)
+  shot after-phone-workshop-folded: 231 calls, 63962 triangles
+  [ready] circuit reduce: 2 s (+3 frames)
+PASS Circuit Bench: selecting a part in 3D opens the meter in the dock's Inspector tab — {"tab":"inspect","inDock":true,"visible":true}
+PASS Circuit Bench: a preset click edits the real resistor value through the room, and Undo restores it — Battery8.99 V · 14.6 mA9 V nominal, 1 Ω internalRed LED14.6 mA · 2.12 Vlit470 Ω resistor6.86 V · 14.6 mA100 mWBlue jumpe
+  [ready] after-circuit-meter-docked: 9 s (+3 frames)
+  [ready] after-circuit-meter-docked (again): 11 s (+3 frames)
+  shot after-circuit-meter-docked: 254 calls, 41378 triangles
+  [ready] flow on reduce: 12 s (+3 frames)
+PASS flow (reduce): a valid solve shows arrows on both carrying jumpers, in the solved direction — {"first":[-1.4284968376159668,0.5593235492706299,-0.41999998688697815],"firstPointsTo":[0.9748206138610839,0.22299052392703256,0],"enabled":true,"reason":"solved","wires":[{"id":"wire-blue","amps":0.006987501236945803,"direction":1},{"id":"wire-yellow","amps":0.006987501229964441,"direction":1}],"ar
+PASS flow (reduce): the 3D arrow points from the wire's end A toward end B (positive solved current) — dot 1.170
+PASS flow (reduce): the note states the solved current and that speed is not to scale — Solved current: Blue jumper 7.0 mA, Yellow jumper 7.0 mA. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above. (Still arrows: reduced motion.)
+  [ready] flow frames reduce: 11 s (+3 frames)
+PASS flow with reduced motion: the arrows stand still — moved 0
+  [ready] after-circuit-flow: 11 s (+3 frames)
+  [ready] after-circuit-flow (again): 11 s (+3 frames)
+  shot after-circuit-flow: 255 calls, 41570 triangles
+  [ready] flow short: 11 s (+3 frames)
+PASS flow: a short circuit draws no arrows and says so — {"state":{"first":null,"firstPointsTo":null,"enabled":true,"reason":"short circuit","wires":[],"arrows":0,"moving":false},"note":"No flow drawn: short circuit."}
+  [ready] flow open: 13 s (+3 frames)
+PASS flow: an open circuit draws no arrows — {"first":null,"firstPointsTo":null,"enabled":true,"reason":"open circuit","wires":[],"arrows":0,"moving":false}
+PASS flow off: no arrows remain — {"first":null,"firstPointsTo":null,"enabled":false,"reason":"off","wires":[],"arrows":0,"moving":false}
+PASS circuit (reduce): no page errors
+  [ready] circuit no-preference: 2 s (+3 frames)
+  [ready] flow on no-preference: 13 s (+3 frames)
+PASS flow (no-preference): a valid solve shows arrows on both carrying jumpers, in the solved direction — {"first":[-1.449529767036438,0.554053008556366,-0.41999998688697815],"firstPointsTo":[0.9655633568763733,0.26016805676739785,0],"enabled":true,"reason":"solved","wires":[{"id":"wire-blue","amps":0.006987501236945803,"direction":1},{"id":"wire-yellow","amps":0.006987501229964441,"direction":1}],"arro
+PASS flow (no-preference): the 3D arrow points from the wire's end A toward end B (positive solved current) — dot 1.159
+PASS flow (no-preference): the note states the solved current and that speed is not to scale — Solved current: Blue jumper 7.0 mA, Yellow jumper 7.0 mA. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above.
+  [ready] flow frames no-preference: 13 s (+3 frames)
+PASS flow without reduced motion: the arrows glide along the wire — moved 0.08937450259798795
+PASS circuit (no-preference): no page errors
+  [ready] PF inspector: 8 s (+3 frames)
+PASS PF: the bypassed lamp is drawn as built (a loop on one net)
+PASS PF before any compared round: fault notes withheld, with the reason shown — {"loop":true,"flags":0,"faults":[],"withheld":" Fault notes appear after your team's first compared round. The diagram already shows every connection exactly as built."}
+  [ready] after-diagram-PF-bypassed: 7 s (+3 frames)
+  [ready] after-diagram-PF-bypassed (again): 35 s (+3 frames)
+  shot after-diagram-PF-bypassed: 483 calls, 92514 triangles
+  [ready] DI inspector: 8 s (+3 frames)
+PASS DI: the bypassed lamp is drawn as built (a loop on one net)
+PASS DI: the bypass is flagged and explained — {"loop":true,"flags":1,"faults":["pin-ground","bypassed"],"withheld":null}
+  [ready] after-diagram-DI-bypassed: 35 s (+3 frames)
+  [ready] after-diagram-DI-bypassed (again): 37 s (+3 frames)
+  shot after-diagram-DI-bypassed: 483 calls, 92514 triangles
+33/33 checks · 12 shots → <scratch>/r5/ref-after

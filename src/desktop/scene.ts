@@ -4,18 +4,23 @@ import {
   Box3,
   BoxGeometry,
   BoxHelper,
+  BufferGeometry,
   CatmullRomCurve3,
   CircleGeometry,
+  ConeGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
+  Float32BufferAttribute,
   Fog,
   Euler,
   Group,
   HemisphereLight,
   InstancedMesh,
+  Material,
   MathUtils,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
@@ -45,10 +50,12 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 import { formatAmps, formatVolts } from "../circuit/dc-engine.ts";
 import { sanitizeProps, type PartProps } from "../circuit/part-props.ts";
 import { analyzeCircuit, type CircuitAnalysis, type CircuitPlacements, type CircuitProps } from "./circuit-topology.js";
+import { planFlow } from "./flow-plan.ts";
 import type { SharedTransform } from "./collaboration.js";
 import {
   BOARD_SURFACE,
@@ -62,7 +69,9 @@ import {
   palette,
 } from "./bench-models.js";
 import { RemoteHands, type HandOwner } from "./remote-hands.js";
+import { NET_TONES, type NetTone, type NetToneStyle } from "./selection-style.ts";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
+import { analyzeSnapino, SNAPINO_LOADS, SNAPINO_PADS, type SnapinoBench } from "../circuit/snapino-circuit.ts";
 
 export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino";
 export type ComponentKind =
@@ -133,7 +142,31 @@ export interface SceneEvents {
   /** The Circuit Bench's latest engine analysis (every re-evaluation, not only on change). */
   onCircuitAnalysis?: (analysis: CircuitAnalysis) => void;
   onEnvironmentState: (state: EnvironmentState) => void;
+  /** The Snapino bench re-evaluated (placements, switch or pin levels may have changed). */
+  onSnapinoChange?: () => void;
 }
+
+/** A stud the Snapino inspector highlights: tone "a"/"b" for a part's two nets, "fault" for a bypass. */
+export interface StudHighlight {
+  socket: number;
+  tone: NetTone;
+  /** One of the selected part's own two studs (drawn larger). */
+  terminal: boolean;
+}
+
+export type CameraPreset = "bench" | "top" | "table" | "receiver";
+
+/** Ring geometry per tone pattern: a solid ring, eight dashes, or two concentric rings. */
+function ringPattern(pattern: NetToneStyle["pattern"]): BufferGeometry {
+  if (pattern === "solid") return new RingGeometry(0.068, 0.104, 32, 1);
+  if (pattern === "dashed") {
+    const dashes = Array.from({ length: 8 }, (_, index) => new RingGeometry(0.068, 0.104, 6, 1, (index * Math.PI) / 4, Math.PI / 6.5));
+    return mergeGeometries(dashes, false) ?? new RingGeometry(0.068, 0.104, 32, 1);
+  }
+  return mergeGeometries([new RingGeometry(0.06, 0.078, 32, 1), new RingGeometry(0.092, 0.11, 32, 1)], false) ?? new RingGeometry(0.068, 0.104, 32, 1);
+}
+/** Top of the snap base plate (procedural and GLB alike), where stud collars and rings sit. */
+const SNAP_PLATE_TOP = 0.26;
 
 const COLORS = {
   wood: 0x8b6f47,
@@ -237,8 +270,6 @@ const SNAPINO_COMPONENTS: ComponentSpec[] = [
   { id: "sno-w4b", model: "snap-w4", name: "Snap Wire 4", detail: "Conductor", kind: "snapwire", color: 0x1d4ed8, leadSeparation: SNAP_PITCH * 4, studio: "snapino" },
 ];
 /** Base-grid stud index (row * 9 + col) under each Snapino pad — row B, columns 2–7. */
-const SNAPINO_PADS = { D2: 10, D3: 11, D5: 12, D6: 13, "5V": 14, GND: 15 } as const;
-const SNAPINO_LOADS = ["sno-l1", "sno-d1", "sno-m1"];
 
 const COMPONENTS = [...CIRCUIT_COMPONENTS, ...GREENHOUSE_COMPONENTS, ...SNAP_COMPONENTS, ...SNAPINO_COMPONENTS];
 
@@ -280,6 +311,7 @@ export class DesktopWorkbenchScene {
   private readonly snapBaseGroup = new Group();
   private snapinoPins: PinStates = { ...LOW_PINS };
   private snapinoInputHigh = false;
+  private snapinoRunningLoads: string[] = [];
   private readonly circuitSockets: Vector3[] = [];
   private readonly greenhouseSockets: Vector3[] = [];
   private readonly snapSockets: Vector3[] = [];
@@ -295,6 +327,24 @@ export class DesktopWorkbenchScene {
   private readonly previewBeams: Mesh<CylinderGeometry, MeshBasicMaterial>[] = [];
   private readonly flexMotion = new Map<string, { previous: Vector3; sway: number; velocity: number }>();
   private readonly selectionBox = new BoxHelper(new Group(), COLORS.blue);
+  /** Snapino inspector: rings on the selected part's terminals and on every stud of its nets. */
+  /** One instanced mesh per tone (each with its own ring pattern), see selection-style.ts. */
+  private studHighlights: Record<NetTone, InstancedMesh> | null = null;
+  private lastStudHighlights: StudHighlight[] = [];
+  /**
+   * Circuit Bench "current flow" view: arrowheads along each jumper wire in the direction of the
+   * solved conventional current (dc-engine element reading: positive = endpoint A → B). Shown
+   * only for a valid solve (no short, open, missing supply or unsolvable circuit).
+   */
+  private flowEnabled = false;
+  private flowMarkers: InstancedMesh | null = null;
+  private flowWires: Array<{ id: string; amps: number; direction: 1 | -1; speed: number }> = [];
+  private flowReason = "off";
+  private flowSmall: Array<{ id: string; amps: number }> = [];
+  private flowPhase = 0;
+  private readonly flowTemp = { point: new Vector3(), tangent: new Vector3(), up: new Vector3(0, 1, 0), quaternion: new Quaternion(), worldQuaternion: new Quaternion(), dummy: new Object3D() };
+  /** Smooth camera moves for the view presets (instant with reduced motion). */
+  private cameraTween: { fromPosition: Vector3; fromTarget: Vector3; toPosition: Vector3; toTarget: Vector3; start: number; duration: number } | null = null;
   private readonly hoverBox = new BoxHelper(new Group(), 0xe2e8f0);
   private readonly proceduralTable: Mesh[] = [];
   private hovered: Group | null = null;
@@ -367,6 +417,10 @@ export class DesktopWorkbenchScene {
     this.orbit.minPolarAngle = MathUtils.degToRad(12);
     this.orbit.maxPolarAngle = MathUtils.degToRad(80);
     this.orbit.screenSpacePanning = false;
+    // A learner's own orbit/zoom always wins over a view preset's glide.
+    this.orbit.addEventListener("start", () => {
+      this.cameraTween = null;
+    });
     this.orbit.update();
 
     this.transform = new TransformControls(this.camera, this.renderer.domElement);
@@ -431,6 +485,11 @@ export class DesktopWorkbenchScene {
     this.camera.position.set(studio === "circuit" ? 6.4 : 7.2, studio === "circuit" ? 6.1 : 5.8, studio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(studio === "circuit" ? 0.1 : 0, studio === "circuit" ? 0.2 : 0.55, studio === "circuit" ? 0 : -0.1);
     this.orbit.update();
+    this.cameraTween = null;
+    if (this.studHighlights) for (const mesh of Object.values(this.studHighlights)) mesh.visible = false;
+    if (this.flowMarkers) this.flowMarkers.visible = this.flowEnabled && this.flowWires.length > 0 && studio === "circuit";
+    // The Snapino bench fills the free view (the panels' insets are applied by then).
+    if (studio === "snapino") requestAnimationFrame(() => this.activeStudio === "snapino" && this.viewPreset("bench"));
     this.evaluateCurrentSystem();
     if (announce) {
       this.events.onStatus(
@@ -452,17 +511,336 @@ export class DesktopWorkbenchScene {
     this.select(component);
   }
 
+  /** Frame the selected part: fit its bounds in the free view, keeping the viewing direction. */
   focusSelected(): void {
     if (!this.selected) return;
-    const target = this.selected.getWorldPosition(new Vector3());
-    target.y = Math.max(target.y, BOARD_SURFACE + 0.2);
-    const offset = this.camera.position.clone().sub(this.orbit.target).normalize().multiplyScalar(3.1);
+    const box = new Box3().setFromObject(this.selected);
+    // Never closer than a comfortable look at one part, so its studs stay in frame.
+    box.expandByScalar(0.18);
+    const direction = this.camera.position.clone().sub(this.orbit.target).normalize();
+    const fit = this.fitBox(box, direction, 0.7);
+    this.moveCamera(fit.position, fit.target);
+  }
+
+  /**
+   * Camera presets: the bench (snap base and Snapino carrier filling the free view), a top view
+   * (rows A–G top to bottom, columns 1–9 left to right, as the diagram names studs), the whole
+   * table with the parts tray, and the receiver's view of the lamp.
+   */
+  viewPreset(preset: CameraPreset): void {
+    if (preset === "receiver") {
+      const from = { position: this.camera.position.clone(), target: this.orbit.target.clone() };
+      this.viewForReceiver();
+      const to = { position: this.camera.position.clone(), target: this.orbit.target.clone() };
+      this.camera.position.copy(from.position);
+      this.orbit.target.copy(from.target);
+      this.moveCamera(to.position, to.target);
+      return;
+    }
+    const snap = this.activeStudio === "snap" || this.activeStudio === "snapino";
+    if (!snap) {
+      this.resetView();
+      return;
+    }
+    const bench = new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.75, 2.01));
+    if (preset === "table") bench.union(new Box3(new Vector3(2.33, 0, -2.85), new Vector3(4.78, 0.5, 2.85)));
+    const direction = preset === "top"
+      ? new Vector3(0, Math.cos(MathUtils.degToRad(13)), Math.sin(MathUtils.degToRad(13)))
+      : new Vector3(0.52, 0.62, 0.79).normalize();
+    const fit = this.fitBox(bench, direction, preset === "top" ? 0.9 : 0.92);
+    this.moveCamera(fit.position, fit.target);
+  }
+
+  /**
+   * The camera position (along `direction` from the box centre) at which every corner of `box`
+   * projects inside the part of the canvas the panels leave free, with `fill` of that space.
+   */
+  private fitBox(box: Box3, direction: Vector3, fill: number): { position: Vector3; target: Vector3 } {
+    const target = box.getCenter(new Vector3());
+    const savedPosition = this.camera.position.clone();
+    const savedQuaternion = this.camera.quaternion.clone();
+    const width = Math.max(this.host.clientWidth, 1);
+    const xMin = -1 + (2 * this.viewInsets.left) / width;
+    const xMax = 1 - (2 * this.viewInsets.right) / width;
+    const xMid = (xMin + xMax) / 2;
+    const xHalf = ((xMax - xMin) / 2) * fill;
+    const yHalf = fill;
+    const corner = new Vector3();
+    const fits = (distance: number): boolean => {
+      this.camera.position.copy(target).addScaledVector(direction, distance);
+      this.camera.lookAt(target);
+      this.camera.updateMatrixWorld(true);
+      for (let index = 0; index < 8; index += 1) {
+        corner.set(index & 1 ? box.max.x : box.min.x, index & 2 ? box.max.y : box.min.y, index & 4 ? box.max.z : box.min.z).project(this.camera);
+        if (Math.abs(corner.x - xMid) > xHalf || Math.abs(corner.y) > yHalf || corner.z > 1) return false;
+      }
+      return true;
+    };
+    let low = this.orbit.minDistance;
+    let high = this.orbit.maxDistance;
+    if (!fits(high)) low = high;
+    for (let step = 0; step < 22 && high - low > 0.01; step += 1) {
+      const middle = (low + high) / 2;
+      if (fits(middle)) high = middle;
+      else low = middle;
+    }
+    this.camera.position.copy(savedPosition);
+    this.camera.quaternion.copy(savedQuaternion);
+    this.camera.updateMatrixWorld(true);
+    return { position: target.clone().addScaledVector(direction, high), target };
+  }
+
+  private moveCamera(position: Vector3, target: Vector3): void {
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (reduced) {
+      this.cameraTween = null;
+      this.camera.position.copy(position);
+      this.orbit.target.copy(target);
+      this.orbit.update();
+      return;
+    }
+    this.cameraTween = { fromPosition: this.camera.position.clone(), fromTarget: this.orbit.target.clone(), toPosition: position.clone(), toTarget: target.clone(), start: performance.now(), duration: 420 };
+  }
+
+  private stepCameraTween(now: number): void {
+    const tween = this.cameraTween;
+    if (!tween) return;
+    const t = Math.min(1, (now - tween.start) / tween.duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    this.camera.position.lerpVectors(tween.fromPosition, tween.toPosition, eased);
+    this.orbit.target.lerpVectors(tween.fromTarget, tween.toTarget, eased);
+    if (t >= 1) this.cameraTween = null;
+  }
+
+  /**
+   * QA composition metric: where the snap base and carrier appear on screen (client px), and the
+   * free view left between the panels. Corners of the bench box projected with the live camera.
+   */
+  benchScreenRect(): { bench: { x: number; y: number; width: number; height: number }; free: { x: number; width: number; height: number } } {
+    const box = new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.3, 2.01));
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    this.camera.updateMatrixWorld(true);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const corner = new Vector3();
+    for (let index = 0; index < 8; index += 1) {
+      corner.set(index & 1 ? box.max.x : box.min.x, index & 2 ? box.max.y : box.min.y, index & 4 ? box.max.z : box.min.z).project(this.camera);
+      const x = canvas.left + ((corner.x + 1) / 2) * canvas.width;
+      const y = canvas.top + ((1 - corner.y) / 2) * canvas.height;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    return {
+      bench: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+      free: { x: canvas.left + this.viewInsets.left, width: canvas.width - this.viewInsets.left - this.viewInsets.right, height: canvas.height },
+    };
+  }
+
+  /** Where the camera is looking from and at (QA: preset framing checks). */
+  cameraState(): { position: [number, number, number]; target: [number, number, number]; moving: boolean } {
+    const position = this.cameraTween?.toPosition ?? this.camera.position;
+    const target = this.cameraTween?.toTarget ?? this.orbit.target;
+    return { position: [position.x, position.y, position.z], target: [target.x, target.y, target.z], moving: Boolean(this.cameraTween) };
+  }
+
+  /**
+   * Snapino inspector cross-link: rings around the given studs (both nets of the selected part,
+   * its own two studs larger). Plain printed-style rings, depth-tested, no additive glow.
+   */
+  /** QA: a jumper's two ends in world space (end A = the element's lead a). */
+  wireEnds(id: string): [[number, number, number], [number, number, number]] | null {
+    const component = this.components.get(id);
+    const spec = component?.userData.spec as ComponentSpec | undefined;
+    if (!component || spec?.kind !== "wire") return null;
+    const [a, b] = this.getEndpointWorldPositions(component);
+    return [[a.x, a.y, a.z], [b.x, b.y, b.z]];
+  }
+
+  /** Circuit Bench: show or hide the solved-current arrows on the jumper wires. */
+  setCurrentFlow(enabled: boolean): void {
+    this.flowEnabled = enabled;
+    if (enabled && !this.flowMarkers) {
+      const geometry = new ConeGeometry(0.034, 0.1, 12);
+      const material = new MeshBasicMaterial({ name: "current_flow_arrow", color: 0xfbbf24, depthWrite: true });
+      this.flowMarkers = new InstancedMesh(geometry, material, 12);
+      this.flowMarkers.name = "current_flow_arrows";
+      this.flowMarkers.count = 0;
+      this.flowMarkers.userData.noPick = true;
+      this.flowMarkers.frustumCulled = false;
+      this.circuitGroup.add(this.flowMarkers);
+    }
+    if (!enabled && this.flowMarkers) {
+      this.flowMarkers.count = 0;
+      this.flowMarkers.visible = false;
+    }
+    this.flowPhase = 0;
+    this.recomputeFlow();
+  }
+
+  /** What the flow view shows (inspector note and QA). */
+  currentFlowState(): { enabled: boolean; reason: string; wires: Array<{ id: string; amps: number; direction: 1 | -1 }>; small: Array<{ id: string; amps: number }>; arrows: number; moving: boolean; first: [number, number, number] | null; firstPointsTo: [number, number, number] | null } {
+    let first: [number, number, number] | null = null;
+    let firstPointsTo: [number, number, number] | null = null;
+    if (this.flowMarkers?.visible && this.flowMarkers.count > 0) {
+      const matrix = new Matrix4();
+      this.flowMarkers.getMatrixAt(0, matrix);
+      const position = new Vector3().setFromMatrixPosition(matrix);
+      const axis = new Vector3(0, 1, 0).applyQuaternion(new Quaternion().setFromRotationMatrix(matrix));
+      first = [position.x, position.y, position.z];
+      firstPointsTo = [axis.x, axis.y, axis.z];
+    }
+    return {
+      first,
+      firstPointsTo,
+      enabled: this.flowEnabled,
+      reason: this.flowReason,
+      wires: this.flowWires.map(({ id, amps, direction }) => ({ id, amps, direction })),
+      small: this.flowSmall.map((wire) => ({ ...wire })),
+      arrows: this.flowMarkers?.visible ? this.flowMarkers.count : 0,
+      moving: this.flowEnabled && this.flowWires.length > 0 && !(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false),
+    };
+  }
+
+  private recomputeFlow(): void {
+    this.flowWires = [];
+    this.flowSmall = [];
+    const analysis = this.circuitAnalysis;
+    if (!this.flowEnabled) this.flowReason = "off";
+    else {
+      const plan = planFlow(analysis ? analysis.board.result : null, Boolean(analysis?.short), ["wire-red", "wire-blue", "wire-yellow"]);
+      this.flowWires = plan.wires;
+      this.flowSmall = plan.small;
+      this.flowReason = plan.reason;
+    }
+    if (this.flowMarkers) {
+      this.flowMarkers.count = this.flowWires.length * 4;
+      this.flowMarkers.visible = this.flowEnabled && this.flowWires.length > 0 && this.activeStudio === "circuit";
+      this.placeFlowMarkers(0);
+    }
+  }
+
+  /** Arrowheads along each wire's curve, pointing with the current; they glide unless reduced motion. */
+  private placeFlowMarkers(seconds: number): void {
+    const markers = this.flowMarkers;
+    if (!markers || !markers.visible) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (!reduced) this.flowPhase = (this.flowPhase + seconds) % 1000;
+    const { point, tangent, up, quaternion, worldQuaternion, dummy } = this.flowTemp;
+    let index = 0;
+    for (const wire of this.flowWires) {
+      const component = this.components.get(wire.id);
+      const curve = component?.userData.wireCurve as CatmullRomCurve3 | undefined;
+      if (!component || !curve) continue;
+      component.updateMatrixWorld();
+      component.getWorldQuaternion(worldQuaternion);
+      for (let k = 0; k < 4; k += 1) {
+        const along = (k / 4 + (reduced ? 0.125 : this.flowPhase * wire.speed)) % 1;
+        const t = 0.08 + 0.84 * (wire.direction === 1 ? along : 1 - along);
+        curve.getPointAt(t, point);
+        curve.getTangentAt(t, tangent).multiplyScalar(wire.direction);
+        component.localToWorld(point);
+        tangent.applyQuaternion(worldQuaternion).normalize();
+        quaternion.setFromUnitVectors(up, tangent);
+        // Lift the arrow just outside the insulation so it reads against the wire.
+        dummy.position.copy(point).addScaledVector(up, 0.045);
+        dummy.quaternion.copy(quaternion);
+        dummy.updateMatrix();
+        markers.setMatrixAt(index, dummy.matrix);
+        index += 1;
+      }
+    }
+    markers.count = index;
+    markers.instanceMatrix.needsUpdate = true;
+  }
+
+  /** QA: the studs highlighted right now. */
+  studHighlightState(): StudHighlight[] {
+    const shown = this.studHighlights && Object.values(this.studHighlights).some((mesh) => mesh.visible);
+    return shown ? this.lastStudHighlights.map((entry) => ({ ...entry })) : [];
+  }
+
+  setStudHighlights(highlights: StudHighlight[]): void {
+    this.lastStudHighlights = highlights.filter((entry) => this.snapSockets[entry.socket]).map((entry) => ({ ...entry }));
+    const meshes = this.studHighlights;
+    if (!meshes) return;
+    const dummy = new Object3D();
+    for (const tone of Object.keys(meshes) as NetTone[]) {
+      const mesh = meshes[tone];
+      let count = 0;
+      for (const highlight of highlights) {
+        const socket = this.snapSockets[highlight.socket];
+        if (!socket || highlight.tone !== tone) continue;
+        dummy.position.set(socket.x, SNAP_PLATE_TOP + 0.012, socket.z);
+        dummy.rotation.set(-Math.PI / 2, 0, 0);
+        dummy.scale.setScalar(highlight.terminal ? 1.3 : 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(count, dummy.matrix);
+        count += 1;
+      }
+      mesh.count = count;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.visible = count > 0 && this.activeStudio === "snapino";
+    }
+  }
+
+  /**
+   * Rescue Signal receiver's view: from across the table, framed on the Snapino lamp (or LED)
+   * that is seated, at a distance where the light is the thing to watch.
+   */
+  viewForReceiver(): void {
+    const target = new Vector3(0, BOARD_SURFACE + 0.25, -0.1);
+    for (const id of ["sno-l1", "sno-d1"]) {
+      const component = this.components.get(id);
+      const sockets = component?.userData.sockets as EndpointSockets | undefined;
+      if (component && this.isFullyConnected(sockets)) {
+        component.getWorldPosition(target);
+        target.y = Math.max(target.y, BOARD_SURFACE + 0.2);
+        break;
+      }
+    }
     this.orbit.target.copy(target);
-    this.camera.position.copy(target).add(offset);
+    this.camera.position.set(target.x - 2.2, target.y + 1.5, target.z - 3.4);
     this.orbit.update();
   }
 
+  /** World position of a part's group (visual QA framing), or null if it isn't on this bench. */
+  partWorldPosition(id: string): [number, number, number] | null {
+    const component = this.components.get(id);
+    if (!component) return null;
+    const position = component.getWorldPosition(new Vector3());
+    return [position.x, position.y, position.z];
+  }
+
+  /**
+   * Visual QA: where a part's glowing surfaces (the lamp's bulb, the LED's dome) — or the whole
+   * part — appear on screen, in client CSS pixels. Used to crop screenshots for pixel checks.
+   */
+  partScreenRect(id: string): { x: number; y: number; width: number; height: number } | null {
+    const component = this.components.get(id);
+    if (!component) return null;
+    const glowing = new Set((component.userData.glowMaterials ?? []) as MeshStandardMaterial[]);
+    const box = new Box3();
+    component.updateMatrixWorld(true);
+    component.traverse((child) => {
+      if (child instanceof Mesh && (!glowing.size || glowing.has(child.material as MeshStandardMaterial))) box.expandByObject(child);
+    });
+    if (box.isEmpty()) box.setFromObject(component);
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const corner = new Vector3();
+    for (let index = 0; index < 8; index += 1) {
+      corner.set(index & 1 ? box.max.x : box.min.x, index & 2 ? box.max.y : box.min.y, index & 4 ? box.max.z : box.min.z).project(this.camera);
+      const x = canvas.left + ((corner.x + 1) / 2) * canvas.width;
+      const y = canvas.top + ((1 - corner.y) / 2) * canvas.height;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+
   resetView(): void {
+    if (this.activeStudio === "snapino") {
+      this.viewPreset("bench");
+      return;
+    }
+    this.cameraTween = null;
     this.camera.position.set(this.activeStudio === "circuit" ? 6.4 : 7.2, this.activeStudio === "circuit" ? 6.1 : 5.8, this.activeStudio === "circuit" ? 7.7 : 8.6);
     this.orbit.target.set(this.activeStudio === "circuit" ? 0.1 : 0, this.activeStudio === "circuit" ? 0.2 : 0.55, this.activeStudio === "circuit" ? 0 : -0.1);
     this.orbit.update();
@@ -956,6 +1334,12 @@ export class DesktopWorkbenchScene {
   dispose(): void {
     this.remoteHands.dispose();
     this.remoteTweens.clear();
+    if (this.flowMarkers) {
+      this.flowMarkers.geometry.dispose();
+      (this.flowMarkers.material as Material).dispose();
+      this.flowMarkers.removeFromParent();
+      this.flowMarkers = null;
+    }
     this.resizeObserver.disconnect();
     this.renderer.setAnimationLoop(null);
     this.renderer.domElement.removeEventListener("pointerdown", this.onPointerDown, true);
@@ -1595,6 +1979,7 @@ export class DesktopWorkbenchScene {
     base.add(studs);
     this.snapBaseGroup.userData.proceduralBase = base;
     this.snapBaseGroup.add(base);
+    this.addStudCollars();
     // Snapino board (procedural stand-in until the Blender model loads): carrier + pads on row B
     const board = new Group();
     board.position.x = BOARD_X;
@@ -1609,6 +1994,81 @@ export class DesktopWorkbenchScene {
     board.add(nano);
     this.snapinoGroup.userData.proceduralBoard = board;
     this.snapinoGroup.add(board);
+  }
+
+  /**
+   * Socket depth: a shaded collar where each stud leaves the plate (dark at the stud, fading to
+   * the plate's tone), so studs read as seated in the base rather than floating on it. One
+   * instanced draw call for all 63. Also creates the (hidden) inspector highlight rings.
+   */
+  private addStudCollars(): void {
+    const collarGeometry = new RingGeometry(0.05, 0.088, 32, 1);
+    const colors: number[] = [];
+    const position = collarGeometry.getAttribute("position");
+    const inner = new Color(0x5d6875);
+    const outer = new Color(0xc9d4dc);
+    for (let index = 0; index < position.count; index += 1) {
+      const radius = Math.hypot(position.getX(index), position.getY(index));
+      const mix = MathUtils.clamp((radius - 0.05) / 0.038, 0, 1);
+      const color = inner.clone().lerp(outer, mix);
+      colors.push(color.r, color.g, color.b);
+    }
+    collarGeometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    const collars = new InstancedMesh(
+      collarGeometry,
+      new MeshStandardMaterial({ name: "stud_collar", vertexColors: true, roughness: 0.55, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      SNAP_COLS * SNAP_ROWS,
+    );
+    collars.name = "stud_collars";
+    const dummy = new Object3D();
+    this.snapSockets.forEach((socket, index) => {
+      dummy.position.set(socket.x, SNAP_PLATE_TOP + 0.0015, socket.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      collars.setMatrixAt(index, dummy.matrix);
+    });
+    collars.instanceMatrix.needsUpdate = true;
+    collars.receiveShadow = true;
+    collars.userData.noPick = true;
+    this.snapBaseGroup.add(collars);
+
+    const ring = (tone: NetTone): InstancedMesh => {
+      const style = NET_TONES[tone];
+      const mesh = new InstancedMesh(
+        ringPattern(style.pattern),
+        new MeshBasicMaterial({ name: `stud_highlight_${tone}`, color: style.hex, transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+        SNAP_COLS * SNAP_ROWS,
+      );
+      mesh.name = `stud_highlights_${tone}`;
+      mesh.count = 0;
+      mesh.visible = false;
+      mesh.renderOrder = 3;
+      mesh.userData.noPick = true;
+      this.snapBaseGroup.add(mesh);
+      return mesh;
+    };
+    this.studHighlights = { a: ring("a"), b: ring("b"), fault: ring("fault") };
+  }
+
+  /**
+   * The GLB base prints its row letters and column numbers at 0.09 units, too small to read
+   * from the default camera. Enlarge them in their margins and print them darker than the grid
+   * lines, so the stud names the inspector uses (B-4, D-7…) can be found on the board.
+   */
+  private enlargeGridLabels(base: Object3D): void {
+    const label = new MeshStandardMaterial({ name: "grid_label", color: 0x334155, roughness: 0.7, metalness: 0 });
+    base.traverse((child) => {
+      if (!(child instanceof Mesh)) return;
+      if (/^snap_row\d+_text$/.test(child.name)) {
+        child.scale.multiplyScalar(1.9);
+        child.position.x = -2.13;
+        child.material = label;
+      } else if (/^snap_col\d+_text$/.test(child.name)) {
+        child.scale.multiplyScalar(2.0);
+        child.position.z = 1.76;
+        child.material = label;
+      }
+    });
   }
 
   private setupSnapMarkers(): void {
@@ -1865,7 +2325,10 @@ export class DesktopWorkbenchScene {
         });
         procedural.visible = false;
         group.add(detailed);
+        if (name === "snap_base") this.enlargeGridLabels(detailed);
         if (name === "snapino_board") this.addSnapinoSilkscreen(detailed);
+        // The base and carrier never move: one draw call per material instead of one per mesh.
+        mergeStaticMeshes(detailed);
       }
       this.evaluateCurrentSystem();
       if (this.selected) this.selectionBox.setFromObject(this.selected);
@@ -2446,6 +2909,7 @@ export class DesktopWorkbenchScene {
         end.clone(),
       ]);
     }
+    component.userData.wireCurve = curve;
     body.geometry.dispose();
     body.geometry = new TubeGeometry(curve, spec.kind === "hose" ? 52 : 64, spec.kind === "hose" ? 0.075 : WIRE_RADIUS, spec.kind === "hose" ? 14 : 12, false);
     const tipOffset = spec.kind === "hose" ? -0.14 : WIRE_TIP_CENTER;
@@ -2518,6 +2982,7 @@ export class DesktopWorkbenchScene {
       this.applyLedGlow(led, brightness, burnt ? 0 : 1);
     }
     const powered = analysis.powered;
+    this.recomputeFlow();
     this.events.onCircuitState(powered);
     this.events.onCircuitAnalysis?.(analysis);
     if (announce) {
@@ -2663,10 +3128,38 @@ export class DesktopWorkbenchScene {
     return powered;
   }
 
-  /** Pin levels come from the running program (main.ts drives a SnapinoRunner). */
+  /** The Snapino parts' placements and switch state, as the shared circuit model reads them. */
+  snapinoBench(): SnapinoBench {
+    const bench: SnapinoBench = {};
+    for (const spec of SNAPINO_COMPONENTS) {
+      const component = this.components.get(spec.id);
+      if (!component) continue;
+      const sockets = component.userData.sockets as EndpointSockets;
+      bench[spec.id] = { sockets: this.isFullyConnected(sockets) ? [sockets[0], sockets[1]] : null, ...(spec.kind === "snapswitch" ? { on: Boolean(component.userData.switchOn) } : {}) };
+    }
+    return bench;
+  }
+
+  /** Pin levels come from the running program (main.ts drives a SnapinoRunner) or a transmission. */
+  /**
+   * QA only (`?qa`): stop or resume drawing this page. Software-rendered test pages share a few CPU
+   * cores; a page whose frames are not under test can stand aside while another page is sampled.
+   * Nothing else stops: room traffic, clocks and timers keep running, and no frame is logged.
+   */
+  setQaDrawing(enabled: boolean): void {
+    this.qaDrawingPaused = !enabled;
+  }
+
+  private qaDrawingPaused = false;
+
   setSnapinoPins(pins: PinStates): void {
     this.snapinoPins = { ...pins };
     if (this.activeStudio === "snapino") this.evaluateSnapino();
+  }
+
+  /** Snapino loads the scene is showing as running right now (lit lamp/LED, spinning motor). */
+  snapinoRunning(): string[] {
+    return [...this.snapinoRunningLoads];
   }
 
   /** D2 reads HIGH when S1 (or a wire) bridges it to the 5V pad. */
@@ -2679,41 +3172,12 @@ export class DesktopWorkbenchScene {
    * program set HIGH) and the other end reaches GND. 5V straight to GND is a short.
    */
   private evaluateSnapino(announce = false): boolean {
-    const parent = Array.from(this.snapSockets, (_, index) => index);
-    const find = (value: number): number => {
-      while (parent[value] !== value) {
-        parent[value] = parent[parent[value]];
-        value = parent[value];
-      }
-      return value;
-    };
     const part = (id: string): Group => this.components.get(id)!;
     const socketsOf = (id: string): EndpointSockets => part(id).userData.sockets as EndpointSockets;
-    for (const spec of SNAPINO_COMPONENTS) {
-      const sockets = socketsOf(spec.id);
-      if (!this.isFullyConnected(sockets)) continue;
-      if (spec.kind === "snapwire" || (spec.kind === "snapswitch" && part(spec.id).userData.switchOn)) {
-        parent[find(sockets[0])] = find(sockets[1]);
-      }
-    }
-    const vcc = find(SNAPINO_PADS["5V"]);
-    const gnd = find(SNAPINO_PADS.GND);
-    const short = vcc === gnd;
-    this.snapinoInputHigh = !short && find(SNAPINO_PADS.D2) === vcc;
-    const pinShort = OUTPUT_PINS.find((pin) => this.snapinoPins[pin] && find(SNAPINO_PADS[pin]) === gnd);
-    const high = (net: number): boolean =>
-      net === vcc || OUTPUT_PINS.some((pin) => this.snapinoPins[pin] && find(SNAPINO_PADS[pin]) === net);
-
-    const running = new Set<string>();
-    if (!short) {
-      for (const id of SNAPINO_LOADS) {
-        const sockets = socketsOf(id);
-        if (!this.isFullyConnected(sockets)) continue;
-        const a = find(sockets[0]);
-        const b = find(sockets[1]);
-        if ((high(a) && b === gnd) || (high(b) && a === gnd)) running.add(id);
-      }
-    }
+    // One model for the lamp the learner sees and for the episode's signal (snapino-circuit.ts).
+    const { short, inputHigh, pinShort, running } = analyzeSnapino(this.snapinoBench(), this.snapinoPins);
+    this.snapinoInputHigh = inputHigh;
+    this.snapinoRunningLoads = [...running];
     for (const id of ["sno-l1", "sno-d1"]) {
       const load = part(id);
       for (const material of (load.userData.glowMaterials ?? []) as MeshStandardMaterial[]) {
@@ -2745,6 +3209,7 @@ export class DesktopWorkbenchScene {
             : "Program is running · check that each load's other end reaches GND";
       this.events.onStatus(message, powered ? "valid" : "warning");
     }
+    this.events.onSnapinoChange?.();
     return powered;
   }
 
@@ -2939,7 +3404,13 @@ export class DesktopWorkbenchScene {
     }
   }
 
+  /** Runs first in every frame (the Rescue Signal transmission drives the bench pins here). */
+  beforeFrame: (() => void) | null = null;
+
   private readonly render = (): void => {
+    if (this.qaDrawingPaused) return;
+    this.beforeFrame?.();
+    if (this.cameraTween) this.stepCameraTween(performance.now());
     this.orbit.update();
     const now = performance.now();
     const frameSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);
@@ -2947,6 +3418,7 @@ export class DesktopWorkbenchScene {
     if (this.remoteTweens.size) this.stepRemoteTweens(frameSeconds);
     this.remoteHands.update(this.camera);
     if (this.ledFlashes.size) this.stepLedFlashes(now);
+    if (this.flowEnabled && this.flowWires.length && this.activeStudio === "circuit") this.placeFlowMarkers(frameSeconds);
     if (this.selected) {
       const indicators = (this.selected.userData.endpointIndicators ?? []) as Mesh[];
       const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.09;
@@ -3091,4 +3563,38 @@ export function defaultQuality(): RenderQuality {
   const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
   if (coarse || cores <= 2) return "low";
   return "medium";
+}
+
+
+/**
+ * Merges a static model's meshes that share a material (and attribute layout) into one mesh
+ * each, baking their transforms relative to `root`. Used for the Snap/Snapino base and carrier
+ * GLBs, which are hundreds of separate meshes but never move or get picked individually.
+ */
+function mergeStaticMeshes(root: Object3D): void {
+  root.updateMatrixWorld(true);
+  const inverse = root.matrixWorld.clone().invert();
+  type Bucket = { material: Material; geometries: BufferGeometry[]; meshes: Mesh[] };
+  const buckets = new Map<string, Bucket>();
+  root.traverse((child) => {
+    if (!(child instanceof Mesh) || Array.isArray(child.material) || child instanceof InstancedMesh) return;
+    const geometry = child.geometry as BufferGeometry;
+    const key = `${child.material.uuid}|${Object.keys(geometry.attributes).sort().join(",")}|${geometry.index ? "i" : "n"}`;
+    const bucket: Bucket = buckets.get(key) ?? { material: child.material as Material, geometries: [], meshes: [] };
+    const baked = geometry.clone();
+    baked.applyMatrix4(child.matrixWorld.clone().premultiply(inverse));
+    bucket.geometries.push(baked);
+    bucket.meshes.push(child);
+    buckets.set(key, bucket);
+  });
+  for (const bucket of buckets.values()) {
+    if (bucket.meshes.length < 2) continue;
+    const merged = mergeGeometries(bucket.geometries, false);
+    if (!merged) continue;
+    for (const mesh of bucket.meshes) mesh.removeFromParent();
+    const mesh = new Mesh(merged, bucket.material);
+    mesh.receiveShadow = true;
+    mesh.name = `merged_${bucket.material.name || "static"}`;
+    root.add(mesh);
+  }
 }

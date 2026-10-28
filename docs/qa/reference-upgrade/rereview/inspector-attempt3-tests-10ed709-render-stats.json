@@ -1,0 +1,37 @@
+{
+ "bench": {
+  "calls": 552,
+  "triangles": 98122,
+  "geometries": 307,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "top": {
+  "calls": 482,
+  "triangles": 95906,
+  "geometries": 313,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "table": {
+  "calls": 740,
+  "triangles": 109282,
+  "geometries": 391,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "receiver": {
+  "calls": 367,
+  "triangles": 86026,
+  "geometries": 400,
+  "textures": 13,
+  "pixelRatio": 0.75
+ },
+ "fit": {
+  "calls": 413,
+  "triangles": 86762,
+  "geometries": 400,
+  "textures": 13,
+  "pixelRatio": 0.7
+ }
+}

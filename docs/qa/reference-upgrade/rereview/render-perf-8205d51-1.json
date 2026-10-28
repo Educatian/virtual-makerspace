@@ -1,0 +1,16 @@
+{
+ "label": "8205d51",
+ "pages": [
+  {
+   "frames": 14,
+   "seconds": 93.552,
+   "stats": {
+    "calls": 533,
+    "triangles": 94938,
+    "geometries": 288,
+    "textures": 13,
+    "pixelRatio": 1
+   }
+  }
+ ]
+}

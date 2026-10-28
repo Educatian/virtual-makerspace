@@ -1,0 +1,17 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: A · no 'already matches' while the room's resistor is in the tray — ["So the current has to come back to the battery. Got it.","So the resistor keeps too much current from reaching the LED. Got it.","The board already matches how I'd build it."]
+    at ok (file://<repo>/scripts/ai-teammate-sync-check.mjs:156:65)
+    at file://<repo>/scripts/ai-teammate-sync-check.mjs:237:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v22.22.0
+exit 1

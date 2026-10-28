@@ -53,6 +53,8 @@ export interface TeammateHost {
   studio(): StudioChoice;
   phase(): CollaborationPhase;
   transforms(): Record<string, SharedTransform>;
+  /** The room revision of a part as the host's board last applied it (0 if never). */
+  revOf(componentId: string): number;
   placementTransform(componentId: string, sockets: SocketPair): SharedTransform | null;
   homeTransform(componentId: string): SharedTransform | null;
   yieldComponent(componentId: string): void;
@@ -73,6 +75,10 @@ export interface TeammateOptions {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
+/** How long a build waits for the host's board to show what Bolt's own connection has seen. */
+const HOST_SYNC_WAIT_MS = 8000;
+/** Builds retried while the host's board stays behind, before Bolt asks a person to look. */
+const HOST_SYNC_RETRIES = 3;
 
 export class AiTeammate {
   readonly room: DesktopRoom;
@@ -302,8 +308,73 @@ export class AiTeammate {
     }
   }
 
+  /**
+   * What each build did with each part (bounded): whether the claim was granted, refused or timed
+   * out, whether the release was accepted, and why a build ended. Read by QA tests; it changes
+   * nothing Bolt does.
+   */
+  readonly buildLog: Array<{ run: number; at: number; part?: string; claim?: "granted" | "refused" | "timeout" | "held-by-other"; release?: "accepted" | "refused"; event?: string }> = [];
+
+  private logBuild(entry: Omit<AiTeammate["buildLog"][number], "at">): void {
+    this.buildLog.push({ ...entry, at: Date.now() });
+    if (this.buildLog.length > 200) this.buildLog.shift();
+  }
+
+  /**
+   * One part at a time, across builds: a newer build waits until the move an older one is making
+   * (claim, carry, release) has finished. The room client keeps one hold per part, so two holds of
+   * the same part by Bolt (an old build's and the new one's) made one release come back refused:
+   * Bolt then counted a part it had placed as skipped and said someone was holding it.
+   */
+  private partLock: Promise<void> = Promise.resolve();
+  /** Consecutive builds that found the host's board behind Bolt's own connection. */
+  private hostSyncRetries = 0;
+
+  /**
+   * Parts whose newest room revision Bolt's own connection knows but the host's board has not
+   * applied yet. Bolt plans from the host's board, and its own moves are acknowledged on its own
+   * connection first: planning before the host has them could call a board finished that the room
+   * no longer has (a delayed host copy of Bolt's earlier accepted move).
+   */
+  private hostBehind(): string[] {
+    const behind: string[] = [];
+    for (const [componentId, rev] of this.room.sync.revs) {
+      if (!CIRCUIT_IDS.includes(componentId.split("::")[0])) continue;
+      if (this.host.revOf(componentId) < rev) behind.push(componentId);
+    }
+    return behind;
+  }
+
+  /** Waits (bounded) until the host's board shows everything Bolt's connection has seen. */
+  private async hostCaughtUp(run: number): Promise<string[]> {
+    const deadline = Date.now() + HOST_SYNC_WAIT_MS;
+    let behind = this.hostBehind();
+    while (behind.length && !this.disposed && run === this.buildRun && Date.now() < deadline) {
+      await sleep(250);
+      behind = this.hostBehind();
+    }
+    return behind;
+  }
+
   private async runBuild(run: number, superseding: boolean): Promise<void> {
     if (this.host.studio() !== "circuit" || this.room.participant.role !== "builder") return;
+    const behind = await this.hostCaughtUp(run);
+    if (this.disposed || run !== this.buildRun) return;
+    if (behind.length) {
+      // Never plan (or call the board finished) from a board that misses accepted moves.
+      this.logBuild({ run, event: `not planned: the host's board is behind on ${behind.join(", ")}` });
+      this.builtByBolt = false;
+      this.workDone = false;
+      this.buildAnnounced = false;
+      if (this.hostSyncRetries < HOST_SYNC_RETRIES) {
+        this.hostSyncRetries += 1;
+        this.scheduleBuild(3000);
+      } else {
+        this.sayOnce("host-behind", "I can't see the board's latest state yet, so I can't tell whether it matches my plan. Could you check it?");
+      }
+      return;
+    }
+    this.hostSyncRetries = 0;
     const current = this.placements();
     const plan = planCircuitLayout(this.mind.layoutBeliefs());
     const planned = new Map(plan.map((part) => [part.id, part.sockets] as const));
@@ -340,50 +411,100 @@ export class AiTeammate {
     if (this.disposed || run !== this.buildRun) return;
     this.room.setActivity("moving", "Building its plan");
 
-    let skipped = 0;
+    let held = 0;
+    let unconfirmed = 0;
+    this.logBuild({ run, event: `build started (${moves.length} moves${superseding ? ", superseding" : ""})` });
     for (const move of moves) {
-      if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") return;
-      if (this.host.isHeldByOther(move.id)) {
-        skipped += 1;
-        continue;
-      }
-      const name = partLabel(move.id);
-      this.host.yieldComponent(move.id);
-      // Grab (the host renders Bolt's hand on the part), carry, then let go. Bolt follows the
-      // room's claim rules like anyone: a refused claim means someone got there first.
-      const granted = await Promise.race([this.room.claim(move.id), sleep(4000).then(() => false)]);
-      if (this.disposed) return;
-      if (!granted) {
-        this.room.abandon(move.id);
-        skipped += 1;
-        continue;
-      }
-      this.trace("claim", { objectId: move.id, objectName: name });
-      await sleep(650);
-      if (this.disposed) return;
-      if (run !== this.buildRun) {
-        void this.room.release(move.id);
+      if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") {
+        this.logBuild({ run, event: this.disposed ? "ended: disposed" : run !== this.buildRun ? "ended: superseded by a newer build" : "ended: studio changed" });
         return;
       }
-      this.room.sendTransform(move.id, move.transform);
-      await sleep(900);
-      if (this.disposed) return;
-      const accepted = await this.room.release(move.id);
-      if (this.disposed) return;
-      if (accepted) this.trace("move", { objectId: move.id, objectName: name });
-      else skipped += 1;
+      let unlock!: () => void;
+      const previous = this.partLock;
+      this.partLock = new Promise<void>((resolve) => { unlock = resolve; });
+      // A move that never settles (a stalled connection) is not moved past: this build stops
+      // unconfirmed, and later builds still wait for that move (this slot opens only after it).
+      const settled = await Promise.race([previous.then(() => true), sleep(15_000).then(() => false)]);
+      if (!settled) {
+        void previous.then(unlock);
+        this.logBuild({ run, event: "ended: the previous move did not settle within 15 s" });
+        this.builtByBolt = false;
+        this.workDone = false;
+        this.buildAnnounced = false;
+        void this.say("My last move hasn't been confirmed yet, so I've stopped. Please check the board.");
+        return;
+      }
+      let outcome: "moved" | "held" | "unconfirmed" | "stop";
+      try {
+        outcome = await this.movePart(run, move);
+      } finally {
+        unlock();
+      }
+      if (outcome === "stop") return;
+      if (outcome === "held") held += 1;
+      if (outcome === "unconfirmed") unconfirmed += 1;
       await sleep(350);
     }
-    if (this.disposed || run !== this.buildRun) return;
+    if (this.disposed || run !== this.buildRun) {
+      this.logBuild({ run, event: "ended: superseded after its last move" });
+      return;
+    }
+    const skipped = held + unconfirmed;
+    this.logBuild({ run, event: `built (${skipped} skipped${skipped ? `: ${held} held, ${unconfirmed} unconfirmed` : ""})` });
 
     this.said.add("built");
     this.buildAnnounced = false;
     this.builtByBolt = skipped === 0;
     this.workDone = true;
-    this.host.saveAttempt(`${AI_TEAMMATE_NAME} built its plan`);
-    void this.say(skipped
-      ? "Someone was holding a part, so I left it. Have a look, then we can test."
-      : "Done. Have a look, then we can test.");
+    this.host.saveAttempt(skipped ? `${AI_TEAMMATE_NAME} built part of its plan` : `${AI_TEAMMATE_NAME} built its plan`);
+    void this.say(unconfirmed
+      ? "The room didn't confirm one of my moves, so please check the board. Have a look, then we can test."
+      : held
+        ? "Someone was holding a part, so I left it. Have a look, then we can test."
+        : "Done. Have a look, then we can test.");
+  }
+
+  /** Claim, carry and release one part (inside the part lock). "stop" ends the build. */
+  private async movePart(run: number, move: { id: string; transform: SharedTransform }): Promise<"moved" | "held" | "unconfirmed" | "stop"> {
+    if (this.disposed || run !== this.buildRun || this.host.studio() !== "circuit") {
+      this.logBuild({ run, event: this.disposed ? "ended: disposed" : run !== this.buildRun ? "ended: superseded by a newer build" : "ended: studio changed" });
+      return "stop";
+    }
+    if (this.host.isHeldByOther(move.id)) {
+      this.logBuild({ run, part: move.id, claim: "held-by-other" });
+      return "held";
+    }
+    const name = partLabel(move.id);
+    this.host.yieldComponent(move.id);
+    // Grab (the host renders Bolt's hand on the part), carry, then let go. Bolt follows the
+    // room's claim rules like anyone: a refused claim means someone got there first.
+    const claim = await Promise.race([
+      this.room.claim(move.id).then((granted) => (granted ? "granted" : "refused") as "granted" | "refused"),
+      sleep(4000).then(() => "timeout" as const),
+    ]);
+    if (this.disposed) return "stop";
+    if (claim !== "granted") {
+      this.logBuild({ run, part: move.id, claim });
+      this.room.abandon(move.id);
+      // Refused: someone got there first. Timed out: the room's answer is unknown.
+      return claim === "refused" ? "held" : "unconfirmed";
+    }
+    this.trace("claim", { objectId: move.id, objectName: name });
+    await sleep(650);
+    if (this.disposed) return "stop";
+    if (run !== this.buildRun) {
+      this.logBuild({ run, part: move.id, claim: "granted", event: "ended: superseded by a newer build (released)" });
+      await this.room.release(move.id);
+      return "stop";
+    }
+    this.room.sendTransform(move.id, move.transform);
+    await sleep(900);
+    if (this.disposed) return "stop";
+    const accepted = await this.room.release(move.id);
+    this.logBuild({ run, part: move.id, claim: "granted", release: accepted ? "accepted" : "refused" });
+    if (this.disposed) return "stop";
+    if (accepted) this.trace("move", { objectId: move.id, objectName: name });
+    return accepted ? "moved" : "unconfirmed";
   }
 
   private maybeReady(): void {

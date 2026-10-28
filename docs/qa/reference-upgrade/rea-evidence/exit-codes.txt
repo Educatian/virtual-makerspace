@@ -1,0 +1,14 @@
+doctor exit 1
+list exit 0
+TID=Chrome/141.0.7390.37@537.36 (@9f043f63b0e5b728c8d09f3e3ddfc1681a4bd58e)
+inspect exit 1
+bundle exit 1
+curl exit 56
+list2 exit 1
+TID2=
+inspect exit 1
+bundle exit 1
+list3 exit 0
+TID3=AFD180D66C1B33877EC1F74AF7CDD35E
+inspect exit 1
+bundle exit 1

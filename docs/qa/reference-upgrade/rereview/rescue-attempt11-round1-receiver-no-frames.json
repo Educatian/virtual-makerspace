@@ -1,0 +1,65 @@
+{
+ "why": "round-1-receiver-no-frames",
+ "at": "2026-10-27T20:09:09.956Z",
+ "evaluateMs": 41155,
+ "state": {
+  "url": "http://vm.test:8800/?room=RBSQ&quality=low&qa=&studio=snapino",
+  "title": "Virtual Makerspace — Desktop 3D Collaboration",
+  "heading": "Snapino",
+  "inLobby": false,
+  "visibility": "visible",
+  "readyState": "complete",
+  "buttons": 144,
+  "diag": {
+   "frames": 135,
+   "lastFrame": 1013230.200000003,
+   "maxFrameGap": 17825.60000000149,
+   "beats": 75,
+   "lastBeat": 1013224.8000000045,
+   "maxBeatGap": 23194.39999999851,
+   "longTasks": [
+    [
+     2086,
+     17803
+    ],
+    [
+     35601,
+     15491
+    ],
+    [
+     576678,
+     11762
+    ],
+    [
+     588440,
+     11428
+    ],
+    [
+     729620,
+     11374
+    ],
+    [
+     828097,
+     11360
+    ],
+    [
+     936682,
+     11315
+    ],
+    [
+     914537,
+     11250
+    ],
+    [
+     947998,
+     11239
+    ],
+    [
+     554359,
+     11232
+    ]
+   ]
+  }
+ },
+ "screenshot": "screenshot did not complete within 30 s"
+}

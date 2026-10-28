@@ -1,0 +1,47 @@
+{
+ "build": "before",
+ "base": "http://localhost:4177",
+ "shots": {
+  "same-01-overview": {
+   "calls": 683,
+   "triangles": 96826,
+   "geometries": 352,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "camera (7.2, 5.8, 8.6) → (0, 0.55, −0.1): the old default"
+  },
+  "same-02-studs-and-lamp": {
+   "calls": 347,
+   "triangles": 74106,
+   "geometries": 352,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "close three-quarter view over rows C–F"
+  },
+  "same-03-grid-labels-low": {
+   "calls": 401,
+   "triangles": 79746,
+   "geometries": 359,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "low angle on the row letters and column numbers"
+  },
+  "same-04-top": {
+   "calls": 329,
+   "triangles": 73154,
+   "geometries": 359,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "near-top view of the stud grid"
+  },
+  "composition-1440-workshop": {
+   "calls": 981,
+   "triangles": 112266,
+   "geometries": 501,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "default framing and panels, workshop open"
+  }
+ },
+ "checks": []
+}

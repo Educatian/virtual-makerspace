@@ -1,0 +1,107 @@
+{
+ "frames": 9,
+ "seconds": 40,
+ "totalSampledMs": 43225,
+ "top": [
+  [
+   "(program) :-1",
+   39632
+  ],
+  [
+   "getProgramInfoLog :-1",
+   2954
+  ],
+  [
+   "texSubImage2D :-1",
+   229
+  ],
+  [
+   "(garbage collector) :-1",
+   107
+  ],
+  [
+   "copy RoomEnvironment-CiZFQ88S.js:0",
+   16
+  ],
+  [
+   "ql RoomEnvironment-CiZFQ88S.js:3853",
+   14
+  ],
+  [
+   "Zs RoomEnvironment-CiZFQ88S.js:3953",
+   13
+  ],
+  [
+   "max RoomEnvironment-CiZFQ88S.js:0",
+   13
+  ],
+  [
+   "Pv.renderBufferDirect RoomEnvironment-CiZFQ88S.js:3953",
+   10
+  ],
+  [
+   "m RoomEnvironment-CiZFQ88S.js:3901",
+   10
+  ],
+  [
+   "getShaderInfoLog :-1",
+   9
+  ],
+  [
+   "r RoomEnvironment-CiZFQ88S.js:3953",
+   9
+  ],
+  [
+   "p RoomEnvironment-CiZFQ88S.js:3901",
+   9
+  ],
+  [
+   "shaderSource :-1",
+   8
+  ],
+  [
+   "getProgramParameter :-1",
+   8
+  ],
+  [
+   "lt RoomEnvironment-CiZFQ88S.js:0",
+   8
+  ],
+  [
+   "o RoomEnvironment-CiZFQ88S.js:3901",
+   7
+  ],
+  [
+   "min RoomEnvironment-CiZFQ88S.js:0",
+   7
+  ],
+  [
+   "hh RoomEnvironment-CiZFQ88S.js:3953",
+   7
+  ],
+  [
+   "updateMatrixWorld RoomEnvironment-CiZFQ88S.js:0",
+   7
+  ],
+  [
+   "t RoomEnvironment-CiZFQ88S.js:3901",
+   5
+  ],
+  [
+   "fillText :-1",
+   5
+  ],
+  [
+   "D RoomEnvironment-CiZFQ88S.js:3894",
+   4
+  ],
+  [
+   "loadDetailedModels main-CKY3xKiz.js:176",
+   4
+  ],
+  [
+   "setValue RoomEnvironment-CiZFQ88S.js:3843",
+   4
+  ]
+ ]
+}

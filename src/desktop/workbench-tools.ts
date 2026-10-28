@@ -27,6 +27,7 @@ import { EditHistory, planProgramLoad, sameProgram, sameTransform, type HistoryC
 import { buildProject, isDefaultProject, parseProject, projectFileName, type ProjectFile } from "./project-file.ts";
 import type { ComponentSpec, DesktopWorkbenchScene, StudioKind } from "./scene.js";
 import type { SnapinoStatement } from "./snapino.ts";
+import type { Word } from "../episodes/rescue-signal.ts";
 
 export interface ToolsHost {
   workbench(): DesktopWorkbenchScene | null;
@@ -44,6 +45,10 @@ export interface ToolsHost {
   draftProgram(): SnapinoStatement[] | null;
   /** Loads a program into this participant's editor only (not shared until they press Run). */
   loadDraft(program: SnapinoStatement[]): void;
+  /** Rescue Signal design to export (Snapino, workshop open), or null. */
+  episodeDesign?(): { mission: string; intent: Word[] } | null;
+  /** Applies an imported Rescue Signal design through the room; false if refused. */
+  applyEpisodeDesign?(design: { mission: string; intent: Word[] }): Promise<boolean>;
   status(message: string, tone: "neutral" | "valid" | "warning"): void;
   selected(): ComponentSpec | null;
   /** The meter opened or closed: re-frame the camera around it. */
@@ -76,6 +81,8 @@ const LED_STATE_COPY: Record<string, string> = {
 
 export class WorkbenchTools {
   readonly history = new EditHistory();
+  /** Why the last submitted edit was not accepted ("timeout": not confirmed in time — it may still land), or null. */
+  lastRefusal: string | null = null;
   private readonly host: ToolsHost;
   private readonly pending = new Map<string, SharedTransform>();
   private analysis: CircuitAnalysis | null = null;
@@ -91,13 +98,17 @@ export class WorkbenchTools {
 
   constructor(host: ToolsHost) {
     this.host = host;
-    this.collapsed = readPreference("vm-inspector-collapsed", window.matchMedia?.("(max-width: 900px)").matches ?? false);
+    // The meter sits in the dock tab now: open unless this viewer folded it.
+    this.collapsed = readPreference("vm-inspector-collapsed", false);
   }
 
   // ── Inspector ───────────────────────────────────────────────────────────────
 
-  /** Markup for the floating inspector; `bind()` wires it up after it is in the DOM. */
-  static markup(): string {
+  /**
+   * The circuit meter: the Circuit Bench's contextual inspector. It lives in the dock's
+   * Inspector tab (one side column), next to the Snapino bench inspector.
+   */
+  static meterMarkup(): string {
     return `
       <section class="inspector" id="inspector" aria-labelledby="inspector-title" hidden>
         <button class="inspector-toggle" id="inspector-toggle" type="button" aria-expanded="true" aria-controls="inspector-body">
@@ -111,9 +122,16 @@ export class WorkbenchTools {
           <div class="inspector-readings" id="inspector-readings"></div>
           <div class="inspector-part" id="inspector-part"></div>
           <label class="inspector-tags"><input type="checkbox" id="inspector-tags" checked /> Show readings on parts</label>
+          <label class="inspector-tags"><input type="checkbox" id="inspector-flow" /> Show current flow on the jumper wires</label>
+          <p class="inspector-flow-note" id="inspector-flow-note" role="status" aria-live="polite"></p>
           <p class="inspector-foot">Educational DC model · <span title="Modified nodal analysis with piecewise-linear LEDs and a 1 Ω battery; not SPICE and not datasheet-exact">${SOLVER_VERSION}</span></p>
         </div>
-      </section>
+      </section>`;
+  }
+
+  /** Scene overlays and dialogs the tools use (measure tags, recovery banner, confirm dialog). */
+  static markup(): string {
+    return `
       <div class="measure-tags" id="measure-tags" aria-hidden="true"></div>
       <div class="recovery-banner" id="recovery-banner" role="region" aria-label="Recover saved bench" hidden></div>
       <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
@@ -130,6 +148,10 @@ export class WorkbenchTools {
   bind(): void {
     document.querySelector("#inspector-toggle")?.addEventListener("click", () => this.setCollapsed(!this.collapsed));
     document.querySelector("#inspector-tags")?.addEventListener("change", () => this.updateTagLoop());
+    document.querySelector<HTMLInputElement>("#inspector-flow")?.addEventListener("change", (event) => {
+      this.host.workbench()?.setCurrentFlow((event.target as HTMLInputElement).checked);
+      this.renderFlowNote();
+    });
     document.querySelector("#inspector-part")?.addEventListener("click", (event) => this.onPartClick(event as MouseEvent));
     document.querySelector("#inspector-part")?.addEventListener("submit", (event) => this.onPartSubmit(event as SubmitEvent));
     document.querySelector<HTMLInputElement>("#project-file-input")?.addEventListener("change", (event) => {
@@ -203,6 +225,7 @@ export class WorkbenchTools {
     pill.textContent = verdict.pill;
     pill.dataset.tone = verdict.tone;
     if (diagnosis.textContent !== verdict.explanation) diagnosis.textContent = verdict.explanation;
+    this.renderFlowNote();
     const html = this.readingsHtml(analysis);
     if (html !== this.lastReadingsHtml) {
       readings.innerHTML = html;
@@ -429,10 +452,24 @@ export class WorkbenchTools {
   }
 
   /** Right edge of the expanded meter (client px), for framing the bench beside it; 0 when hidden. */
+  /** The meter no longer floats over the scene (it is a dock tab), so it never narrows the view. */
   inspectorRight(): number {
-    const inspector = document.querySelector<HTMLElement>("#inspector");
-    if (!inspector || inspector.hidden || this.collapsed) return 0;
-    return inspector.getBoundingClientRect().right;
+    return 0;
+  }
+
+  /** What the flow view shows, in words: solved currents, or why nothing is drawn. */
+  private renderFlowNote(): void {
+    const note = document.querySelector<HTMLElement>("#inspector-flow-note");
+    const flow = this.host.workbench()?.currentFlowState();
+    if (!note || !flow) return;
+    const listed = (wires: Array<{ id: string; amps: number }>): string => wires.map((wire) => `${PART_NAMES[wire.id] ?? wire.id} ${formatAmps(Math.abs(wire.amps))}`).join(", ");
+    const small = flow.small.length ? ` Too small to draw (not zero): ${listed(flow.small)}.` : "";
+    const text = !flow.enabled
+      ? "Arrows show the solved conventional current on each jumper wire (the DC model above). Their speed is not to scale."
+      : flow.wires.length
+        ? `Solved current: ${listed(flow.wires)}. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above.${small}${flow.moving ? "" : " (Still arrows: reduced motion.)"}`
+        : `No flow drawn: ${flow.reason}.${small}`;
+    if (note.textContent !== text) note.textContent = text;
   }
 
   // ── Shared edits ──────────────────────────────────────────────────────────────
@@ -467,6 +504,7 @@ export class WorkbenchTools {
       return false;
     }
     const result = await room.submitEdit(real, load.send);
+    this.lastRefusal = result.ok ? null : result.reason;
     if (!result.ok) {
       this.host.status(refusalCopy(label, result), "warning");
       this.lastEditorKey = "";
@@ -668,6 +706,7 @@ export class WorkbenchTools {
       snapino ? this.host.roomProgram().program : null,
       new Date(),
       snapino ? this.host.draftProgram() : null,
+      snapino ? this.host.episodeDesign?.() ?? null : null,
     );
   }
 
@@ -743,6 +782,12 @@ export class WorkbenchTools {
       changes.push({ id: part.id, transform });
     }
     const applied = await this.submit(changes, label, { program: project.program, tone: "valid" });
+    if (applied && project.episode && this.host.applyEpisodeDesign) {
+      // The workshop design is room state with its own rules (the sender's, not during a
+      // round): applied after the parts and program, and reported if the room refuses it.
+      const designed = await this.host.applyEpisodeDesign({ mission: project.episode.mission, intent: project.episode.intent });
+      if (!designed) this.host.status(`${label} · the Rescue Signal design was not applied (only the sender can change it, in an open workshop, and not during a round)`, "warning");
+    }
     if (applied && project.draftProgram) {
       this.host.loadDraft(project.draftProgram);
       this.host.status(`${label} · its unsaved code draft is in your editor (press Run to share it)`, "valid");
@@ -811,6 +856,7 @@ export class WorkbenchTools {
 /** Same parts, values, switch states, room program and draft (ignores savedAt). */
 function sameContent(a: ProjectFile, b: ProjectFile): boolean {
   return JSON.stringify(a.parts) === JSON.stringify(b.parts) &&
+    JSON.stringify(a.episode ?? null) === JSON.stringify(b.episode ?? null) &&
     sameProgram(a.program, b.program) &&
     sameProgram(a.draftProgram ?? null, b.draftProgram ?? null);
 }
@@ -890,7 +936,7 @@ export function socketLabel(socket: number): string {
   return `${"abcdefghij"[row - 1]}${col}`;
 }
 
-function confirmDialog(title: string, body: string, ok: string): Promise<boolean> {
+export function confirmDialog(title: string, body: string, ok: string): Promise<boolean> {
   const dialog = document.querySelector<HTMLDialogElement>("#confirm-dialog");
   if (!dialog) return Promise.resolve(window.confirm(`${title}\n\n${body}`));
   dialog.querySelector("#confirm-title")!.textContent = title;

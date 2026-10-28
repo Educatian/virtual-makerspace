@@ -1,0 +1,120 @@
+  [ready] same-01-overview: 6 s (+3 frames)
+  [ready] same-01-overview (again): 37 s (+3 frames)
+  shot same-01-overview: 687 calls, 104890 triangles
+  [ready] same-02-studs-and-lamp: 76 s (+3 frames)
+  [ready] same-02-studs-and-lamp (again): 75 s (+3 frames)
+  shot same-02-studs-and-lamp: 351 calls, 82170 triangles
+  [ready] same-03-grid-labels-low: 76 s (+3 frames)
+  [ready] same-03-grid-labels-low (again): 72 s (+3 frames)
+  shot same-03-grid-labels-low: 405 calls, 87810 triangles
+  [ready] same-04-top: 145 s (+6 frames)
+  [ready] same-04-top (again): 165 s (+7 frames)
+  shot same-04-top: 333 calls, 81218 triangles
+  [ready] composition-1440-workshop: 26 s (+4 frames)
+  [ready] composition-1440-workshop (again): 49 s (+3 frames)
+  shot composition-1440-workshop: 509 calls, 94506 triangles
+  [ready] old camera: 36 s (+3 frames)
+PASS bench view fills more of the free view than the old default camera — 85% vs 47% of the free width
+  [ready] placed: 9 s (+3 frames)
+PASS 1440px: no horizontal overflow; chat tab present — {"left":1046,"width":380}
+PASS 1440px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px — smallest 44 px
+  [ready] after-inspector-1440: 48 s (+3 frames)
+  [ready] after-inspector-1440 (again): 48 s (+3 frames)
+page.screenshot: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /opt/pw-browsers/chromium-1194/chrome-linux/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --use-gl=swiftshader --enable-unsafe-swiftshader --no-proxy-server --user-data-dir=/tmp/playwright_chromiumdev_profile-LnrQ2e --remote-debugging-pipe --no-startup-window
+<launched> pid=29782
+[pid=29782][err] [29782:29796:1027/180536.794910:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=29782][err] [29782:29796:1027/180536.802959:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29796:1027/180536.803029:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=29782][err] [29782:29796:1027/180536.803093:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=29782][err] [29811:29811:1027/180536.812015:ERROR:ui/gl/init/gl_factory.cc:102] Requested GL implementation (gl=none,angle=none) not found in allowed implementations: [(gl=egl-angle,angle=default)].
+[pid=29782][err] [29811:29811:1027/180536.815232:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[pid=29782][err] [29782:29796:1027/180536.842576:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29782:1027/180536.860972:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[pid=29782][err] [29782:29796:1027/180536.861582:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29796:1027/180536.861626:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29796:1027/180536.861642:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29796:1027/180536.861648:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29796:1027/180536.861654:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[pid=29782][err] [29782:29782:1027/180536.873661:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[pid=29782][err] [29782:29796:1027/180536.875120:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=29782][err] [29782:29796:1027/180536.875244:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=29782][err] [29782:29782:1027/180536.876712:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[pid=29782][err] [29782:29782:1027/180536.876739:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[pid=29782][err] [29782:29782:1027/180536.877963:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.Properties.GetAll: object_path= /org/freedesktop/UPower/devices/DisplayDevice: unknown error type: 
+[pid=29782][err] [29836:29836:1027/180536.890384:ERROR:ui/gl/init/gl_factory.cc:102] Requested GL implementation (gl=none,angle=none) not found in allowed implementations: [(gl=egl-angle,angle=default)].
+[pid=29782][err] [29836:29836:1027/180536.893219:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[pid=29782][err] [29843:29843:1027/180536.935148:ERROR:ui/gl/init/gl_factory.cc:102] Requested GL implementation (gl=none,angle=none) not found in allowed implementations: [(gl=egl-angle,angle=default)].
+[pid=29782][err] [29843:29843:1027/180536.945558:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[pid=29782][err] [29869:29869:1027/180537.070631:ERROR:ui/gl/init/gl_factory.cc:102] Requested GL implementation (gl=none,angle=none) not found in allowed implementations: [(gl=egl-angle,angle=default)].
+[pid=29782][err] [29869:29869:1027/180537.090959:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[pid=29782][err] [29817:29849:1027/180537.128462:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.197457:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.220518:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.221105:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.221438:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.221718:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.300737:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.357900:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.365932:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.437898:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.438667:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.439988:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.440605:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.704445:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180537.850533:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180538.358460:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/180538.364009:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29884:29884:1027/180540.051471:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x161400110400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[pid=29782][err] [29884:29884:1027/180549.386784:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x161400110400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[pid=29782][err] [29884:29884:1027/180552.410122:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x161400110400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[pid=29782][err] [29884:29884:1027/180555.231887:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x161400110400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+[pid=29782][err] [29782:29782:1027/182542.312171:ERROR:chrome/browser/ui/views/user_education/impl/browser_user_education_interface_impl.cc:154] Attempting to show IPH IPH_ExtensionsZeroStatePromo before browser initialization complete; IPH will not be shown.
+[pid=29782][err] [29817:29849:1027/182542.409936:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182602.995695:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.011530:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.012976:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.013696:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.014861:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.116602:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.127910:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.156576:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.160786:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.161451:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.162286:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.312314:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.481356:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.971954:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/182603.973706:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29782:29782:1027/183034.687934:ERROR:chrome/browser/ui/views/user_education/impl/browser_user_education_interface_impl.cc:154] Attempting to show IPH IPH_ExtensionsZeroStatePromo before browser initialization complete; IPH will not be shown.
+[pid=29782][err] [29817:29849:1027/183034.768260:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.209103:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.225150:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.226389:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.229259:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.229951:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.333810:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.345905:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.386913:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.387266:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.387545:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.387792:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.544494:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183043.678166:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183044.121120:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782][err] [29817:29849:1027/183044.125924:ERROR:net/socket/socket_posix.cc:99] CreatePlatformSocket() failed: Address family not supported by protocol (97)
+[pid=29782] <gracefully close start>
+[pid=29782] <forcefully close>
+[pid=29782] <kill>
+[pid=29782] <will force kill>
+Call log:
+[2m  - taking page screenshot[22m
+[2m  - waiting for fonts to load...[22m
+[2m  - fonts loaded[22m
+
+    at shot (<repo>/scripts/qa-reference.mjs:48:14)
+    at async file://<repo>/scripts/qa-reference.mjs:109:7
+FAIL ran to completion — page.screenshot: Target page, context or browser has been closed
+3/4 checks · 5 shots → <scratch>/r5/ref-after

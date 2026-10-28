@@ -1,0 +1,39 @@
+PASS Bolt joins as a participant
+PASS Bolt greets the team
+PASS solo learner is no longer 'waiting for partner'
+PASS Bolt takes the builder role
+PASS Bolt finishes its naive build
+PASS naive build leaves the LED dark
+PASS Bolt asks what it got wrong
+PASS Bolt asks why when only told what
+PASS Bolt learns column strips
+PASS Bolt rebuilds after learning
+PASS Bolt learns the complete loop
+PASS Bolt rebuilds again
+PASS loop + strips without a resistor is not a success (LED straight across 9 V)
+PASS the meter reports the LED burning out, from the circuit engine — LED burns out
+PASS Bolt sees the burnout and voices its naive idea (not yet taught)
+PASS Bolt learns the series resistor
+PASS Bolt rebuilds with the resistor
+PASS Bolt's rebuild with the 1 kΩ resistor is a safe success
+PASS the meter shows a safe LED current (~7 mA) — Safe · 7.0 mA
+PASS Bolt's notebook keeps all three ideas in the learner's words — 3 entries
+PASS teach events land in the shared trace — 4 teach events
+PASS trace never stores the learner's words
+PASS a second maker sees Bolt in the room
+PASS only one Bolt is offered per room
+PASS a late joiner receives Bolt's working circuit
+PASS the late joiner's meter agrees — Safe · 7.0 mA
+PASS 220 Ω at 9 V overdrives the LED on the editor's bench — Overdriven
+PASS the teammate sees the same overdriven circuit — Overdriven
+PASS a value edit is traced as 'edit', never as claim/move — {"before":{"claim":9,"move":9,"edit":0},"afterEdit":{"claim":9,"move":9,"edit":1}}
+PASS an out-of-range value is refused with an explanation
+PASS undo restores the safe circuit for the editor — Safe · 7.0 mA
+PASS undo reaches the teammate — Safe · 7.0 mA
+PASS a stale redo is refused instead of overwriting the teammate's 470 Ω — Safe · 14.6 mA / Safe · 14.6 mA
+PASS export is a versioned project with the edited value
+PASS export holds no names, ids, chat or traces
+PASS a hostile project is refused without touching the bench
+PASS nothing from the file is rendered as HTML
+
+37/37 checks passed

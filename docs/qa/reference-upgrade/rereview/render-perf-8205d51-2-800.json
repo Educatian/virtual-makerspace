@@ -1,0 +1,27 @@
+{
+ "label": "8205d51-800",
+ "pages": [
+  {
+   "frames": 14,
+   "seconds": 93.21690000000224,
+   "stats": {
+    "calls": 303,
+    "triangles": 73218,
+    "geometries": 190,
+    "textures": 13,
+    "pixelRatio": 1
+   }
+  },
+  {
+   "frames": 6,
+   "seconds": 164.066,
+   "stats": {
+    "calls": 303,
+    "triangles": 73218,
+    "geometries": 190,
+    "textures": 13,
+    "pixelRatio": 1
+   }
+  }
+ ]
+}

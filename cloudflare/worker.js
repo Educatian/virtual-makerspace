@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { RoomCore } from "./room-core.js";
+import { sanitizeRescueAction, sanitizeRescueState } from "../src/episodes/rescue-state.ts";
 import { COMPONENT_IDS, componentResource, sanitizeEdit, sanitizeProgram, sanitizeTransform } from "./sanitize.js";
 
 const ROOM_CODE = /^[A-Z2-9]{4,12}$/;
@@ -27,6 +28,8 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "program",
   "edit",
   "room-state-request",
+  "episode",
+  "clock",
 ]);
 
 
@@ -348,7 +351,9 @@ export class MakerspaceRoom extends DurableObject {
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.list({ prefix: "bench:" });
       const metadata = await this.state.storage.get("metadata");
+      const episode = sanitizeRescueState(await this.state.storage.get("episode"));
       this.core = new RoomCore({
+        ...(episode ? { episode } : {}),
         entries: [...stored].map(([key, entry]) => [key.slice("bench:".length), entry]),
         programRev: Number.isSafeInteger(metadata?.programRev) ? metadata.programRev : 0,
         program: metadata?.program ? { program: metadata.program, running: Boolean(metadata.programRunning) } : null,
@@ -455,6 +460,7 @@ export class MakerspaceRoom extends DurableObject {
         if (metadata) return this.state.storage.put("metadata", { ...metadata, ...update });
       });
     }
+    if (result.persist.episode) this.state.storage.put("episode", result.persist.episode);
     if (result.persist.state?.length) {
       this.state.storage.put(Object.fromEntries(result.persist.state.map(([componentId, entry]) => [`bench:${componentId}`, entry])));
     }
@@ -470,6 +476,10 @@ export class MakerspaceRoom extends DurableObject {
 
   webSocketClose(socket, code, reason) {
     const attachment = socket.deserializeAttachment();
+    // A reconnecting client reuses its participant id. If its old, half-open socket closes only
+    // after the new one said hello, the participant is still here: release nothing.
+    const twin = this.state.getWebSockets().some((peer) => peer !== socket && peer.readyState === WebSocket.OPEN && peer.deserializeAttachment()?.id === attachment.id);
+    if (twin) return;
     this.messageRates.delete(attachment.id);
     const released = this.core.leave({ id: attachment.id, name: attachment.name }).map((message) => JSON.stringify(message));
     const goodbye = JSON.stringify({ kind: "goodbye", participantId: attachment.id });
@@ -480,6 +490,7 @@ export class MakerspaceRoom extends DurableObject {
       for (const release of released) peer.send(release);
       peer.send(goodbye);
     }
+    // Roles held by the leaver are free again (and, if the room is now empty, see reset()).
     if (remaining === 0) {
       // Last one out: the bench resets, as it did when state lived only in the clients.
       this.core.reset();
@@ -487,6 +498,7 @@ export class MakerspaceRoom extends DurableObject {
         if (stored.size) return this.state.storage.delete([...stored.keys()]);
       });
     }
+    this.state.storage.put("episode", this.core.episode);
     socket.close(code, reason);
   }
 
@@ -590,6 +602,14 @@ export class MakerspaceRoom extends DurableObject {
       const sequence = incoming.sequence;
       if (!componentId || !transform || !Number.isSafeInteger(sequence) || sequence < 0) return null;
       return { kind: "transform", participantId: participant.id, componentId, transform, sequence };
+    }
+    if (incoming.kind === "clock") {
+      return typeof incoming.t0 === "number" && Number.isFinite(incoming.t0) ? { kind: "clock", t0: incoming.t0 } : null;
+    }
+    if (incoming.kind === "episode") {
+      const action = sanitizeRescueAction(incoming.action);
+      if (!action || typeof incoming.opId !== "string" || !/^[\w-]{1,80}$/.test(incoming.opId)) return null;
+      return { kind: "episode", participantId: participant.id, opId: incoming.opId, action };
     }
     if (incoming.kind === "edit") {
       const edit = sanitizeEdit(incoming);
