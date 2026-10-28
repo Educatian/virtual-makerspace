@@ -67,6 +67,13 @@ const PART_NAMES: Record<string, string> = {
   "wire-red": "Red jumper",
   "wire-blue": "Blue jumper",
   "wire-yellow": "Yellow jumper",
+  "snd-source": "Source",
+  "snd-filter": "Filter",
+  "snd-drive": "Drive",
+  "snd-speaker": "Speaker",
+  "snd-cable-a": "Red cable",
+  "snd-cable-b": "Yellow cable",
+  "snd-cable-c": "Blue cable",
 };
 
 const LED_STATE_COPY: Record<string, string> = {
@@ -692,7 +699,7 @@ export class WorkbenchTools {
 
   private isEmpty(project: ProjectFile): boolean {
     const workbench = this.host.workbench();
-    return isDefaultProject(project, (id) => workbench?.defaultPartProps(id) ?? null);
+    return isDefaultProject(project, (id) => workbench?.defaultPartProps(id) ?? null, (id) => workbench?.defaultTransform(id)?.on === true);
   }
 
   private currentProject(): ProjectFile | null {
@@ -876,6 +883,10 @@ function refusalCopy(label: string, result: Exclude<EditResult, { ok: true }>): 
       return `${label} refused · ${result.holderName || "a teammate"} is holding ${part}; nothing changed`;
     case "stale":
       return `${label} refused · a teammate changed ${part} first, so their version is kept`;
+    case "invalid":
+      return `${label} refused by the room's validation (a value or jack outside the rules) · nothing changed`;
+    case "occupied":
+      return `${label} refused · that jack already holds another cable's plug (one plug per jack) · nothing changed`;
     case "offline":
       return `${label} not sent · reconnecting to the room, nothing changed`;
     case "timeout":

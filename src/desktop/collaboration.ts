@@ -67,7 +67,7 @@ export interface Participant {
 
 export type CollaborationRole = "builder" | "verifier";
 export type CollaborationPhase = "frame" | "build" | "test" | "reflect";
-export type StudioChoice = "circuit" | "greenhouse" | "snap" | "snapino";
+export type StudioChoice = "circuit" | "greenhouse" | "snap" | "snapino" | "sound";
 export type ParticipantActivity =
   | "available"
   | "inspecting"
@@ -227,6 +227,8 @@ export interface RoomEvents {
   onRoomState: (state: { fresh: boolean; componentIds: string[]; ownMovesInFlight: string[] }) => void;
   /** The episode state changed (or arrived on join). Use `serverTime()` to place it in time. */
   onEpisode: (state: RescueState) => void;
+  /** The realtime socket opened (true) or dropped (false); server mode only. */
+  onConnection?: (online: boolean) => void;
 }
 
 const noOpEvents: RoomEvents = {
@@ -1163,6 +1165,7 @@ export class DesktopRoom {
       this.startClockSync(socket);
       // The room answers hello with its authoritative state (room-state): no peer copy needed.
       this.events.onVoiceStatus("Realtime room connected");
+      this.events.onConnection?.(true);
     });
     socket.addEventListener("message", this.handleMessage);
     socket.addEventListener("close", () => {
@@ -1185,6 +1188,7 @@ export class DesktopRoom {
       }
       this.resetRemoteSessionState();
       this.events.onVoiceStatus("Realtime room disconnected · reconnecting");
+      this.events.onConnection?.(false);
       this.scheduleReconnect();
     });
     socket.addEventListener("error", () => {

@@ -76,7 +76,9 @@ export function sameTransform(a: SharedTransform | null | undefined, b: SharedTr
   const socketsA = a.sockets ?? null;
   const socketsB = b.sockets ?? null;
   if (JSON.stringify(socketsA) !== JSON.stringify(socketsB)) return false;
-  if ((a.props?.ohms ?? null) !== (b.props?.ohms ?? null) || (a.props?.volts ?? null) !== (b.props?.volts ?? null)) return false;
+  // Every value a part carries: a resistor's ohms, a battery's volts, a Sound module's knobs.
+  const keys = new Set([...Object.keys(a.props ?? {}), ...Object.keys(b.props ?? {})]) as Set<keyof NonNullable<SharedTransform["props"]>>;
+  for (const key of keys) if ((a.props?.[key] ?? null) !== (b.props?.[key] ?? null)) return false;
   if ((a.on ?? null) !== (b.on ?? null)) return false;
   const seated = Array.isArray(socketsA) && socketsA.length === 2 && socketsA.every((socket) => Number.isInteger(socket));
   if (seated) return true;

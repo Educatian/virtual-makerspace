@@ -190,6 +190,36 @@ for (const a of ENDS) for (const b of ENDS) for (const c of ENDS) {
 }
 ok(exhaustive === 79_507, "every patch compared", String(exhaustive));
 
+// ── 1c. The diagram and the connection list are drawn from the patch as built ───────────────
+const diagram = await import("../src/sound/sound-diagram.ts");
+let drawn = 0;
+for (const a of ENDS) for (const b of ENDS) for (const c of ENDS) {
+  if ((drawn += 1) % 25 !== 0) continue;
+  const state = stateWith({ "snd-cable-a": a, "snd-cable-b": b, "snd-cable-c": c });
+  const graph = model.derivePatchGraph(state);
+  const signal = model.analyzeSignal(state, graph);
+  const reference = oracle(state.cables);
+  const svg = diagram.renderSoundDiagramSvg(graph, signal, { selected: null, showNotes: true });
+  const edges = [...svg.matchAll(/class="sd-edge[^"]*" data-cable="([^"]+)" data-status="([^"]+)"/g)].map((m) => [m[1], m[2]]);
+  const expected = CABLES.flatMap((cable) => {
+    const [x, y] = state.cables[cable];
+    if (x === null && y === null) return [];
+    if (x === null || y === null) return [[cable, "loose"]];
+    return [[cable, reference.statuses[cable]]];
+  });
+  const sort = (list) => [...list].sort((p, q) => p[0].localeCompare(q[0]));
+  checks += 1;
+  if (JSON.stringify(sort(edges)) !== JSON.stringify(sort(expected))) assert.fail(`diagram edges for ${JSON.stringify(state.cables)}: ${JSON.stringify(edges)} vs oracle ${JSON.stringify(expected)}`);
+  const list = diagram.renderConnectionList(graph, signal);
+  checks += 1;
+  if (!CABLES.every((cable) => list.includes(`data-cable="${cable}"`))) assert.fail("connection list misses a cable");
+  const nodes = [...svg.matchAll(/data-module="([^"]+)" data-state="([^"]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
+  const expectedNodes = MODULES.map((id) => `${id}:${reference.loops.some((loop) => loop.split(",").includes(id)) ? "loop" : reference.live[id] ? "signal" : "silent"}`);
+  checks += 1;
+  if (JSON.stringify(nodes) !== JSON.stringify(expectedNodes)) assert.fail(`diagram nodes for ${JSON.stringify(state.cables)}: ${nodes} vs ${expectedNodes}`);
+}
+ok(drawn === 79_507, "diagram compared with the oracle on every 25th patch (3,180 patches)");
+
 // ── 2. Signal model vs analytic references ────────────────────────────────────────
 const H = (f, fc) => 1 / Math.sqrt((1 - (f / fc) ** 2) ** 2 + 2 * (f / fc) ** 2);
 const near = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
@@ -323,6 +353,19 @@ ok(sanitizeTransform({ ...cable([0, 1]), on: true }, "snd-cable-a") === null, "c
 ok(sanitizeEdit({ opId: "op-1", changes: [{ componentId: "snd-drive", expectRev: 0, transform: { ...pose("snd-drive"), props: { gain: 9 } } }] }) === null, "an edit with an out-of-range gain is refused whole");
 ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev: 0, transform: { ...pose("snd-drive"), props: { gain: 2 } } }] }) !== null, "an in-range edit passes");
 
+// Edit history and WorkbenchTools.submit compare transforms with sameTransform: a knob value change
+// must count as a change (an e2e run found Sound edits treated as "nothing to change").
+{
+  const { sameTransform } = await import("../src/desktop/edit-history.ts");
+  const at = (props) => ({ ...pose("snd-source"), props });
+  ok(!sameTransform(at({ hz: 440, wave: "sine" }), at({ hz: 220, wave: "sine" })), "sameTransform: hz differs");
+  ok(!sameTransform(at({ hz: 440, wave: "sine" }), at({ hz: 440, wave: "sawtooth" })), "sameTransform: wave differs");
+  ok(!sameTransform({ ...pose("snd-filter"), props: { cutoff: 2000 } }, { ...pose("snd-filter"), props: { cutoff: 300 } }), "sameTransform: cutoff differs");
+  ok(!sameTransform({ ...pose("snd-drive"), props: { gain: 1 } }, { ...pose("snd-drive"), props: { gain: 1.7 } }), "sameTransform: gain differs");
+  ok(sameTransform(at({ hz: 440, wave: "sine" }), at({ wave: "sine", hz: 440 })), "sameTransform: same knobs in another key order are the same");
+  ok(!sameTransform({ ...pose("snd-speaker"), on: true }, { ...pose("snd-speaker"), on: false }), "sameTransform: speaker switch differs");
+}
+
 // RoomCore: one plug per jack, for live moves and edits (batch-aware), as the room applies them.
 {
   const core = new RoomCore();
@@ -351,6 +394,67 @@ ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev:
   ok(out.sender[0].ok === true && out.others[0].changes[0].transform.props.gain === 2, "a knob edit is relayed with its value");
   out = edit(bob, "e5", [{ componentId: "snd-drive", expectRev: 0, transform: { ...pose("snd-drive"), props: { gain: 3 } } }]);
   ok(out.sender[0].ok === false && out.sender[0].reason === "stale", "a knob edit based on an old revision is stale");
+}
+
+// ── 5. Project files: Sound is version 2; the other studios stay version 1 ──────────────
+{
+  const project = await import("../src/desktop/project-file.ts");
+  const catalog = {
+    studio: "sound",
+    parts: { "snd-source": "source", "snd-filter": "filter", "snd-drive": "drive", "snd-speaker": null, "snd-cable-a": null, "snd-cable-b": null, "snd-cable-c": null },
+    socketCount: 6,
+    switches: ["snd-speaker"],
+    sharedSockets: false,
+    fixtures: ["snd-source", "snd-filter", "snd-drive", "snd-speaker"],
+  };
+  const circuit = { studio: "circuit", parts: { "resistor-1k": "resistor", "battery-9v": "battery", "led-red": null }, socketCount: 192, switches: [], sharedSockets: false };
+  const catalogFor = (studio) => (studio === "sound" ? catalog : studio === "circuit" ? circuit : null);
+  const transforms = {
+    "snd-source": { ...pose("snd-source"), props: { hz: 220, wave: "sawtooth" } },
+    "snd-filter": { ...pose("snd-filter"), props: { cutoff: 300 } },
+    "snd-drive": { ...pose("snd-drive"), props: { gain: 1.7 } },
+    "snd-speaker": { ...pose("snd-speaker"), on: true },
+    "snd-cable-a": cable([0, 1]),
+    "snd-cable-b": cable([2, 3]),
+    "snd-cable-c": cable([4, null]),
+  };
+  const built = project.buildProject(catalog, transforms, null, new Date("2026-10-27T10:00:00Z"));
+  ok(built.version === 2 && built.studio === "sound", "a Sound project is written as version 2");
+  eq(built.parts.map((part) => [part.id, part.sockets, part.props ?? null, part.on ?? null]), [
+    ["snd-source", null, { hz: 220, wave: "sawtooth" }, null], ["snd-filter", null, { cutoff: 300 }, null], ["snd-drive", null, { gain: 1.7 }, null], ["snd-speaker", null, null, true],
+    ["snd-cable-a", [0, 1], null, null], ["snd-cable-b", [2, 3], null, null], ["snd-cable-c", null, null, null],
+  ], "export holds knob values, the switch and only fully plugged cables' jacks (a half-plugged cable is exported unplugged)");
+  ok(!/name|chat|predict|explan|participant|trace/i.test(JSON.stringify(built)), "no names, chat, predictions, explanations or traces in the file");
+  const round = project.parseProject(JSON.stringify(built), catalogFor);
+  ok(round.ok && JSON.stringify(round.project.parts) === JSON.stringify(built.parts), "round trip");
+  const bad = (mutate, label) => {
+    const copy = JSON.parse(JSON.stringify(built));
+    mutate(copy);
+    const result = project.parseProject(JSON.stringify(copy), catalogFor);
+    ok(!result.ok, `refused: ${label}`, result.ok ? "accepted" : result.error);
+  };
+  bad((p) => { p.version = 1; }, "a version-1 file naming the sound studio");
+  bad((p) => { p.parts[4].sockets = [0, 6]; }, "a jack that does not exist");
+  bad((p) => { p.parts[5].sockets = [1, 4]; }, "two plugs in Filter IN");
+  bad((p) => { p.parts[0].sockets = [0, 1]; }, "a fixture module placed in sockets");
+  bad((p) => { p.parts[2].props = { gain: 4.5 }; }, "gain above ×4");
+  bad((p) => { p.parts[0].props = { hz: 440, wave: "triangle" }; }, "an unknown waveform");
+  bad((p) => { p.parts[4].props = { gain: 1 }; }, "a cable with knob values");
+  bad((p) => { p.parts[0].on = true; }, "a switch on a module without one");
+  bad((p) => { p.parts.push({ id: "snd-cable-d", sockets: null }); }, "an unknown part");
+  const legacy = { format: "virtual-makerspace.project", version: 1, solver: "x", studio: "circuit", savedAt: "2026-01-01T00:00:00.000Z", parts: [{ id: "resistor-1k", sockets: [36, 39], props: { ohms: 470 } }] };
+  ok(project.parseProject(JSON.stringify(legacy), catalogFor).ok, "an older version-1 Circuit Bench file still imports");
+  ok(!project.parseProject(JSON.stringify({ ...legacy, version: 2 }), catalogFor).ok, "a version-2 file naming another studio is refused");
+  ok(project.buildProject(circuit, { "resistor-1k": { position: [0, 0, 0], rotation: [0, 0, 0], sockets: [36, 39], props: { ohms: 470 } } }, null).version === 1, "other studios still write version 1");
+  const defaults = (id) => (id === "snd-source" ? { hz: 440, wave: "sine" } : id === "snd-filter" ? { cutoff: 2000 } : id === "snd-drive" ? { gain: 1 } : null);
+  const fresh = project.buildProject(catalog, {
+    "snd-source": { ...pose("snd-source"), props: { hz: 440, wave: "sine" } }, "snd-filter": { ...pose("snd-filter"), props: { cutoff: 2000 } }, "snd-drive": { ...pose("snd-drive"), props: { gain: 1 } }, "snd-speaker": { ...pose("snd-speaker"), on: true },
+  }, null);
+  ok(project.isDefaultProject(fresh, defaults, (id) => id === "snd-speaker"), "a default desk (Speaker on) is empty: nothing to recover");
+  ok(!project.isDefaultProject(built, defaults, (id) => id === "snd-speaker"), "a patched desk is worth recovering");
+  const off = JSON.parse(JSON.stringify(fresh));
+  off.parts[3].on = false;
+  ok(!project.isDefaultProject(off, defaults, (id) => id === "snd-speaker"), "the Speaker switched off is not the default");
 }
 
 console.log(`sound model: ${checks} checks passed`);
