@@ -53,6 +53,10 @@ const has = (page, hook) => page.evaluate((name) => typeof window.__vmQa?.[name]
 
 try {
   // ── Same camera, identical parts (both builds) ──
+  // QA_SKIP_SAME=1 leaves these four shots out (each needs minutes on a slow software renderer);
+  // the report then says so, and nothing else changes.
+  if (process.env.QA_SKIP_SAME === "1") report.skipped = ["same-camera shots (QA_SKIP_SAME=1)"];
+  else {
   const page = await open({ width: 1440, height: 900 });
   await place(page, LAYOUT);
   await page.evaluate(() => window.__vmQa.pins({ D5: true }));
@@ -69,6 +73,7 @@ try {
   await page.evaluate((x) => window.__vmQa.view([x + 0.2, 4.6, 0.95], [x + 0.2, 0.26, -0.05]), BOARD_X);
   await shot(page, "same-04-top", "near-top view of the stud grid");
   await page.context().close();
+  }
 
   // ── Each build's own default composition, workshop open (DI) ──
   const composition = await open({ width: 1440, height: 900 }, { episode: true });
