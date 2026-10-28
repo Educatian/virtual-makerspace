@@ -93,7 +93,7 @@ const LONG_SAFE = [...flash(900, 300), ...flash(300, 0), ...Array.from({ length:
 // steady ~9 s per frame, and sampling a strictly periodic 9 s light (4 s on, 5 s off, as these rounds
 // used before) can land on the same phase every time: aliasing. Two runs saw it, once after the
 // reconnect (7 fresh frames, all lit) and once in round 5 (5 frames, all lit).
-// Irregular phases cannot lock to a frame period, so the frames must see both states.
+// Irregular phases make locking to a frame period unlikely (not impossible); the frames must see both states.
 // (Each wait block is at most 5 s, so every phase is 2.5–5 s; 107.5 s in all, under the 120 s cap,
 // long enough for a late joiner that needs minutes to render its first frames.)
 const ON = [5, 3.5, 5, 4, 2.5, 3, 4.5, 5, 5, 3.5, 5, 4.5];

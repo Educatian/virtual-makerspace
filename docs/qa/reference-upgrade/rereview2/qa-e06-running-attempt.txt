@@ -1,0 +1,28 @@
+  [ready] lamp warm-up (lit): 52 s (+3 frames)
+  [ready] ready to transmit: 52 s (+3 frames)
+{
+ "app": "6cd66df",
+ "room": "Q37U",
+ "viewport": "1440x900",
+ "issues": [
+  "the shot was not proven to be of the running, lit transmission"
+ ],
+ "stats": {
+  "calls": 344,
+  "triangles": 83374,
+  "geometries": 302,
+  "textures": 13,
+  "pixelRatio": 1
+ },
+ "transmission": {
+  "durationMs": 115000,
+  "txBefore": 5,
+  "txAfter": 5,
+  "elapsedBeforeShotMs": 38668,
+  "elapsedAfterShotMs": 126428,
+  "screenshotMs": 75333,
+  "litAfterShot": false,
+  "stopShownAfterShot": false
+ },
+ "ok": false
+}

@@ -189,6 +189,7 @@ The editors keep the existing room path (authority, refusals, Undo), and the "ne
 - Their speed is log-scaled and stated as not to scale.
 - They stand still with reduced motion.
 - **When there are none:** a short, an open loop, no supply, or an unsolvable circuit draws nothing, and the note says which.
+- **Small currents:** a real jumper current below 100 µA gets no arrows, and the note lists it as too small to draw, with its value. It is never called zero.
 - **What it covers:** only jumpers. Parts' own currents stay in the readings.
 
 ### One selection-tone contract
@@ -225,7 +226,7 @@ Not changed:
 
 ## Results
 
-Run in the developer environment: headless Chromium with SwiftShader, not a GPU and not CI. The current results (the re-review of `563c645`, final app `10ed709`) and every attempt are in the [current part of the QA README](qa/reference-upgrade/README.md#current-the-re-review-of-563c645); the earlier results are kept below them as historical. Images: [`docs/images/reference-upgrade/`](images/reference-upgrade/).
+Run in the developer environment: headless Chromium with SwiftShader, not a GPU and not CI. The current results (final app `6cd66df`) and every attempt are in the [QA README](qa/reference-upgrade/README.md#current-the-follow-up-to-the-re-review-of-ad5cac6); the earlier results are kept below them as historical. Images: [`docs/images/reference-upgrade/`](images/reference-upgrade/).
 
 ## Compatibility with shared code
 

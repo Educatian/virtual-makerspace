@@ -71,18 +71,20 @@ These two faults come from the parent review, imported through the real project-
 
 ## Two clients over the Worker (800×544 each, 390×844 late joiner)
 
-| File | What it shows |
+**What these frames show:** the 3D bench and the app's chrome only. At 800×544 (and at the phone's first screen) the workshop panel is below the fold, so none of these images is visual proof of a panel state. The states named below are each page's state at the capture, as the test checked it in the DOM and in the room state ([log](../../../qa/reference-upgrade/rereview/rescue-attempt12-tests-27eea0c.txt)).
+
+| File | Scenario state at the capture (not visible in the frame) |
 |---|---|
-| `two-client-01-sender-design` | The sender has chosen North ridge and INJURED · NORTH, and the DI helper has written the blocks. |
-| `two-client-02-receiver-view` | The receiver's screen, framed with "Receiver's view" while waiting, before round 1 (a screenshot inside the round would hold the GPU process both pages need). |
-| `two-client-03-receiver-reading` | The receiver builds the first reading. The intended message is not shown. |
-| `two-client-04-sender/receiver-compare-delivered` | Both screens: intended, what the light said under the protocol, what was read, and "Message delivered". |
-| `two-client-05-ambiguous-diagnosis` | A 500 ms flash: the signal is ambiguous even though the reading guessed right. It shows the measured flash against the bands. |
-| `two-client-06-open-circuit-no-light` | The open circuit: no light reached the receiver. |
-| `two-client-07-cut-off-by-bench-change` | A teammate's bench edit cut the transmission off. The strip's axis is labelled. |
-| `two-client-08-unread-after-success` | After a delivered round, a new unread round. The header pill and stepper show **Reading** for the current round, not the earlier "Delivered". |
-| `two-client-09-phone-late-joiner` | A late joiner on a phone, joined while the 107.5 s irregular light ran. It gets the rounds, the current round and the roles from the room. |
-| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 199.8 lit vs 162.5 dark. |
+| `two-client-01-sender-design` | Sender: North ridge and INJURED · NORTH chosen; the DI helper has written the blocks. |
+| `two-client-02-receiver-view` | Receiver: framed with "Receiver's view" while waiting, before round 1. |
+| `two-client-03-receiver-reading` | Receiver: building the first reading; the intended message is not in its panel. |
+| `two-client-04-sender/receiver-compare-delivered` | Both: the round compared and delivered. |
+| `two-client-05-ambiguous-diagnosis` | Sender: a 500 ms flash made the signal ambiguous; the diagnosis gives the measured flash against the bands. |
+| `two-client-06-open-circuit-no-light` | Receiver: the open-circuit round, no light reached it. |
+| `two-client-07-cut-off-by-bench-change` | Sender: a teammate's bench edit cut the transmission off. |
+| `two-client-08-unread-after-success` | Receiver: a new unread round after a delivered one; its header pill and stepper read **Reading** (DOM check). |
+| `two-client-09-phone-late-joiner` | The phone joined while the 107.5 s irregular light ran (room state at join, fresh lit and dark frames). |
+| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 199.8 lit vs 162.5 dark. These two **are** the measured pixels. |
 
 ![Sender design](two-client-01-sender-design.jpg)
 ![Receiver's view before round 1](two-client-02-receiver-view.jpg)

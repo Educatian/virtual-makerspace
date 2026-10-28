@@ -10,12 +10,37 @@ These are **not GitHub CI** runs; the repository's only GitHub check is GitGuard
 Design, provenance and the REA blocker: [`../../reference-benchmark.md`](../../reference-benchmark.md).
 
 This file has two parts:
-- **[Current: the re-review of `563c645`](#current-the-re-review-of-563c645)**: the runs made for this re-review, with every attempt.
+- **[Current: the follow-up to the re-review of `ad5cac6`](#current-the-follow-up-to-the-re-review-of-ad5cac6)**: the last fixes and what was retested for them.
+- **[The re-review of `563c645`](#the-re-review-of-563c645-current-for-the-code-it-covers)**: the runs for the code they cover, with every attempt.
 - **[Historical: before the re-review](#historical-before-the-re-review)**: the earlier results, unchanged.
 
-## Current: the re-review of `563c645`
+## Current: the follow-up to the re-review of `ad5cac6`
 
-**Final application code: `10ed709`.** After it, only tests and documents changed. Built and unit-tested at that commit: [build](rereview/build-10ed709.txt), [`npm test`](rereview/npm-test-10ed709.txt).
+**Final application code: `6cd66df`.** It changes `ai-teammate.ts`, `main.ts` (one host callback), `scene.ts` and `workbench-tools.ts` (flow note), and adds `flow-plan.ts`. Records: [`rereview2/`](rereview2/).
+
+| Item | What changed | Evidence |
+|---|---|---|
+| **P2 · Bolt's false completion from a stale host board** (predates `10ed709`; the part lock did not cover it) | Before planning, a build waits, bounded at 8 s, until the host's board has applied every room revision Bolt's own connection has seen. If it has not, Bolt does not plan and stays unconfirmed (`builtByBolt`/`workDone` false). It retries 3 times, 3 s apart, then asks a person to check the board. (`346f1bd`) | New `scripts/ai-teammate-sync-check.mjs` (in `npm run test:agent`): the real `AiTeammate`, a real `DesktopRoom` each for Bolt and the host over simulated WebSockets, and the real SyncReplica, planner and RoomCore, on a virtual clock. **A:** the host's copy arrives 2.3 s late. There is no false match, and the newest build puts the resistor back at [138,141] and says "Done." (0 skipped). **B:** the host's copy never arrives. Bolt does not plan, says neither "Done." nor "already matches", and asks a person. 19 checks ([log](rereview2/ai-teammate-sync-check-fixed.txt)). **The same harness on the `10ed709` code fails at A** with "The board already matches how I'd build it." ([log](rereview2/ai-teammate-sync-check-on-10ed709-code.txt)). |
+| 15 s part-lock bound (a known limit, not a confirmed failure) | On that bound a build no longer moves past an unsettled move: it stops unconfirmed, and later builds still wait for that move. | **Not exercised by a test.** With one WebSocket per participant, the older move's acknowledgement reaches Bolt before anything that could start a newer build, so no transport-faithful schedule reaches the bound. Strict serialization in every case is not claimed. |
+| Bolt's skip messages | "Someone was holding a part" now means only a held or refused claim. A timed-out claim or a refused release says "the room didn't confirm one of my moves". A build with skips is saved as "built part of its plan". (`346f1bd`) | Source; build-log reasons |
+| **P3 · small current called zero** | `planFlow` (`src/desktop/flow-plan.ts`): currents of at least 100 µA are drawn as before. Currents from 1 nA to 100 µA are listed as "too small to draw (not zero)", with their values. Open, short, no-supply and unsolved cases are unchanged. (`6cd66df`) | New `scripts/flow-plan-check.mjs` (in `npm run test:tools`), 12 checks on real solves. They include the exact bench (battery [21,23], 100 kΩ [36,39], red LED [53,54], red jumper [70,68]: 70.99 µA, solver OK) ([log](rereview2/flow-plan-check.txt)). |
+| Clock checks | Each 250 ms clock check now also requires both samples to be non-null with round trips of at most 400 ms, and the host's clock waits for such a sample too. There are no new checks; the count stays 59. (`14d9517`) | Not rerun in the browser. In the last run (attempt 12) the samples were 29/7 and 19/3 ms. |
+| Wording | The snapino-history attempt-1 cause is now marked unknown. The irregular light "reduces" aliasing rather than making it impossible. Bolt's 9/10 is a reproduced mechanism, not proof of the original event. The two-client captions no longer claim a visible panel. The PR's PF/DI text is corrected. | Documents |
+
+**Retested on `6cd66df` / `14d9517`:**
+- `npm test`, all passed: typecheck; circuit 17,742; agent including the new sync check (19); project 270; snapino; sync 858; tools 36 plus flow 12; rescue signal 17,751; episode sync 55; diagram 66,886 ([log](rereview2/npm-test-14d9517.txt)). `npm run build` OK ([log](rereview2/build-14d9517.txt)).
+- `e2e-ai-teammate-worker.mjs` (browser, Worker), two runs: **10/10 and 10/10**. Both ended "Done." with 0 skipped, and no build was held back by the new gate ([1](rereview2/ai-worker-run1-14d9517.txt) ([json](rereview2/ai-worker-run1-14d9517-results.json)), [2](rereview2/ai-worker-run2-14d9517.txt) ([json](rereview2/ai-worker-run2-14d9517-results.json))).
+- `e2e-ai-teammate.mjs` (browser, peer room): **37/37** ([log](rereview2/e2e-ai-teammate-peer-14d9517.txt)).
+
+**Not rerun (code unchanged since `10ed709`, results stay attributed to it):** rescue, inspector, worker-sync, room-sync, cable, snapino-history, qa-reference and qa-episode.
+
+**`e06` (running transmission), one bounded capture-only attempt:** `scripts/qa-e06-running.mjs`, a legal 115 s QA light, no paused or faked clock.
+- **It did not succeed.** By the time the transmit click had been answered and Stop was shown, the light was 38.7 s in. The 1440×900 screenshot then took 75.3 s, ending at 126.4 s of 115 s, so the shot could not be proven to show the running, lit round. The same `tx` was seen before and after.
+- The `dc51187` `e06` stays, marked ([record](rereview2/qa-e06-running-attempt-record.json), [log](rereview2/qa-e06-running-attempt.txt)).
+
+## The re-review of `563c645` (current for the code it covers)
+
+**These runs were on application code `10ed709`** (or `52cc67c` where noted). Since then `6cd66df` changed Bolt's planning and the flow note; see the follow-up above for what was retested. Built and unit-tested at that commit: [build](rereview/build-10ed709.txt), [`npm test`](rereview/npm-test-10ed709.txt).
 
 The application commits of this re-review:
 
@@ -26,7 +51,7 @@ The application commits of this re-review:
 | `1c13a95` | **D.** Circuit Bench meter in the dock inspector; optional solved-current view; compact phone chrome. |
 | `8205d51` | **D.** The phone's tool row no longer widens the page (a 20 px horizontal overflow found by the new phone check). |
 | `52cc67c` | A `?qa`-only hook that stops or resumes drawing a page (test budget on this machine; see "Why the browser tests changed"). |
-| `10ed709` | **C.** Bolt moves one part at a time across builds. This is the cause of the earlier 9/10, found by the diagnostic set below. |
+| `10ed709` | **C.** Bolt moves one part at a time across builds. This fixes a mechanism with the earlier 9/10's symptom, reproduced by the diagnostic set below; the original run's own cause stays unknown. |
 
 ### Results on the final application code
 
@@ -39,7 +64,7 @@ The application commits of this re-review:
 | `e2e-ai-teammate-worker.mjs`, three runs | `10ed709` | **10/10, 10/10, 10/10**, each ending "Done." with 0 skipped. Before the Bolt fix: 9, 8 and 9 of 10 (see C) | [1](rereview/ai-worker-after-fix-run1.txt), [2](rereview/ai-worker-after-fix-run2.txt), [3](rereview/ai-worker-after-fix-run3.txt) |
 | `e2e-ai-teammate.mjs` (peer) | `10ed709` | 37/37 | [log](rereview/e2e-ai-teammate-10ed709.txt) |
 | `e2e-worker-sync.mjs` | `10ed709` | 18/18 | [log](rereview/e2e-worker-sync-10ed709.txt) |
-| `e2e-snapino-history.mjs` | `f266066` | 25/25, attempt 2. Attempt 1 (`10ed709`): 24/25, "import Q/T reaches both peers" read the views at a 60 s limit without detail; it now waits (bounded) for each page and says what each held | [2](rereview/e2e-snapino-history-attempt2-tests-f266066.txt), [1](rereview/e2e-snapino-history-attempt1-10ed709.txt) |
+| `e2e-snapino-history.mjs` | `f266066` | 25/25, attempt 2. Attempt 1 (`10ed709`): 24/25, "import Q/T reaches both peers" failed without detail; its cause is unknown (a page applying the room's state after the 60 s limit is plausible, not proven). The check now waits (bounded) for each page and says what each held | [2](rereview/e2e-snapino-history-attempt2-tests-f266066.txt), [1](rereview/e2e-snapino-history-attempt1-10ed709.txt) |
 | `e2e-room-sync.mjs` | `10ed709` | 13/13 | [log](rereview/e2e-room-sync-10ed709.txt) |
 | `e2e-cable-end.mjs` | `10ed709` | 12/12 | [log](rereview/e2e-cable-end-10ed709.txt) |
 | `qa-episode.mjs` (Episode 1 captures, one maker, peer room) | `3014a8a` | 12 of 13 captures renewed, no other issue (bulb 193.3 lit vs 158.0 unlit). **Issue in both attempts:** the running-transmission shot `e06` was reached only after the 110 s flash ended (151.7 s, then 116.3 s after the shot was moved first, `88a31e2`), so the `dc51187` `e06` is kept and marked | [2](rereview/qa-episode-attempt2.txt) ([stats](rereview/qa-episode-attempt2-stats.json)), [1](rereview/qa-episode-attempt1.txt) ([stats](rereview/qa-episode-attempt1-stats.json)) |
@@ -78,7 +103,7 @@ Nothing below was rerun until green without a change: each attempt after a failu
 ### What the strengthened rescue test checks now (item B)
 
 - **Provenance.** Every probe frame carries the transmission id (`tx`) and the page's capture time. A frame counts only for its own transmission, and with a boundary only if captured after it.
-- **Reconnect.** The receiver's socket is dropped during a 107.5 s light with irregular phases (2.5–5 s, so it cannot lock to a frame period). As soon as the reconnect is confirmed (online, no role, in round 6), the log is drained and a boundary is set. Only frames of round 6 captured after it count, and they must include lit **and** dark, all agreeing with the timeline. Attempt 12: back at 35 of 107.5 s; 3 fresh frames, 1 lit, 2 dark; clocks 14 ms apart. The role is retaken and the clocks compared (within 250 ms) afterwards.
+- **Reconnect.** The receiver's socket is dropped during a 107.5 s light with irregular phases (2.5–5 s; this reduces aliasing with a steady frame period, it does not make it impossible). As soon as the reconnect is confirmed (online, no role, in round 6), the log is drained and a boundary is set. Only frames of round 6 captured after it count, and they must include lit **and** dark, all agreeing with the timeline. Attempt 12: back at 35 of 107.5 s; 3 fresh frames, 1 lit, 2 dark; clocks 14 ms apart. The role is retaken and the clocks compared (within 250 ms) afterwards.
 - **Late join.** The joiner's page and lobby are opened before the light starts. Unconditionally, with bounded waits: it joins during the light (attempt 12: at 35 of 107.5 s, same `tx`), logs lit **and** dark frames of that transmission (10 frames: 3 lit, 7 dark), and its clock agrees with the sender's within 250 ms (Δ 8 ms; round trips 19 / 3 ms). A missing state is a failure with a reason, never a crash.
 - **A fixed count.** The run must execute exactly 59 checks.
 - **The QA lights are slow on purpose** so that this machine can sample them. They say nothing about timing on real devices.
@@ -122,7 +147,7 @@ Now (`997412d`, unit checks in `scripts/rescue-signal-check.mjs`, 17,751 checks 
 ### C: evidence
 
 - **Records.** Every record is committed as `.txt` or `.json` (`*.log` is ignored by git). Every relative link in these documents was checked at the final remote commit (see the PR).
-- **Bolt (Circuit Bench AI teammate).** The cause of the earlier 9/10 is **found and fixed**.
+- **Bolt (Circuit Bench AI teammate).** A mechanism that produces the earlier 9/10's symptom (no "Done.") is **reproduced and fixed**. The original `a9fefef` run kept no record, so whether this was its cause cannot be known; the diagnostics support the mechanism, not that event.
   - **The diagnostic set:** three runs on `7673526` / `c418a85`, before the fix, each keeping Bolt's lines, every part's claim and release outcome, and the final bench.
     - **Runs 2 and 3 reproduced the missing "Done.".** A newer build (run 4) started while a superseded build (run 3) was carrying the battery. The room client keeps one hold per part, so run 3's release came back refused, and so did run 4's own release of the battery. Bolt counted the battery as skipped and said "Someone was holding a part, so I left it". Yet the final bench had the battery where the plan put it, and the circuit lit safely.
     - **Run 1 did not hit the race.** It said "Done.".

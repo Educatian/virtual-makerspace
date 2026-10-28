@@ -253,7 +253,7 @@ The workshop goal is met by a delivered round that the team has also explained.
 
 ### Results of the last developer-environment run
 
-**Current (the re-review of `563c645`): final app `10ed709`.** Every attempt, with what changed between them: [`docs/qa/reference-upgrade/README.md`](qa/reference-upgrade/README.md#current-the-re-review-of-563c645).
+**Current: final app `6cd66df`.** It fixes Bolt's false completion from a stale host board and the flow view's small-current note. For it, `npm test` passed (with two new exact-code checks), along with `e2e-ai-teammate-worker` 10/10 twice and the peer test; see [the follow-up](qa/reference-upgrade/README.md#current-the-follow-up-to-the-re-review-of-ad5cac6). The browser suites below ran on `10ed709`, whose code they cover is unchanged. Every attempt is listed in [the re-review part](qa/reference-upgrade/README.md#the-re-review-of-563c645-current-for-the-code-it-covers).
 
 | Command | App / tests | Result |
 |---|---|---|
@@ -261,10 +261,10 @@ The workshop goal is met by a delivered round that the team has also explained.
 | `npm run build` | `10ed709` | OK |
 | `e2e-rescue-signal.mjs` (two makers plus a late joiner, Worker) | `10ed709` / `27eea0c` | **60/60**, attempt 12 of 12; every attempt and change is listed in the QA README |
 | `e2e-bench-inspector.mjs` | `10ed709` | **30/30**, attempt 3 of 3 |
-| `e2e-ai-teammate-worker.mjs` | `10ed709` | 10/10 in 3 of 3 runs, after Bolt's fix (before it: 9, 8, 9 of 10, with the cause recorded) |
+| `e2e-ai-teammate-worker.mjs` | `10ed709` | 10/10 in 3 of 3 runs, after Bolt's fix (before it: 9, 8, 9 of 10; the build log recorded the mechanism) |
 | `e2e-ai-teammate.mjs` (peer) | `10ed709` | 37/37 |
 | `e2e-worker-sync.mjs`, `e2e-room-sync.mjs`, `e2e-cable-end.mjs` | `10ed709` | 18/18, 13/13, 12/12 |
-| `e2e-snapino-history.mjs` | `10ed709` / `f266066` | 25/25 on attempt 2 (attempt 1: 24/25, a 60 s view read without detail) |
+| `e2e-snapino-history.mjs` | `10ed709` / `f266066` | 25/25 on attempt 2 (attempt 1: 24/25 without detail, cause unknown; a late view is plausible, not proven) |
 | `qa-reference.mjs after` (layouts, phone scroll/pointer/keyboard, Circuit Bench meter and flow, PF/DI) | `10ed709` | 33/33 (same-camera shots left out after a 900 s readiness stall; their counters from a killed first attempt equal the earlier after-build) |
 | `qa-episode.mjs` (captures) | `10ed709` | 12 of 13 renewed; the running shot `e06` missed its 110 s flash in both attempts, so the earlier capture is kept and marked |
 
