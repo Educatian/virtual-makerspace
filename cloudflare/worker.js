@@ -4,7 +4,7 @@ import { sanitizeRescueAction, sanitizeRescueState } from "../src/episodes/rescu
 import { COMPONENT_IDS, componentResource, sanitizeEdit, sanitizeProgram, sanitizeTransform } from "./sanitize.js";
 
 const ROOM_CODE = /^[A-Z2-9]{4,12}$/;
-const STUDIOS = new Set(["circuit", "greenhouse", "snap", "snapino"]);
+const STUDIOS = new Set(["circuit", "greenhouse", "snap", "snapino", "sound"]);
 const studioOr = (value, fallback = "circuit") => (STUDIOS.has(value) ? value : fallback);
 const MAX_ROOM_MESSAGES_PER_SECOND = 120;
 const AI_TEAMMATE_NAME = "Bolt";
@@ -32,6 +32,12 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "clock",
 ]);
 
+
+/** The answer to an edit the room's validation refused (out-of-range value, unknown jack, moved fixture…). */
+function invalidEditReply(raw, programRev) {
+  if (!raw || typeof raw !== "object" || raw.kind !== "edit" || typeof raw.opId !== "string" || !/^[\w-]{1,80}$/.test(raw.opId)) return null;
+  return { kind: "edit-result", opId: raw.opId, ok: false, reason: "invalid", current: [], programRev };
+}
 
 function sanitizeSignal(value) {
   if (!value || typeof value !== "object") return null;
@@ -437,12 +443,20 @@ export class MakerspaceRoom extends DurableObject {
     }
     // Any malformed message is dropped: parsing and validation never throw past this point.
     let message;
+    let parsed;
     try {
-      message = this.sanitizeMessage(JSON.parse(payload), attachment);
+      parsed = JSON.parse(payload);
+      message = this.sanitizeMessage(parsed, attachment);
     } catch {
       return;
     }
-    if (!message) return;
+    if (!message) {
+      // A refused edit is answered (nothing changed), so its sender never waits for a reply that
+      // cannot come or mistakes the silence for acceptance.
+      const refusal = invalidEditReply(parsed, this.core.programRev);
+      if (refusal) socket.send(JSON.stringify(refusal));
+      return;
+    }
     const result = this.core.handle({ id: attachment.id, name: attachment.name }, message, { maxClaims: MAX_CLAIMS_PER_PARTICIPANT });
     if (message.kind === "claim" || message.kind === "release") {
       // Survives hibernation: the holder's claims ride on its socket attachment.

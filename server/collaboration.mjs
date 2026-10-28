@@ -76,15 +76,22 @@ server.on("connection", (socket, request) => {
   socket.on("message", (payload, isBinary) => {
     if (isBinary || payload.byteLength > 64 * 1024) return;
     let message;
+    let parsed;
     try {
-      const parsed = JSON.parse(payload.toString());
+      parsed = JSON.parse(payload.toString());
       if (!parsed || typeof parsed.kind !== "string") return;
       if (parsed.kind === "hello" && typeof parsed.participant?.name === "string") participant.name = parsed.participant.name.slice(0, 80);
       message = sanitize(parsed, participant);
     } catch {
       return;
     }
-    if (!message) return;
+    if (!message) {
+      // As the Worker does: a refused edit is answered, never left waiting.
+      if (parsed.kind === "edit" && typeof parsed.opId === "string" && /^[\w-]{1,80}$/.test(parsed.opId)) {
+        socket.send(JSON.stringify({ kind: "edit-result", opId: parsed.opId, ok: false, reason: "invalid", current: [], programRev: entry.core.programRev }));
+      }
+      return;
+    }
     const result = entry.core.handle(participant, message);
     for (const reply of result.sender) socket.send(JSON.stringify(reply));
     if (message.kind === "hello") for (const reply of entry.core.join()) socket.send(JSON.stringify(reply));

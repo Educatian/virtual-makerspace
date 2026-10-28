@@ -332,7 +332,7 @@ Between `606fa07` and `13aa2aa`, only the room client's clock sampling changed (
 | C4 | **Clean.** Nothing clips: the signal entering the Drive, times its gain, stays within ±1.0 FS. | The modelled signal at the Drive |
 | C5 | **Level.** The Speaker input peaks between −12 and −3 dBFS. | The modelled signal at the Speaker input |
 
-The brief has many solutions (for example a cutoff from about 100 Hz to about 410 Hz with a matching Drive gain), and many tempting failures: no filter (bright), Drive ×4 (clipped), a very low cutoff (too quiet even at ×4), filter and drive swapped with too much gain (clipped before the filter), the speaker switched off (silent at the output, but not a broken patch).
+The brief has many solutions (by the model, any cutoff from about 105 Hz to 410 Hz with a matching Drive gain), and many tempting failures: no filter (bright), Drive ×4 (clipped), a very low cutoff (too quiet even at ×4), filter and drive swapped with too much gain (clipped before the filter), the speaker switched off (silent at the output, but not a broken patch).
 
 **The learning loop.**
 1. **Predict / design.** Each learner records a prediction for the current attempt (meets the brief, too bright, clipped, too quiet or too loud, silent) and why. Predictions are local drafts, never shared or exported.
