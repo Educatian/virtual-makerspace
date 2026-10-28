@@ -37,6 +37,8 @@ Built on the [Immersive Web SDK](https://iwsdk.dev) — runs in the browser, dep
 
 The default desktop workspace includes the Motherboard Circuit Lab and Smart Greenhouse studios, independent orbital cameras, text/voice discussion, magnetic placement, and independently draggable A/B endpoints for wires and irrigation hose.
 
+On screens wider than 900px the workspace is **immersive**: the 3D bench fills the window and the parts rail, toolbar, attempt history and discussion panel float over it as translucent glass. The discussion panel slides away with the `»` button (a chat button with an unread dot brings it back), the camera re-frames so the bench stays centered in the open space, and the toolbar's full-screen button hides the browser chrome. Phones keep the stacked layout.
+
 <table>
 <tr>
 <td width="50%"><img src="docs/images/desktop-room-admin.png" alt="Administrator room entry screen" /><br/><sub>Administrators can enter an existing room or generate a new room code.</sub></td>
@@ -48,7 +50,13 @@ The default desktop workspace includes the Motherboard Circuit Lab and Smart Gre
 </tr>
 </table>
 
+### AI teammate: Bolt (teachable agent)
+
+Working alone? Turn on **Practice with Bolt** in the lobby, add Bolt from the Team tab, or open a room with `?teammate=ai`. Bolt joins as a real participant — it chats, claims and moves parts, marks ready, and appears in the shared trace — but it is a *teachable agent*: it starts with naive circuit ideas (rows are connected, one battery connection is enough, resistors just slow things down) and only changes them when someone explains **what and why** in chat. As builder it builds from its beliefs and gets things wrong; as verifier it questions the parts of your build that contradict its ideas. What it learned is kept in **Bolt's notebook** in your own words. When Bolt or another maker holds a part, a glassy hand in their color reaches in, closes on it and carries it. Details: [`docs/ai-teammate.md`](docs/ai-teammate.md).
+
 **Live collaboration room:** [vm.teachplay.dev/?room=7K3M&studio=circuit](https://vm.teachplay.dev/?room=7K3M&studio=circuit)
+
+**Play with Bolt (AI teammate):** [vm.teachplay.dev/?room=7K3M&studio=circuit&teammate=ai](https://vm.teachplay.dev/?room=7K3M&studio=circuit&teammate=ai) — Bolt joins as your partner; teach it in chat, explaining what to do *and why*.
 
 Same-device tabs synchronize automatically through `BroadcastChannel`. For simultaneous users on different computers, start the WebSocket room relay and point the frontend at it:
 
@@ -260,6 +268,9 @@ controller pointerup    ─────┤
 - Avatar presence (head + 2 hands), object ownership transfer
 - Researcher spectator URL (`/spectate?session=...`)
 - Shared partner-gaze as the headline experimental manipulation
+
+**Desktop collaborative mode — AI teammate (implemented)**
+- Bolt, a teachable-agent teammate for solo learners (Circuit Bench), with `teach` trace events and ghost hands for remote grabs
 
 **Phase 3 — backlog**
 - Affective / LLM-driven tutoring agent (in-scene 3D embodiment, telemetry → LLM context)

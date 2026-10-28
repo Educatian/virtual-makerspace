@@ -57,6 +57,7 @@ function sanitizeProgram(value) {
 }
 const studioOr = (value, fallback = "circuit") => (STUDIOS.has(value) ? value : fallback);
 const MAX_ROOM_MESSAGES_PER_SECOND = 120;
+const AI_TEAMMATE_NAME = "Bolt";
 const MAX_CLAIMS_PER_PARTICIPANT = 16;
 const ALLOWED_MESSAGE_KINDS = new Set([
   "hello",
@@ -391,12 +392,15 @@ export default {
         const metadata = await ensureKnownRoom(env, roomCode);
         if (!metadata) return new Response("Room does not exist", { status: 404 });
 
+        // An AI teammate (Bolt) is hosted by a signed-in maker's browser. It gets its own
+        // session under that maker's identity, a fixed display name, and no host rights.
+        const isAgent = url.searchParams.get("agent") === "1";
         const requestedSession = (url.searchParams.get("participant") || "").slice(0, 260);
         const sessionId = requestedSession.startsWith(`${identity.id}:`)
           ? requestedSession
           : `${identity.id}:${crypto.randomUUID()}`;
 
-        if (env.DATABASE_URL) {
+        if (env.DATABASE_URL && !isAgent) {
           try {
             const membershipRole = metadata.createdByEmail === identity.email ? "owner" : "member";
             await recordRoomMembership(env, roomCode, identity, membershipRole);
@@ -409,8 +413,9 @@ export default {
         const headers = new Headers(request.headers);
         headers.set("x-maker-id", identity.id);
         headers.set("x-maker-session-id", sessionId);
-        headers.set("x-maker-name", encodeURIComponent(identity.name));
-        headers.set("x-maker-host", identity.role === "admin" || metadata.createdByEmail === identity.email ? "1" : "0");
+        headers.set("x-maker-name", encodeURIComponent(isAgent ? AI_TEAMMATE_NAME : identity.name));
+        headers.set("x-maker-host", !isAgent && (identity.role === "admin" || metadata.createdByEmail === identity.email) ? "1" : "0");
+        headers.set("x-maker-agent", isAgent ? "1" : "0");
         const room = roomStub(env, roomCode);
         return room.fetch(new Request(request, { headers }));
       }
@@ -461,6 +466,16 @@ export class MakerspaceRoom extends DurableObject {
       return new Response("WebSocket upgrade required", { status: 426 });
     }
 
+    // An AI teammate may only join while its host (same signed-in maker) is in the room.
+    if (request.headers.get("x-maker-agent") === "1") {
+      const hostId = request.headers.get("x-maker-id");
+      const hostPresent = this.state.getWebSockets().some((socket) => {
+        const attachment = socket.deserializeAttachment();
+        return attachment && attachment.userId === hostId && !attachment.agent;
+      });
+      if (!hostPresent) return new Response("AI teammate needs its host in the room", { status: 403 });
+    }
+
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const attachment = {
@@ -468,6 +483,7 @@ export class MakerspaceRoom extends DurableObject {
       userId: request.headers.get("x-maker-id") || "unknown",
       name: decodeURIComponent(request.headers.get("x-maker-name") || "Maker").slice(0, 80),
       canHost: request.headers.get("x-maker-host") === "1",
+      agent: request.headers.get("x-maker-agent") === "1",
       joinedAt: Date.now(),
     };
     this.state.acceptWebSocket(server);
@@ -579,6 +595,7 @@ export class MakerspaceRoom extends DurableObject {
           lastActiveAt: Number.isFinite(incoming.participant?.lastActiveAt)
             ? incoming.participant.lastActiveAt
             : Date.now(),
+          kind: participant.agent ? "agent" : "human",
         },
       };
     }
@@ -620,7 +637,7 @@ export class MakerspaceRoom extends DurableObject {
     }
     if (incoming.kind === "trace") {
       const trace = incoming.trace || {};
-      if (!["inspect", "claim", "move", "discuss", "test", "snapshot", "role", "phase", "ready", "reflect"].includes(trace.action)) return null;
+      if (!["inspect", "claim", "move", "discuss", "test", "snapshot", "role", "phase", "ready", "reflect", "teach"].includes(trace.action)) return null;
       if (!["frame", "build", "test", "reflect"].includes(trace.phase)) return null;
       return {
         kind: "trace",

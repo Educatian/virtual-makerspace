@@ -76,3 +76,6 @@ unity/**/*.blend1*
 # Blender working files (rebuild with blender/build_makerspace.py)
 *.blend
 *.blend1
+
+# Wrangler local state (dev Durable Objects, D1/KV sqlite, tmp bundles)
+.wrangler/

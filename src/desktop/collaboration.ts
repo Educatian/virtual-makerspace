@@ -23,6 +23,8 @@ export interface Participant {
   activity: ParticipantActivity;
   activityDetail?: string;
   lastActiveAt: number;
+  /** "agent" marks an AI teammate hosted by a human participant's browser. */
+  kind?: "human" | "agent";
 }
 
 export type CollaborationRole = "builder" | "verifier";
@@ -46,7 +48,9 @@ export type TraceAction =
   | "role"
   | "phase"
   | "ready"
-  | "reflect";
+  | "reflect"
+  /** An AI teammate's belief changed because a teammate taught it (no message body). */
+  | "teach";
 
 export interface ActivityTrace {
   id: string;
@@ -202,6 +206,7 @@ export class DesktopRoom {
     name: string,
     events: Partial<RoomEvents> = {},
     authenticatedId?: string,
+    options: { agent?: boolean } = {},
   ) {
     this.roomCode = roomCode.toUpperCase();
     this.events = { ...noOpEvents, ...events };
@@ -217,6 +222,7 @@ export class DesktopRoom {
       ready: false,
       activity: "available",
       lastActiveAt: Date.now(),
+      kind: options.agent ? "agent" : "human",
     };
     this.participants.set(this.participant.id, this.participant);
 
@@ -228,6 +234,7 @@ export class DesktopRoom {
     const roomSocketUrl = socketUrl ? new URL(socketUrl, location.href) : null;
     roomSocketUrl?.searchParams.set("room", this.roomCode);
     roomSocketUrl?.searchParams.set("participant", this.participant.id);
+    if (options.agent) roomSocketUrl?.searchParams.set("agent", "1");
     this.socketUrl = roomSocketUrl;
     this.channel = !this.socketUrl && "BroadcastChannel" in window
       ? new BroadcastChannel(`virtual-makerspace:${this.roomCode}`)
@@ -614,7 +621,9 @@ export class DesktopRoom {
 
   private ensureTeamRole(): boolean {
     if (this.roleCustomized) return false;
+    // AI teammates never decide who the human builder is.
     const [firstParticipant] = [...this.participants.values()]
+      .filter((participant) => participant.kind !== "agent")
       .sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
     const nextRole: CollaborationRole = firstParticipant?.id === this.participant.id
       ? "builder"
@@ -628,13 +637,16 @@ export class DesktopRoom {
   }
 
   private isStateCoordinator(requesterId: string): boolean {
+    // AI teammates do not answer state requests, so they never coordinate.
     const [coordinator] = [...this.participants.values()]
-      .filter((participant) => participant.id !== requesterId)
+      .filter((participant) => participant.id !== requesterId && participant.kind !== "agent")
       .sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
     return coordinator?.id === this.participant.id;
   }
 
   private post(message: RoomMessage): void {
+    // A closed BroadcastChannel throws on postMessage; late async callers just stop here.
+    if (this.closed) return;
     this.channel?.postMessage(message);
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));
