@@ -353,7 +353,7 @@ No points, XP, timers or fake measurements.
 
 | Module | Jacks | Model |
 |---|---|---|
-| Source | OUT | Band-limited Web Audio oscillator (sine, square or sawtooth), 55–1760 Hz in 1 Hz steps. Output 0.5 FS peak (−6.02 dBFS). |
+| Source | OUT | Band-limited Web Audio oscillator (sine, square or sawtooth), 55–1760 Hz in 1 Hz steps, ×0.5. A sine peaks at exactly 0.5 FS (−6.02 dBFS). Web Audio scales square and sawtooth so that their full-band waveform peaks at 1.0 (coefficients ÷ (2/π)·Si(π) ≈ 1.179, measured in Chromium), so their band-limited versions peak a little lower: about 0.49 FS for a 220 Hz sawtooth, 0.46 FS at 1760 Hz. |
 | Filter | IN, OUT | 2nd-order Butterworth low-pass (12 dB/octave, Q = 1/√2, no resonance knob), cutoff 80–8000 Hz. Web Audio `BiquadFilterNode` (its low-pass Q is in dB: −3.01 dB). The criteria use the analog prototype \|H\| = 1/√(1 + (f/fc)⁴); the offline tests bound the digital filter's difference. |
 | Drive | IN, OUT | Linear gain ×0–×4 (0.01 steps), then an ideal hard clip at ±1.0 FS (`WaveShaperNode`, identity curve). The distortion is real time-domain clipping of the actual signal. Real overdrive clips more softly. |
 | Speaker | IN | Shared power switch. Then a hard clip at ±1.0 FS and a fixed ×0.25 (−12.04 dBFS) safety ceiling, then **local** volume (0–100 %, default 50 %) and **local** mute. The digital output never exceeds 0.25 FS. What a person hears depends on their device; loudness (SPL, dBA) is not measured or modelled. |

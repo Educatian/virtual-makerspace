@@ -222,17 +222,19 @@ for (const gain of [0, 0.5, 1, 2, 2.5, 3, 4]) {
   ok(near(drive.harmonics[0], Math.abs(b1), 1e-4), `sine × ${gain}: fundamental of the clipped wave`, `${drive.harmonics[0]} vs ${b1}`);
   ok(signal.clipping === (a > 1), `sine × ${gain}: clipping flag`);
 }
-// Band-limited sawtooth, densely sampled here (independent of the model's 1024-point period).
+// Band-limited sawtooth. Web Audio divides the coefficients by the full-band Gibbs peak
+// (2/π)·Si(π), measured in Chromium by sound-dsp-check.mjs; Si(π) is integrated here.
+let si = 0;
+for (let i = 0, N = 1_000_000; i < N; i += 1) {
+  const t = (Math.PI * (i + 0.5)) / N;
+  si += (Math.sin(t) / t) * (Math.PI / N);
+}
+const gibbs = (2 / Math.PI) * si;
+ok(near(gibbs, model.GIBBS_PEAK, 1e-9), "Gibbs peak (2/π)·Si(π)", String(gibbs));
 for (const [hz, cutoff] of [[220, 300], [220, 2000], [55, 120], [880, 1500]]) {
   const top = Math.floor((24_000 - 1e-9) / hz);
   const b = (n) => (2 / (Math.PI * n)) * (n % 2 ? 1 : -1);
-  const Ndense = 16_384;
-  let peak = 0;
-  for (let i = 0; i < Ndense; i += 1) {
-    let sum = 0;
-    for (let n = 1; n <= Math.min(top, 511); n += 1) sum += b(n) * Math.sin((2 * Math.PI * n * i) / Ndense);
-    peak = Math.max(peak, Math.abs(sum));
-  }
+  const peak = gibbs;
   const signal = model.analyzeSignal(chainState(FILTER_ONLY, { hz, wave: "sawtooth" }, cutoff, 1));
   for (let n = 1; n <= 8; n += 1) {
     const expected = n <= top ? (0.5 * Math.abs(b(n)) / peak) * H(n * hz, cutoff) : 0;

@@ -347,44 +347,28 @@ export function waveCoefficients(wave: SoundWave, hz: number, sampleRate = MODEL
   return b;
 }
 
-/** One period of the Source's output: band-limited, normalized to peak 1, then ×SOURCE_PEAK. */
+/**
+ * Web Audio scales its built-in square and sawtooth so that the full-band waveform peaks at 1.0:
+ * the coefficients are divided by the Gibbs overshoot (2/π)·Si(π) ≈ 1.17898. A band-limited
+ * waveform at a higher pitch has fewer harmonics and so peaks a little below 1.0 (measured in
+ * Chromium by scripts/sound-dsp-check.mjs; the fundamental's amplitude does not change with pitch).
+ */
+export const GIBBS_PEAK = 1.1789797444721672;
+
+/** One period of the Source's output: band-limited, scaled as Web Audio scales it, ×SOURCE_PEAK. */
 export function sourcePeriod(wave: SoundWave, hz: number, sampleRate = MODEL_SAMPLE_RATE): Float64Array {
   const b = waveCoefficients(wave, hz, sampleRate);
   const x = new Float64Array(PERIOD_SAMPLES);
+  const scale = (wave === "sine" ? 1 : 1 / GIBBS_PEAK) * SOURCE_PEAK;
   for (let i = 0; i < PERIOD_SAMPLES; i += 1) {
     const phase = (2 * Math.PI * i) / PERIOD_SAMPLES;
     let sum = 0;
     for (let n = 1; n < b.length; n += 1) if (b[n] !== 0) sum += b[n] * Math.sin(n * phase);
-    x[i] = sum;
+    x[i] = sum * scale;
   }
-  const peak = continuousPeak(b, x);
-  for (let i = 0; i < x.length; i += 1) x[i] = (x[i] / peak) * SOURCE_PEAK;
   return x;
 }
 
-/**
- * The true peak of a sine series (a band-limited edge peaks between grid points): the grid's
- * largest sample, refined by a ternary search between its neighbours.
- */
-function continuousPeak(b: number[], grid: Float64Array): number {
-  let best = 0;
-  for (let i = 1; i < grid.length; i += 1) if (Math.abs(grid[i]) > Math.abs(grid[best])) best = i;
-  const value = (phase: number): number => {
-    let sum = 0;
-    for (let n = 1; n < b.length; n += 1) if (b[n] !== 0) sum += b[n] * Math.sin(n * phase);
-    return Math.abs(sum);
-  };
-  const step = (2 * Math.PI) / grid.length;
-  let low = (best - 1) * step;
-  let high = (best + 1) * step;
-  for (let iteration = 0; iteration < 60; iteration += 1) {
-    const a = low + (high - low) / 3;
-    const c = high - (high - low) / 3;
-    if (value(a) < value(c)) low = a;
-    else high = c;
-  }
-  return Math.max(Math.abs(grid[best]), value((low + high) / 2));
-}
 
 /** Analog 2nd-order Butterworth low-pass response at `hz` (complex), cutoff `fc`. */
 export function butterworth(hz: number, fc: number): { re: number; im: number } {
