@@ -308,7 +308,11 @@ export class RoomCore {
     if (episode) this.episode = episode;
   }
 
-  /** Whether storing `transform` would put a second plug into a jack (sound patch cables only). */
+  /**
+   * Whether storing `transform` would put a second plug into a jack (sound patch cables only),
+   * judged on the cable's merged sockets (a cable-end move keeps the room's other end), so two
+   * people each moving one end of the same cable into the same jack are refused.
+   */
   jackTaken(componentId, transform, batch) {
     if (!isSoundCable(componentId)) return false;
     const sockets = batch.get(componentId) ?? nextCableSockets(this.state.get(componentId)?.transform, transform);
@@ -320,15 +324,19 @@ export class RoomCore {
     const previous = this.state.get(componentId);
     let next = { ...transform };
     const end = transform.activeEndpoint;
-    if ((end === 0 || end === 1) && previous?.transform.endpoints && transform.endpoints) {
-      // A cable-end move changes only that end: two people may each hold one end, and each
-      // sender's view of the other end can be behind. Keep the room's other end.
+    if ((end === 0 || end === 1) && previous) {
+      // A cable-end move changes only that end, the one the sender holds: two people may each
+      // hold one end, and each sender's view of the other end can be behind. The room's other
+      // end is always kept, whatever the message says about it (the claim covers one end only).
       const base = previous.transform;
-      const endpoints = [base.endpoints[0], base.endpoints[1]];
-      endpoints[end] = transform.endpoints[end];
       const sockets = Array.isArray(base.sockets) ? [base.sockets[0], base.sockets[1]] : [null, null];
       sockets[end] = transform.sockets?.[end] ?? null;
-      next = { ...base, endpoints, sockets: sockets.some((socket) => socket !== null) ? sockets : null };
+      next = { ...base, sockets: sockets.some((socket) => socket !== null) ? sockets : null };
+      if (base.endpoints) {
+        const endpoints = [base.endpoints[0], base.endpoints[1]];
+        if (transform.endpoints) endpoints[end] = transform.endpoints[end];
+        next.endpoints = endpoints;
+      } else if (transform.endpoints) next.endpoints = transform.endpoints;
     }
     delete next.activeEndpoint;
     // Live drags omit electrical values and switch state (they never change them): keep the accepted ones.

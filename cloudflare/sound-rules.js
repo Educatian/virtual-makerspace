@@ -144,11 +144,12 @@ export function sanitizeSoundTransform(componentId, raw, clean) {
 
 /**
  * The cable's sockets once `transform` is stored over `previous` (mirrors RoomCore.store: a
- * cable-end move changes only that end).
+ * cable-end move over a stored cable changes only that end, whatever the sender says about the
+ * other end).
  */
 export function nextCableSockets(previous, transform) {
   const end = transform.activeEndpoint;
-  if ((end === 0 || end === 1) && previous?.endpoints && transform.endpoints) {
+  if ((end === 0 || end === 1) && previous) {
     const base = Array.isArray(previous.sockets) ? [previous.sockets[0], previous.sockets[1]] : [null, null];
     base[end] = transform.sockets?.[end] ?? null;
     return base;
@@ -157,12 +158,14 @@ export function nextCableSockets(previous, transform) {
 }
 
 /**
- * One plug per jack: the first jack `componentId`'s next sockets share with another cable, as
- * `{ jack, cable }`, or null. `socketsOf(id)` gives each other cable's sockets as they would be
+ * One plug per jack: the first jack `componentId`'s next sockets share with another cable (or
+ * both of its own plugs in one jack, reported with `cable` = itself), as `{ jack, cable }`, or null. `socketsOf(id)` gives each other cable's sockets as they would be
  * (the room's state, overlaid with the same batch's changes).
  */
 export function soundJackConflict(componentId, sockets, socketsOf) {
   if (!isSoundCable(componentId) || !sockets) return null;
+  // Both of this cable's own plugs in one jack (e.g. two people each moving one end there).
+  if (sockets[0] !== null && sockets[0] !== undefined && sockets[0] === sockets[1]) return { jack: sockets[0], cable: componentId };
   for (const jack of sockets) {
     if (jack === null || jack === undefined) continue;
     for (const other of SOUND_CABLE_IDS) {

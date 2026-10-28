@@ -74,6 +74,9 @@ export function sanitizeTransform(value, componentId = "") {
   }
   if (value.activeEndpoint !== undefined) {
     if (value.activeEndpoint !== 0 && value.activeEndpoint !== 1) return null;
+    // A cable-end move names its end and carries both end positions (as the app always sends):
+    // receivers apply only that end, so a payload without them is refused, not half-applied.
+    if (!transform.endpoints) return null;
     transform.activeEndpoint = value.activeEndpoint;
   }
   if (typeof value.on === "boolean") transform.on = value.on;

@@ -396,6 +396,120 @@ ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev:
   ok(out.sender[0].ok === false && out.sender[0].reason === "stale", "a knob edit based on an old revision is stale");
 }
 
+// Review findings (independent reviewers, PR #5 head 5e1a595), through the REAL sanitizer and RoomCore,
+// exactly as the Worker and the local relay deliver messages.
+{
+  // What the Worker/relay hands RoomCore for a client's raw message (sanitize first; null = dropped).
+  const deliver = (core, who, raw) => {
+    if (raw.kind === "transform") {
+      const transform = sanitizeTransform(raw.transform, raw.componentId);
+      if (!transform) return { dropped: true, sender: [], others: [] };
+      return core.handle(who, { kind: "transform", participantId: who.id, componentId: raw.componentId, transform, sequence: raw.sequence });
+    }
+    if (raw.kind === "edit") {
+      const edit = sanitizeEdit(raw);
+      if (!edit) return { dropped: true, sender: [], others: [] };
+      return core.handle(who, { kind: "edit", participantId: who.id, ...edit });
+    }
+    return core.handle(who, raw);
+  };
+  const ends = [[-0.3, 0.1, 0], [0.3, 0.1, 0]];
+  const endMove = (componentId, sockets, end, sequence, extra = {}) => ({ kind: "transform", componentId, sequence, transform: { position: [-1, 0.48, 1], rotation: [0, 0, 0], sockets, endpoints: ends, activeEndpoint: end, ...extra } });
+  const socketsIn = (core, id) => JSON.stringify(core.join()[0].transforms[id]?.transform.sockets ?? null);
+  const seeded = () => {
+    const core = new RoomCore();
+    const alice = { id: "alice", name: "Alice" };
+    const bob = { id: "bob", name: "Bob" };
+    // A real cable state with endpoints and nothing plugged (an accepted edit).
+    const seed = deliver(core, alice, { kind: "edit", opId: "seed", changes: [{ componentId: "snd-cable-a", expectRev: 0, transform: { position: [-1, 0.48, 1], rotation: [0, 0, 0], sockets: [null, null], endpoints: ends } }] });
+    ok(seed.sender[0]?.ok === true, "review B1: the cable is seeded with endpoints and no plugs");
+    deliver(core, alice, { kind: "claim", componentId: "snd-cable-a::endpoint-0" });
+    deliver(core, bob, { kind: "claim", componentId: "snd-cable-a::endpoint-1" });
+    return { core, alice, bob };
+  };
+
+  // BLOCKER 1: opposite holders, each moving their end into the SAME jack before seeing the other's move.
+  for (const first of ["alice", "bob"]) {
+    const { core, alice, bob } = seeded();
+    const moves = { alice: [alice, endMove("snd-cable-a", [1, null], 0, 1)], bob: [bob, endMove("snd-cable-a", [null, 1], 1, 1)] };
+    const second = first === "alice" ? "bob" : "alice";
+    const a = deliver(core, ...moves[first]);
+    ok(a.sender[0]?.kind === "rev-ack", `review B1 (${first} first): the first end into Filter IN is accepted`, JSON.stringify(a.sender[0]));
+    const b = deliver(core, ...moves[second]);
+    ok(b.sender[0]?.kind === "transform-rejected" && b.sender[0].reason === "occupied" && b.others.length === 0 && !b.persist.state,
+      `review B1 (${first} first): the other holder's delayed move of the other end into the same jack is refused (occupied), relayed to nobody, persisted nowhere`, JSON.stringify(b.sender[0]));
+    const expected = first === "alice" ? "[1,null]" : "[null,1]";
+    ok(socketsIn(core, "snd-cable-a") === expected, `review B1 (${first} first): the room keeps one plug in the jack`, socketsIn(core, "snd-cable-a"));
+    ok(JSON.stringify(b.sender[0].transform?.sockets ?? null) === expected, `review B1 (${first} first): the refusal carries the room's state back to the sender`, JSON.stringify(b.sender[0].transform));
+    // A late joiner gets the valid state; then the refused holder places their end elsewhere.
+    const later = deliver(core, moves[second][0], endMove("snd-cable-a", first === "alice" ? [1, 2] : [2, 1], second === "alice" ? 0 : 1, 2));
+    ok(later.sender[0]?.kind === "rev-ack", `review B1 (${first} first): the refused holder's next move to a free jack is accepted`, JSON.stringify(later.sender[0]));
+    const after = JSON.parse(socketsIn(core, "snd-cable-a"));
+    ok(after.length === 2 && after[0] !== after[1] && after.includes(1) && after.includes(2), `review B1 (${first} first): the later state is valid ([1,2] or [2,1])`, JSON.stringify(after));
+  }
+
+  // Finding (b): a crafted end move that omits `endpoints` must not replace the other holder's end.
+  {
+    const { core, alice, bob } = seeded();
+    deliver(core, alice, endMove("snd-cable-a", [1, null], 0, 1));
+    deliver(core, bob, endMove("snd-cable-a", [null, 2], 1, 1));
+    ok(socketsIn(core, "snd-cable-a") === "[1,2]", "review (b): Alice holds end 0 in jack 1, Bob holds end 1 in jack 2", socketsIn(core, "snd-cable-a"));
+    const crafted = { kind: "transform", componentId: "snd-cable-a", sequence: 2, transform: { position: [-1, 0.48, 1], rotation: [0, 0, 0], sockets: [3, 4], activeEndpoint: 0 } };
+    const dropped = deliver(core, alice, crafted);
+    ok(dropped.dropped === true && socketsIn(core, "snd-cable-a") === "[1,2]", "review (b): an end move without endpoints is refused by the sanitizer; Bob's end is untouched", socketsIn(core, "snd-cable-a"));
+    // With endpoints, the room still applies only the claimed end, whatever the payload says about the other.
+    const merged = deliver(core, alice, endMove("snd-cable-a", [3, 4], 0, 3));
+    ok(merged.sender[0]?.kind === "rev-ack" && socketsIn(core, "snd-cable-a") === "[3,2]", "review (b): an end-0 move carrying a different end-1 socket changes only end 0 ([3,2])", socketsIn(core, "snd-cable-a"));
+    // And RoomCore on its own (no sanitizer in front) merges the authorized end unconditionally.
+    const raw = core.handle(alice, { kind: "transform", participantId: "alice", componentId: "snd-cable-a", sequence: 4, transform: { position: [-1, 0.48, 1], rotation: [0, 0, 0], sockets: [0, 5], activeEndpoint: 0 } });
+    ok(raw.sender[0]?.kind === "rev-ack" && socketsIn(core, "snd-cable-a") === "[0,2]", "review (b): RoomCore alone keeps the other holder's end for a payload without endpoints ([0,2])", socketsIn(core, "snd-cable-a"));
+    // Bob's end is still his: a move of end 1 by Alice (not her claim) is refused.
+    const notHers = deliver(core, alice, endMove("snd-cable-a", [0, 4], 1, 5));
+    ok(notHers.sender[0]?.kind === "transform-rejected" && socketsIn(core, "snd-cable-a") === "[0,2]", "review (b): Alice cannot move Bob's end", JSON.stringify(notHers.sender[0]));
+  }
+
+  // Batch atomicity: an edit that would leave one cable with both plugs in one jack is refused whole.
+  {
+    const core = new RoomCore();
+    const alice = { id: "alice", name: "Alice" };
+    const direct = core.handle(alice, { kind: "edit", opId: "x", changes: [
+      { componentId: "snd-cable-c", expectRev: 0, transform: cable([4, 5]) },
+      { componentId: "snd-cable-b", expectRev: 0, transform: cable([3, 3]) },
+    ] });
+    ok(direct.sender[0].ok === false && direct.sender[0].reason === "occupied" && core.rev("snd-cable-c") === 0 && !core.state.has("snd-cable-b"),
+      "review B1: a batch with one cable's two plugs in one jack is refused whole (nothing stored)", JSON.stringify(direct.sender[0]));
+    const viaSanitizer = deliver(core, alice, { kind: "edit", opId: "y", changes: [{ componentId: "snd-cable-b", expectRev: 0, transform: cable([3, 3]) }] });
+    ok(viaSanitizer.dropped === true, "review B1: the sanitizer already refuses an edit with both ends in one jack");
+  }
+
+  // Randomized: two holders of opposite ends with delayed views, and a third cable mover; the room
+  // never holds two plugs in one jack, and every refusal leaves the state unchanged.
+  {
+    let seed = 12345;
+    const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+    for (let run = 0; run < 400; run += 1) {
+      const { core, alice, bob } = seeded();
+      deliver(core, bob, { kind: "claim", componentId: "snd-cable-b" });
+      let sequence = 1;
+      for (let step = 0; step < 12; step += 1) {
+        const before = JSON.stringify(core.join()[0].transforms);
+        const pick = rand(3);
+        const jack = rand(7) - 1; // -1 = unplug
+        const socket = jack < 0 ? null : jack;
+        let out;
+        if (pick === 0) out = deliver(core, alice, endMove("snd-cable-a", [socket, rand(6)], 0, sequence++));
+        else if (pick === 1) out = deliver(core, bob, endMove("snd-cable-a", [rand(6), socket], 1, sequence++));
+        else out = deliver(core, bob, { kind: "transform", componentId: "snd-cable-b", sequence: sequence++, transform: { position: [-1, 0.48, 1], rotation: [0, 0, 0], sockets: socket === null ? null : [socket, (socket + 1 + rand(5)) % 6], endpoints: ends } });
+        const used = [];
+        for (const id of ["snd-cable-a", "snd-cable-b", "snd-cable-c"]) for (const jackIn of core.join()[0].transforms[id]?.transform.sockets ?? []) if (jackIn !== null) used.push(jackIn);
+        if (new Set(used).size !== used.length) ok(false, "review B1 random: two plugs in one jack", JSON.stringify(core.join()[0].transforms));
+        if (out.sender[0]?.kind === "transform-rejected" && JSON.stringify(core.join()[0].transforms) !== before) ok(false, "review B1 random: a refusal changed the room", before);
+      }
+    }
+    ok(true, "review B1 random: 400 runs × 12 moves by opposite end holders and a whole-cable mover never left two plugs in one jack");
+  }
+}
+
 // ── 5. Project files: Sound is version 2; the other studios stay version 1 ──────────────
 {
   const project = await import("../src/desktop/project-file.ts");
