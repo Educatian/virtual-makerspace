@@ -5,11 +5,171 @@ Developer environment:
 - wrangler dev with `scripts/access-proxy.mjs` for the Worker runs;
 - 2 CPU cores.
 
-These are **not GitHub CI** runs; the repository's only GitHub check is GitGuardian. Every room was a fresh random QA room, never 7K3M. Draw calls and triangles are renderer counters, not frame rates.
+These are **not GitHub CI** runs; the repository's only GitHub check is GitGuardian. Every test room was a fresh random QA room. In the historical runs below, the AI-worker refusal probe used the code 7K3M on the *local* wrangler Worker (not production); since `c418a85` it uses a fresh random room. Draw calls and triangles are renderer counters, not frame rates.
 
 Design, provenance and the REA blocker: [`../../reference-benchmark.md`](../../reference-benchmark.md).
 
-## Commits
+This file has two parts:
+- **[Current: the re-review of `563c645`](#current-the-re-review-of-563c645)**: the runs made for this re-review, with every attempt.
+- **[Historical: before the re-review](#historical-before-the-re-review)**: the earlier results, unchanged.
+
+## Current: the re-review of `563c645`
+
+**Final application code: `10ed709`.** After it, only tests and documents changed. Built and unit-tested at that commit: [build](rereview/build-10ed709.txt), [`npm test`](rereview/npm-test-10ed709.txt).
+
+The application commits of this re-review:
+
+| Commit | What |
+|---|---|
+| `997412d` | **A.** A 5V light that a bench change cuts off is "recorded up to the cut", never "stays on". |
+| `841885d` | **D.** One selection-tone contract for the 3D rings and the diagram; optional Snapino logical-drive view. |
+| `1c13a95` | **D.** Circuit Bench meter in the dock inspector; optional solved-current view; compact phone chrome. |
+| `8205d51` | **D.** The phone's tool row no longer widens the page (a 20 px horizontal overflow found by the new phone check). |
+| `52cc67c` | A `?qa`-only hook that stops or resumes drawing a page (test budget on this machine; see "Why the browser tests changed"). |
+| `10ed709` | **C.** Bolt moves one part at a time across builds. This is the cause of the earlier 9/10, found by the diagnostic set below. |
+
+### Results on the final application code
+
+| Suite | Tests at | Result | Record |
+|---|---|---|---|
+| `npm test`: typecheck, circuit 17,742, agent, project 270, snapino, sync 858, tools 36, rescue signal 17,751, episode sync 55, diagram 66,886 | `10ed709` | all passed | [record](rereview/npm-test-10ed709.txt) |
+| `npm run build` | `10ed709` | OK | [record](rereview/build-10ed709.txt) |
+| `e2e-rescue-signal.mjs` (two makers plus a late joiner, Worker + Durable Object) | `27eea0c` | **60/60**, attempt 12 of 12 (all below) | [log](rereview/rescue-attempt12-tests-27eea0c.txt), [results](rereview/rescue-attempt12-tests-27eea0c-results.json) |
+| `e2e-bench-inspector.mjs` (two makers, real pointer and keyboard) | `10ed709` | **30/30**, attempt 3 of 3 | [log](rereview/inspector-attempt3-tests-10ed709.txt) |
+| `e2e-ai-teammate-worker.mjs`, three runs | `10ed709` | **10/10, 10/10, 10/10**, each ending "Done." with 0 skipped. Before the Bolt fix: 9, 8 and 9 of 10 (see C) | [1](rereview/ai-worker-after-fix-run1.txt), [2](rereview/ai-worker-after-fix-run2.txt), [3](rereview/ai-worker-after-fix-run3.txt) |
+| `e2e-ai-teammate.mjs` (peer) | `10ed709` | 37/37 | [log](rereview/e2e-ai-teammate-10ed709.txt) |
+| `e2e-worker-sync.mjs` | `10ed709` | 18/18 | [log](rereview/e2e-worker-sync-10ed709.txt) |
+| `e2e-snapino-history.mjs` | `f266066` | 25/25, attempt 2. Attempt 1 (`10ed709`): 24/25, "import Q/T reaches both peers" read the views at a 60 s limit without detail; it now waits (bounded) for each page and says what each held | [2](rereview/e2e-snapino-history-attempt2-tests-f266066.txt), [1](rereview/e2e-snapino-history-attempt1-10ed709.txt) |
+| `e2e-room-sync.mjs` | `10ed709` | 13/13 | [log](rereview/e2e-room-sync-10ed709.txt) |
+| `e2e-cable-end.mjs` | `10ed709` | 12/12 | [log](rereview/e2e-cable-end-10ed709.txt) |
+| `qa-episode.mjs` (Episode 1 captures, one maker, peer room) | `3014a8a` | 12 of 13 captures renewed, no other issue (bulb 193.3 lit vs 158.0 unlit). **Issue in both attempts:** the running-transmission shot `e06` was reached only after the 110 s flash ended (151.7 s, then 116.3 s after the shot was moved first, `88a31e2`), so the `dc51187` `e06` is kept and marked | [2](rereview/qa-episode-attempt2.txt) ([stats](rereview/qa-episode-attempt2-stats.json)), [1](rereview/qa-episode-attempt1.txt) ([stats](rereview/qa-episode-attempt1-stats.json)) |
+| `qa-reference.mjs after`: composition, 1440/1280 layouts, phone interaction (390×844), Circuit Bench meter and flow, PF/DI | `3014a8a` (`QA_SKIP_SAME=1`) | **33/33** checks, 14 images. Phone: the bench starts at 192 px, the dock's tab row at 775 px of 844; wheel scrolling of 450 px reaches the dock, pointer clicks on the Inspector tab and a diagram rung work, and ArrowRight moves across the inspector's tabs. Attempt 1 (`88a31e2`) captured the four same-camera shots with counters identical to the earlier after-build (687/104,890, 351/82,170, 405/87,810, 333/81,218), then was killed by a container restart; attempt 2 stopped at the near-top same-camera shot (page not ready within 900 s). Attempt 3 left the same-camera set out | [log](rereview/qa-reference-after-10ed709.txt), [report](rereview/qa-reference-after-10ed709-report.json); [1](rereview/qa-reference-attempt1-killed.txt) ([counters](rereview/qa-reference-attempt1-killed-same-camera-report.json)), [2](rereview/qa-reference-attempt2-not-ready.txt) |
+
+### Every attempt, in order
+
+Nothing below was rerun until green without a change: each attempt after a failure ran a changed test (or, where marked, the same test again), and each change is its own commit.
+
+**`e2e-rescue-signal.mjs`** (the strengthened provenance tests, item B):
+
+| # | App | Tests | Result | What failed, and what changed next |
+|---|---|---|---|---|
+| 1 | `8205d51` | `8205d51` | stopped at the late join, 50 passed, 1 failed | **Aliasing.** After the reconnect, 7 fresh frames of round 6, all lit: a strictly periodic 9 s light sampled by a page drawing about every 9 s. The earlier passes could count frames drawn before the reconnect: the false positive the reviewer named. Then the late joiner had no room state within 300 s and the script crashed (`TypeError`). Next: irregular on/off phases (`2a02707`). [Log](rereview/rescue-attempt1-tests-8205d51.txt) |
+| 2 | `8205d51` | `2a02707` | stopped at the late join, 49 passed, 2 failed | The reconnect check now **passed** with the irregular light (3 fresh frames, lit and dark). Round 5 still used the periodic light and aliased the same way (5 frames, all lit). The role check read the member's view before its slow page had applied the claim. The late join crashed as in 1. Next: `b96462a`, `916736b`, `21ebbdf`. [Log](rereview/rescue-attempt2-tests-2a02707.txt) |
+| 3 | `8205d51` | `21ebbdf` | stopped in round 1 (4 passed) | Every maker in its own browser process. The receiver's page froze for 120 s (SwiftShader linking the lit lamp's program the first time), and round 1 (14.8 s) ended before "Receiver's view" could be pressed. [Log](rereview/rescue-attempt3-tests-21ebbdf.txt) |
+| 4 | `8205d51` | `e22b7a7` | 56/60 | Host and member in one browser again, the joiner in its own. **The late join now worked:** in at 55 s of 107.5 s, 11 fresh frames, lit and dark. Failed: the sender drew no frame in round 1; the reconnect saw 3 fresh frames, all dark; no pixel pair; the joiner's best clock round trip was 1328 ms. [Log](rereview/rescue-attempt4-tests-e22b7a7.txt) |
+| 5 | `8205d51` | `95fc44a` | stopped in round 1 (4 passed) | Smaller pages (800×544). The same 120 s shader stall as in 3. Next: a lamp warm-up before round 1 (`c983374`). [Log](rereview/rescue-attempt5-tests-95fc44a.txt) |
+| 6 | `8205d51` | `c983374` | stopped after round 6, 37 passed, 2 failed | The sender drew no frame in round 1, because a screenshot inside the round held the shared GPU process (`e18e5b3`). The open-circuit round (10 s) gave the receiver no frame (`cd1fc9a`). The script crashed when the light ended between "still running" and the Stop click (`42733f0`). [Log](rereview/rescue-attempt6-tests-c983374.txt) |
+| 7 | `8205d51` | `42733f0` | timed out at 70 min, 45 passed, 4 failed | Reconnect: back in round 6 only at 97 of 107.5 s, so no fresh frame fit (`8b9595a`). No pixel pair. Round 8's edit and round 9's import both landed after their lights had ended. This led to the render-cost measurements below and to `52cc67c` / `8243ec8`. [Log](rereview/rescue-attempt7-tests-42733f0.txt) |
+| 8 | `52cc67c` | `8243ec8` | 54/60 | Fresh frames after the reconnect **passed** (3, lit and dark). Failed: round 1 sender (no frame); the reconnect clock (best round trip 7446 ms while drawing); no pixel pair; rounds 8/9 edits too late; the role-swap view race. Next: `507e5b0`, `cbe0c5f`, `129b689`, `97c78b6`. [Log](rereview/rescue-attempt8-tests-8243ec8.txt) |
+| 9 | `52cc67c` | `97c78b6` | 59/60 | Only the late joiner's clock failed: it was compared on a 756 ms sample whose own error bound (378 ms) is above the 250 ms asserted, and it was 377 ms off. Next: compare only samples with round trips of at most 400 ms (`fdfee0a`). [Log](rereview/rescue-attempt9-tests-97c78b6.txt) |
+| 10 | `52cc67c` | `fdfee0a` | **60/60** (59 checks plus the count check) | The first full pass. [Log](rereview/rescue-attempt10-tests-fdfee0a.txt), [results](rereview/rescue-attempt10-tests-fdfee0a-results.json) |
+| 11 | `10ed709` | `f266066` | 59/60 | The same test again, on the final app (Bolt's fix only). The receiver drew no frame in round 1's 14.8 s message; its diagnostics show a frame every ~11 s and one 17.8 s gap. Next: round 1's message is followed by 30 s dark (`27eea0c`); the message is unchanged. [Log](rereview/rescue-attempt11-tests-f266066.txt), [diagnostics](rereview/rescue-attempt11-round1-receiver-no-frames.json) |
+| **12** | **`10ed709`** | **`27eea0c`** | **60/60** | The final app and the final test. [Log](rereview/rescue-attempt12-tests-27eea0c.txt), [results](rereview/rescue-attempt12-tests-27eea0c-results.json) |
+
+**`e2e-bench-inspector.mjs`** (two makers, real pointer and keyboard):
+
+| # | App | Tests | Result | Notes |
+|---|---|---|---|---|
+| 1 | `8205d51` | `8205d51` | stopped by the 40 min limit after 24 of 24 checks had passed | One shared browser. [Log](rereview/inspector-attempt1-tests-8205d51-timeout.txt) |
+| 2 | `52cc67c` | `fdfee0a` | 30/31 | Separate browser processes. The setup check failed: it also required the host's own answer to the layout edit, which timed out on the slow page although the room accepted the edit (every later check passed on that bench). The check now reads the room's state as the member received it, and records the host's answer (`7673526`). This is the one assertion in this re-review that was relaxed, and it is a setup step, not a behaviour under test. [Log](rereview/inspector-attempt2-tests-fdfee0a.txt) |
+| **3** | **`10ed709`** | **`10ed709`** | **30/30** | The host's answer was `true`. The number of checks varies by one with the number of concurrent-flip attempts the stale test needs. [Log](rereview/inspector-attempt3-tests-10ed709.txt), [results](rereview/inspector-attempt3-tests-10ed709-results.json), [stale attempts](rereview/inspector-attempt3-tests-10ed709-stale-attempts.json), [renderer counters](rereview/inspector-attempt3-tests-10ed709-render-stats.json) |
+
+
+### What the strengthened rescue test checks now (item B)
+
+- **Provenance.** Every probe frame carries the transmission id (`tx`) and the page's capture time. A frame counts only for its own transmission, and with a boundary only if captured after it.
+- **Reconnect.** The receiver's socket is dropped during a 107.5 s light with irregular phases (2.5–5 s, so it cannot lock to a frame period). As soon as the reconnect is confirmed (online, no role, in round 6), the log is drained and a boundary is set. Only frames of round 6 captured after it count, and they must include lit **and** dark, all agreeing with the timeline. Attempt 12: back at 35 of 107.5 s; 3 fresh frames, 1 lit, 2 dark; clocks 14 ms apart. The role is retaken and the clocks compared (within 250 ms) afterwards.
+- **Late join.** The joiner's page and lobby are opened before the light starts. Unconditionally, with bounded waits: it joins during the light (attempt 12: at 35 of 107.5 s, same `tx`), logs lit **and** dark frames of that transmission (10 frames: 3 lit, 7 dark), and its clock agrees with the sender's within 250 ms (Δ 8 ms; round trips 19 / 3 ms). A missing state is a failure with a reason, never a crash.
+- **A fixed count.** The run must execute exactly 59 checks.
+- **The QA lights are slow on purpose** so that this machine can sample them. They say nothing about timing on real devices.
+
+### Why the browser tests changed, and what that does not change
+
+Measured on this machine with [`scripts/qa-render-cost.mjs`](../../../scripts/qa-render-cost.mjs) (records in [`rereview/`](rereview/)). These are rough relative counts, not frame rates:
+
+| Pages (Snapino, workshop open, lamp seated) | Frames per page | Draw calls |
+|---|---|---|
+| 1 page, 1000×680, `a9fefef` | 15 in 99 s | 533 |
+| 1 page, 1000×680, `8205d51` | 14 in 94 s | 533 |
+| 2 pages, one browser, 1000×680, `a9fefef` | 7 and 7 in ~112 s | 533 |
+| 2 pages, one browser, 1000×680, `8205d51` | 7 and 7 in ~112 s | 533 |
+| 2 pages, one browser, 800×544 | 15 in 96 s and 5 in 133 s (uneven) | 303 |
+| 2 pages, separate browser processes, 800×544 | 9 in 97 s and 10 in 107 s | 303 |
+| 2 pages, one browser, 800×544, the second not drawing (`?qa` hook) | 17 in 94 s | 303 |
+
+- **Not an app regression.** The upgrade (`8205d51`) draws as many frames as the build before it (`a9fefef`). The machine is slower than when the earlier runs passed (then a late joiner entered in 19 s).
+- **Where the time goes.** A CPU profile of an idle page ([`profile-idle.json`](rereview/render-profile-idle.json)) spent 39.6 of 43.2 s in native calls, i.e. waiting for SwiftShader, and drew 9 frames in 40 s.
+- **What the tests do about it:**
+  - each maker in its own browser process;
+  - 800×544 maker pages;
+  - a lamp warm-up before round 1;
+  - screenshots outside timed rounds;
+  - where only one page's frames are checked, and while clocks are sampled, the other pages stop drawing through the `?qa` hook (their room traffic and clocks keep running).
+- **No frame, clock or provenance assertion was weakened.** One temporary relaxation (`95fc44a`, a stated-error bound for the joiner's clock) was removed again in `cbe0c5f`; the clock checks now also require samples whose own error is below the 250 ms they assert (`fdfee0a`). The inspector's setup check is the one relaxed assertion (see above).
+- **The tests also gained:** bounded waits for each client's own view, the provenance and fixed count above, and reasons on failure.
+- **Freezing pages through the browser's page-lifecycle control did not help** (the joiner then needed 712 s); [probe](rereview/probe-freeze-pages.txt). [Separate processes](rereview/probe-separate-browsers.txt) did.
+
+### A: the 5V lamp cut off by a bench edit
+
+Before: a 5V lamp `[14,32]` with wire `[32,15]` and a 1000 ms wait, cut at 300 ms by an accepted bench edit that removes the lamp, was diagnosed as "stays on afterwards", and the strip said "still lit after the transmission". The recording holds the old bench, so it cannot know what the changed bench did.
+
+Now (`997412d`, unit checks in `scripts/rescue-signal-check.mjs`, 17,751 checks in all):
+- **Lamp removed / path opened by the edit:** the pulse is recorded from 0 to 300 ms and marked `unrecorded` after that. There is no falling edge and no "continues". Decode gives `?` with reason "unended", as before. The diagnosis says "lit at the cut": the recording ends there, and what the changed bench did next is not part of it. It never says "stays on afterwards" or "switched off". The strip says "a bench change cut the recording off (not recorded after that)".
+- **Unchanged 5V wiring at the natural end:** still "continues", and the strip still says "still lit after the transmission ended".
+- **D-pin lamp cut by a bench change:** the pins go LOW at the cut, so the pulse really ends at 300 ms.
+- **Stop, a program change, an emptied room, a reset:** the bench is unchanged, so the 5V light continues, as before.
+
+### C: evidence
+
+- **Records.** Every record is committed as `.txt` or `.json` (`*.log` is ignored by git). Every relative link in these documents was checked at the final remote commit (see the PR).
+- **Bolt (Circuit Bench AI teammate).** The cause of the earlier 9/10 is **found and fixed**.
+  - **The diagnostic set:** three runs on `7673526` / `c418a85`, before the fix, each keeping Bolt's lines, every part's claim and release outcome, and the final bench.
+    - **Runs 2 and 3 reproduced the missing "Done.".** A newer build (run 4) started while a superseded build (run 3) was carrying the battery. The room client keeps one hold per part, so run 3's release came back refused, and so did run 4's own release of the battery. Bolt counted the battery as skipped and said "Someone was holding a part, so I left it". Yet the final bench had the battery where the plan put it, and the circuit lit safely.
+    - **Run 1 did not hit the race.** It said "Done.".
+  - **A test bug in the same set.** "Worker refuses an AI teammate whose host isn't in the room" failed in runs 1 and 2. The fresh random probe room (replacing 7K3M, `6c14f4c`) did not exist, so the Worker answered 404 before its host-presence rule could answer 403. The probe room is now created by the local admin and left empty (`c418a85`). Run 3 already used that version: 403.
+  - **The fix** (`10ed709`): one part move at a time across builds; a newer build waits, bounded at 15 s, until the move in progress is released.
+  - **After the fix:** three runs on `10ed709`, all 10/10, all ending "Done." with 0 skipped. In run 2 the same overlap happened (run 4 started during run 3's battery move), and both releases were accepted.
+  - Records: before the fix [1](rereview/ai-worker-before-fix-run1.txt) ([json](rereview/ai-worker-before-fix-run1-results.json)), [2](rereview/ai-worker-before-fix-run2.txt) ([json](rereview/ai-worker-before-fix-run2-results.json)), [3](rereview/ai-worker-before-fix-run3.txt) ([json](rereview/ai-worker-before-fix-run3-results.json)); after the fix [1](rereview/ai-worker-after-fix-run1.txt) ([json](rereview/ai-worker-after-fix-run1-results.json)), [2](rereview/ai-worker-after-fix-run2.txt) ([json](rereview/ai-worker-after-fix-run2-results.json)), [3](rereview/ai-worker-after-fix-run3.txt) ([json](rereview/ai-worker-after-fix-run3-results.json)).
+- **Probe room.** `e2e-ai-teammate-worker` refuses any origin other than `vm.test`, `localhost` or `127.0.0.1`. Its unaffiliated-connection probe uses a fresh random room that differs from the test room, never 7K3M.
+- **REA.** The raw outputs, exit codes, full SHA-256 hashes and commands are in [`rea-evidence/`](rea-evidence/README.md). REA remains **[blocked]**: the environment's egress proxy refuses the target (`CONNECT … 403`), and nothing was retried unchanged or routed around it.
+
+### D: presentation scope
+
+- **Circuit Bench meter in the dock inspector** (`1c13a95`). Readings, the selected part's leads, and the real resistor and supply editors now sit in the dock's Inspector tab, not over the scene. The editors keep the room path: authority, refusals and Undo. The "never re-render under the cursor" draft guard is unchanged, and so are PF/DI and the curved-wire detail. No numeric controls were invented for fixed Snapino parts. `qa-reference` checks that a 3D selection opens it in the dock, and that a preset edits the real resistor through the room and Undo restores it.
+- **One selection-tone contract** (`841885d`, `src/desktop/selection-style.ts`). The 3D rings, the diagram's rows and the legend and pinout all share it:
+  - A: amber, solid, letter `A`;
+  - B: cyan, dashed, letter `B`;
+  - both ends on one net: red, double, `!`.
+  
+  Colour is never the only cue: each tone has a ring pattern, a letter badge and text. Checked by:
+  - `e2e-bench-inspector`: every ringed stud's 3D tone equals its diagram row's tone, with the A/B badges;
+  - `snapino-diagram-check`: tones, badges and CSS variables.
+- **Optional flow views, off by default:**
+  - **Circuit Bench, solved current.** Arrows ride each carrying jumper's own curve, in the sign of the DC solver's reading (positive means end A to end B). The speed is log-scaled and labelled "not to scale". The arrows stand still under reduced motion, are hidden when the studio changes and are disposed with the scene.
+  - **No arrows** for a short, an open loop, no supply or an unsolvable circuit; a labelled note says which. `qa-reference` checks solved, short, open and off, with and without reduced motion.
+  - **Snapino, logical drive.** A dashed source-to-GND path on running loads, labelled on screen "Show logical drive (source → GND, not current)", with a note that it is "the bench model's on/off decision, not measured current or amperage". It is never drawn through a shorted bench. It is compared with the independent oracle on every random bench.
+- **Phone (≤ 620 px).** One studio-and-parts row and one scrollable tool row; the bench starts at about 192 px, and the dock's tabs are on the first screen. The page scrolls **vertically** by design: the earlier "no page scroll" was wrong and now reads "no horizontal overflow". The new phone check found a 20 px horizontal overflow, fixed in `8205d51`. `qa-reference` uses real wheel scrolling, pointer clicks (Inspector tab, a diagram rung) and the keyboard (ArrowRight across the inspector's tabs), and captures the first screen, the inspector with a part selected, the 3D view selected, and the folded workshop. No touch input was tested.
+
+### Images
+
+All under [`../../images/reference-upgrade/`](../../images/reference-upgrade/), captured on `10ed709` unless noted:
+- `after-phone-first-screen`, `after-phone-inspector-selected`, `after-phone-3d-selected`, `after-phone-workshop-folded`: the phone inspector reached by scrolling, a part selected in it and in 3D, and the folded workshop;
+- `after-circuit-meter-docked`, `after-circuit-flow`: the Circuit Bench meter in the dock, and the solved-current view;
+- `after-inspector-1440/1280`, `after-inspector-pinout-card`, `after-inspector-behaviour-card`, `after-top-preset-1440`, `after-composition-1440-workshop`, `after-diagram-PF/DI-bypassed`;
+- `inspector-01`…`05`: the two-maker run (attempt 3), with the A/B tone rings and badges;
+- `rereview-same-01`…`04`: the same-camera set from qa-reference attempt 1 on `10ed709`.
+
+From earlier builds, kept:
+- `compare-*`: the before/after pairs of `dc51187`; the re-review's same-camera counters are identical to their after side;
+- `after-inspector-390`: the old phone chrome, superseded by `after-phone-*`.
+
+## Historical: before the re-review
+
+The results below were reported for `dc51187` / `a9fefef` and are kept as they were. Two statements in them are superseded:
+- "no page scroll" at 390 px: the phone page scrolls vertically by design; the check is "no horizontal overflow" (see the current part).
+- "an animated current-flow view, which does not exist": the Circuit Bench now has an optional solved-current view, and Snapino an optional logical-drive view.
+
+### Commits
 
 | Commit | What |
 |---|---|
@@ -23,7 +183,7 @@ Design, provenance and the REA blocker: [`../../reference-benchmark.md`](../../r
 
 **Final application code:** `dc51187`. It differs from `a9fefef` only in where the diagram draws its wire list (`src/circuit/snapino-diagram.ts`).
 
-## Results
+### Results
 
 | Suite | App | Result | Log |
 |---|---|---|---|
@@ -54,7 +214,7 @@ Every non-passing run is listed here, with what it was:
 5. **`qa-reference` (`a9fefef`): the first shot's counters were read too early.** `same-01-overview` read 81 calls before the GLB parts replaced the stand-ins; the image itself was fine. A dedicated re-measure gave **687 calls and 104,890 triangles** (after) against **683 and 96,826** (before), each the same over three reads. The script now settles twice before reading (`4b65d6a`), and the `dc51187` run reads 687 / 104,890 directly.
 6–7. **`qa-episode` on `dc51187`, attempts 1 and 2: stopped at the phone section.** All 11 desktop shots completed (`e01`–`e09`, `e12`, `e13`). The phone page could not press the field-test button, which is `display: none` below 620 px; that rule predates this branch. The old capture had clicked it while it was hidden. The phone page now submits the same layout as one room edit (`dfdaa29`). The rerun then lost the Stop race again: the flash ended between the "still running" check and the click. Stop may now lose that race only if the round is verified to have ended; any other missing Stop still fails (`781a2c5`).
 
-## What the browser tests prove, and what they do not
+### What the browser tests proved then, and what they did not
 
 **`e2e-bench-inspector`** uses Playwright `mouse` and `keyboard`, not `element.click()`, for the actions under test. It checks:
 - **Pointer selection.** A pointer click on the 3D lamp selects it and brings the inspector to the front. The diagram marks the lamp's rung and its two rows (D5, GND).
@@ -84,7 +244,7 @@ Every non-passing run is listed here, with what it was:
 - an animated current-flow view, which does not exist;
 - Circuit Bench composition, which was not changed.
 
-## Renderer counters (SwiftShader, last frame)
+### Renderer counters (SwiftShader, last frame)
 
 | View | Before `040df7c` calls / triangles | After calls / triangles |
 |---|---:|---:|
@@ -106,7 +266,7 @@ Per view in the two-browser test, at 1000×700 with S1 and the lamp seated:
 | Lamp | 367 | 86,026 |
 | Fit | 412 | 86,666 |
 
-## Images
+### Images
 
 All under [`../../images/reference-upgrade/`](../../images/reference-upgrade/):
 - `compare-*`: before and after side by side, at the same camera and viewport, plus the two builds' own default compositions;

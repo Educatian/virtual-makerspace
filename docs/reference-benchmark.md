@@ -154,7 +154,7 @@ The diagram is a ladder schematic built in `src/circuit/snapino-diagram.ts`:
 
 **Logical drive** (the diagram's "Show logical drive" toggle, off by default):
 - It draws a dashed path with an arrowhead from the driving row to the sink row, on rungs whose load runs.
-- It is labelled on screen as **logical source-to-load state, not measured current**. Snapino has no current model.
+- It is labelled on screen "Show logical drive (source → GND, not current)", and its note calls it "the bench model's on/off decision, not measured current or amperage". Snapino has no current model.
 - Only running loads get a path. On a shorted bench nothing runs, and the note says so. By the bench rule a load runs only with one end on GND and the other end high, so a running load always has a known direction. A part with both ends on one net, or with no end (or both ends) on GND, never runs and is never drawn as driven; the drawing code also refuses to draw a direction it cannot determine.
 - Every random bench in `snapino-diagram-check` compares the drawn paths with the independent oracle.
 
@@ -225,7 +225,7 @@ Not changed:
 
 ## Results
 
-Run in the developer environment: headless Chromium with SwiftShader, not a GPU and not CI. Full logs and numbers are in [`docs/qa/reference-upgrade/README.md`](qa/reference-upgrade/README.md), and the images in [`docs/images/reference-upgrade/`](images/reference-upgrade/).
+Run in the developer environment: headless Chromium with SwiftShader, not a GPU and not CI. The current results (the re-review of `563c645`, final app `10ed709`) and every attempt are in the [current part of the QA README](qa/reference-upgrade/README.md#current-the-re-review-of-563c645); the earlier results are kept below them as historical. Images: [`docs/images/reference-upgrade/`](images/reference-upgrade/).
 
 ## Compatibility with shared code
 

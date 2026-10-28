@@ -1,0 +1,16 @@
+  [ready] same-01-overview: 6 s (+3 frames)
+  [ready] same-01-overview (again): 20 s (+3 frames)
+  shot same-01-overview: 687 calls, 104890 triangles
+  [ready] same-02-studs-and-lamp: 213 s (+9 frames)
+  [ready] same-02-studs-and-lamp (again): 78 s (+3 frames)
+  shot same-02-studs-and-lamp: 351 calls, 82170 triangles
+  [ready] same-03-grid-labels-low: 71 s (+3 frames)
+  [ready] same-03-grid-labels-low (again): 72 s (+3 frames)
+  shot same-03-grid-labels-low: 405 calls, 87810 triangles
+Error: same-04-top: page not ready within 900 s
+    at fail (file://<repo>/scripts/lib/e2e-readiness.mjs:77:11)
+    at settled (file://<repo>/scripts/lib/e2e-readiness.mjs:74:10)
+    at async shot (file://<repo>/scripts/qa-reference.mjs:44:3)
+    at async file://<repo>/scripts/qa-reference.mjs:70:3
+FAIL ran to completion — same-04-top: page not ready within 900 s
+0/1 checks · 3 shots → <scratch>/r5/ref-after

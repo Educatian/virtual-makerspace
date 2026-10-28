@@ -253,7 +253,24 @@ The workshop goal is met by a delivered round that the team has also explained.
 
 ### Results of the last developer-environment run
 
-These runs were made in a developer environment: headless Chromium with SwiftShader, wrangler dev and a local proxy, on 2 CPU cores. They are not GitHub CI; the repository's only GitHub check is GitGuardian. Every room was a random QA room, never 7K3M. Logs and diagnosis: [`docs/qa/episode1-review/`](qa/episode1-review/README.md).
+**Current (the re-review of `563c645`): final app `10ed709`.** Every attempt, with what changed between them: [`docs/qa/reference-upgrade/README.md`](qa/reference-upgrade/README.md#current-the-re-review-of-563c645).
+
+| Command | App / tests | Result |
+|---|---|---|
+| `npm test` (typecheck, circuit 17,742, agent, project 270, snapino, sync 858, tools 36, rescue signal 17,751, episode sync 55, diagram 66,886) | `10ed709` | All passed |
+| `npm run build` | `10ed709` | OK |
+| `e2e-rescue-signal.mjs` (two makers plus a late joiner, Worker) | `10ed709` / `27eea0c` | **60/60**, attempt 12 of 12; every attempt and change is listed in the QA README |
+| `e2e-bench-inspector.mjs` | `10ed709` | **30/30**, attempt 3 of 3 |
+| `e2e-ai-teammate-worker.mjs` | `10ed709` | 10/10 in 3 of 3 runs, after Bolt's fix (before it: 9, 8, 9 of 10, with the cause recorded) |
+| `e2e-ai-teammate.mjs` (peer) | `10ed709` | 37/37 |
+| `e2e-worker-sync.mjs`, `e2e-room-sync.mjs`, `e2e-cable-end.mjs` | `10ed709` | 18/18, 13/13, 12/12 |
+| `e2e-snapino-history.mjs` | `10ed709` / `f266066` | 25/25 on attempt 2 (attempt 1: 24/25, a 60 s view read without detail) |
+| `qa-reference.mjs after` (layouts, phone scroll/pointer/keyboard, Circuit Bench meter and flow, PF/DI) | `10ed709` | 33/33 (same-camera shots left out after a 900 s readiness stall; their counters from a killed first attempt equal the earlier after-build) |
+| `qa-episode.mjs` (captures) | `10ed709` | 12 of 13 renewed; the running shot `e06` missed its 110 s flash in both attempts, so the earlier capture is kept and marked |
+
+**Historical.** The two tables below are earlier runs, kept as reported then.
+
+These runs were made in a developer environment: headless Chromium with SwiftShader, wrangler dev and a local proxy, on 2 CPU cores. They are not GitHub CI; the repository's only GitHub check is GitGuardian. Every test room was a random QA room. **Correction:** the AI-worker test's refusal probe in those runs connected to the code 7K3M on the *local* wrangler Worker (its precreated dev room), not to production; it now uses a fresh random room (`c418a85`). Logs and diagnosis: [`docs/qa/episode1-review/`](qa/episode1-review/README.md).
 
 | Command | App commit | Result |
 |---|---|---|

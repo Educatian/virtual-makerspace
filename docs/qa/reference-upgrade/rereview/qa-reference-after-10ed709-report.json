@@ -1,0 +1,300 @@
+{
+ "build": "after",
+ "base": "http://localhost:4178",
+ "shots": {
+  "composition-1440-workshop": {
+   "calls": 509,
+   "triangles": 94506,
+   "geometries": 279,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "default framing and panels, workshop open"
+  },
+  "after-inspector-1440": {
+   "calls": 519,
+   "triangles": 96778,
+   "geometries": 291,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "lamp selected: rung, nets and stud rings"
+  },
+  "after-top-preset-1440": {
+   "calls": 465,
+   "triangles": 94802,
+   "geometries": 299,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "Top view preset, lamp still selected"
+  },
+  "after-inspector-1280": {
+   "calls": 517,
+   "triangles": 96562,
+   "geometries": 290,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "lamp selected: rung, nets and stud rings"
+  },
+  "after-phone-first-screen": {
+   "calls": 409,
+   "triangles": 85794,
+   "geometries": 213,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "390×844 first screen: header, one row of studios and parts, one row of tools, the bench, the dock's tabs"
+  },
+  "after-phone-inspector-selected": {
+   "calls": 418,
+   "triangles": 88066,
+   "geometries": 222,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "390×844 scrolled to the dock: Inspector tab, lamp selected from the diagram, Behaviour & limits"
+  },
+  "after-phone-3d-selected": {
+   "calls": 418,
+   "triangles": 88066,
+   "geometries": 222,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "390×844 back at the bench: the lamp's terminal and net rings in 3D"
+  },
+  "after-phone-workshop-folded": {
+   "calls": 231,
+   "triangles": 63962,
+   "geometries": 141,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "390×844 workshop tab folded"
+  },
+  "after-circuit-meter-docked": {
+   "calls": 254,
+   "triangles": 41378,
+   "geometries": 246,
+   "textures": 16,
+   "pixelRatio": 1,
+   "note": "Circuit Bench: meter in the dock Inspector tab, resistor selected"
+  },
+  "after-circuit-flow": {
+   "calls": 255,
+   "triangles": 41570,
+   "geometries": 247,
+   "textures": 16,
+   "pixelRatio": 1,
+   "note": "Circuit Bench: solved-current arrows on the two jumpers (reduced motion: still)"
+  },
+  "after-diagram-PF-bypassed": {
+   "calls": 483,
+   "triangles": 92514,
+   "geometries": 266,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "PF condition, L1 bypassed by W2b"
+  },
+  "after-diagram-DI-bypassed": {
+   "calls": 483,
+   "triangles": 92514,
+   "geometries": 266,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "DI condition, L1 bypassed by W2b"
+  }
+ },
+ "checks": [
+  {
+   "name": "bench view fills more of the free view than the old default camera",
+   "ok": true,
+   "detail": "85% vs 47% of the free width"
+  },
+  {
+   "name": "1440px: no horizontal overflow; chat tab present",
+   "ok": true,
+   "detail": "{\"left\":1046,\"width\":380}"
+  },
+  {
+   "name": "1440px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px",
+   "ok": true,
+   "detail": "smallest 44 px"
+  },
+  {
+   "name": "1440px: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1280px: no horizontal overflow; chat tab present",
+   "ok": true,
+   "detail": "{\"left\":920,\"width\":346}"
+  },
+  {
+   "name": "1280px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px",
+   "ok": true,
+   "detail": "smallest 44 px"
+  },
+  {
+   "name": "1280px: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "phone: the 3D bench starts within the first 260 px (compact chrome)",
+   "ok": true,
+   "detail": "{\"frameTop\":192,\"dockTop\":774,\"tabsTop\":775,\"innerHeight\":844,\"scrollHeight\":1294}"
+  },
+  {
+   "name": "phone: the dock's tab row is on the first screen",
+   "ok": true,
+   "detail": "{\"frameTop\":192,\"dockTop\":774,\"tabsTop\":775,\"innerHeight\":844,\"scrollHeight\":1294}"
+  },
+  {
+   "name": "phone: wheel scrolling reaches the dock; the Inspector tab and a diagram rung work with the pointer",
+   "ok": true,
+   "detail": "{\"scrolled\":450,\"scrollY\":744,\"tab\":\"inspect\",\"selectedTab\":\"behavior\",\"focused\":\"behavior\",\"partVisible\":true,\"tabsVisible\":true,\"highlights\":4,\"overflow\":false}"
+  },
+  {
+   "name": "phone: the inspector's reference tabs work from the keyboard (ArrowRight moves to Behaviour & limits)",
+   "ok": true,
+   "detail": "{\"scrollY\":744,\"tab\":\"inspect\",\"selectedTab\":\"behavior\",\"focused\":\"behavior\",\"partVisible\":true,\"tabsVisible\":true,\"highlights\":4,\"overflow\":false}"
+  },
+  {
+   "name": "phone: no horizontal overflow (vertical scrolling is the intended way to the dock)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "phone: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "phone: the workshop folds with its own toggle (pointer)",
+   "ok": true,
+   "detail": "{\"collapsed\":true,\"expanded\":\"false\"}"
+  },
+  {
+   "name": "Circuit Bench: selecting a part in 3D opens the meter in the dock's Inspector tab",
+   "ok": true,
+   "detail": "{\"tab\":\"inspect\",\"inDock\":true,\"visible\":true}"
+  },
+  {
+   "name": "Circuit Bench: a preset click edits the real resistor value through the room, and Undo restores it",
+   "ok": true,
+   "detail": "Battery8.99 V · 14.6 mA9 V nominal, 1 Ω internalRed LED14.6 mA · 2.12 Vlit470 Ω resistor6.86 V · 14.6 mA100 mWBlue jumpe"
+  },
+  {
+   "name": "flow (reduce): a valid solve shows arrows on both carrying jumpers, in the solved direction",
+   "ok": true,
+   "detail": "{\"first\":[-1.4284968376159668,0.5593235492706299,-0.41999998688697815],\"firstPointsTo\":[0.9748206138610839,0.22299052392703256,0],\"enabled\":true,\"reason\":\"solved\",\"wires\":[{\"id\":\"wire-blue\",\"amps\":0.006987501236945803,\"direction\":1},{\"id\":\"wire-yellow\",\"amps\":0.006987501229964441,\"direction\":1}],\"ar"
+  },
+  {
+   "name": "flow (reduce): the 3D arrow points from the wire's end A toward end B (positive solved current)",
+   "ok": true,
+   "detail": "dot 1.170"
+  },
+  {
+   "name": "flow (reduce): the note states the solved current and that speed is not to scale",
+   "ok": true,
+   "detail": "Solved current: Blue jumper 7.0 mA, Yellow jumper 7.0 mA. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above. (Still arrows: reduced motion.)"
+  },
+  {
+   "name": "flow with reduced motion: the arrows stand still",
+   "ok": true,
+   "detail": "moved 0"
+  },
+  {
+   "name": "flow: a short circuit draws no arrows and says so",
+   "ok": true,
+   "detail": "{\"state\":{\"first\":null,\"firstPointsTo\":null,\"enabled\":true,\"reason\":\"short circuit\",\"wires\":[],\"arrows\":0,\"moving\":false},\"note\":\"No flow drawn: short circuit.\"}"
+  },
+  {
+   "name": "flow: an open circuit draws no arrows",
+   "ok": true,
+   "detail": "{\"first\":null,\"firstPointsTo\":null,\"enabled\":true,\"reason\":\"open circuit\",\"wires\":[],\"arrows\":0,\"moving\":false}"
+  },
+  {
+   "name": "flow off: no arrows remain",
+   "ok": true,
+   "detail": "{\"first\":null,\"firstPointsTo\":null,\"enabled\":false,\"reason\":\"off\",\"wires\":[],\"arrows\":0,\"moving\":false}"
+  },
+  {
+   "name": "circuit (reduce): no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "flow (no-preference): a valid solve shows arrows on both carrying jumpers, in the solved direction",
+   "ok": true,
+   "detail": "{\"first\":[-1.449529767036438,0.554053008556366,-0.41999998688697815],\"firstPointsTo\":[0.9655633568763733,0.26016805676739785,0],\"enabled\":true,\"reason\":\"solved\",\"wires\":[{\"id\":\"wire-blue\",\"amps\":0.006987501236945803,\"direction\":1},{\"id\":\"wire-yellow\",\"amps\":0.006987501229964441,\"direction\":1}],\"arro"
+  },
+  {
+   "name": "flow (no-preference): the 3D arrow points from the wire's end A toward end B (positive solved current)",
+   "ok": true,
+   "detail": "dot 1.159"
+  },
+  {
+   "name": "flow (no-preference): the note states the solved current and that speed is not to scale",
+   "ok": true,
+   "detail": "Solved current: Blue jumper 7.0 mA, Yellow jumper 7.0 mA. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above."
+  },
+  {
+   "name": "flow without reduced motion: the arrows glide along the wire",
+   "ok": true,
+   "detail": "moved 0.08937450259798795"
+  },
+  {
+   "name": "circuit (no-preference): no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "PF: the bypassed lamp is drawn as built (a loop on one net)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "PF before any compared round: fault notes withheld, with the reason shown",
+   "ok": true,
+   "detail": "{\"loop\":true,\"flags\":0,\"faults\":[],\"withheld\":\" Fault notes appear after your team's first compared round. The diagram already shows every connection exactly as built.\"}"
+  },
+  {
+   "name": "DI: the bypassed lamp is drawn as built (a loop on one net)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "DI: the bypass is flagged and explained",
+   "ok": true,
+   "detail": "{\"loop\":true,\"flags\":1,\"faults\":[\"pin-ground\",\"bypassed\"],\"withheld\":null}"
+  }
+ ],
+ "skipped": [
+  "same-camera shots (QA_SKIP_SAME=1)"
+ ],
+ "composition": {
+  "after": {
+   "bench": {
+    "x": 152.00062084469016,
+    "y": 297.8759664017435,
+    "width": 803.5883055536506,
+    "height": 527.6668647360195
+   },
+   "free": {
+    "x": 98,
+    "width": 948,
+    "height": 900
+   }
+  },
+  "oldCameraInThisLayout": {
+   "bench": {
+    "x": 300.8928695322811,
+    "y": 377.9036426979042,
+    "width": 444.18088042472095,
+    "height": 218.4628176207944
+   },
+   "free": {
+    "x": 98,
+    "width": 948,
+    "height": 900
+   }
+  }
+ }
+}

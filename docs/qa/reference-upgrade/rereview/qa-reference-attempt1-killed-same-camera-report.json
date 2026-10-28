@@ -1,0 +1,96 @@
+{
+ "build": "after",
+ "base": "http://localhost:4178",
+ "shots": {
+  "same-01-overview": {
+   "calls": 687,
+   "triangles": 104890,
+   "geometries": 354,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "camera (7.2, 5.8, 8.6) → (0, 0.55, −0.1): the old default"
+  },
+  "same-02-studs-and-lamp": {
+   "calls": 351,
+   "triangles": 82170,
+   "geometries": 354,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "close three-quarter view over rows C–F"
+  },
+  "same-03-grid-labels-low": {
+   "calls": 405,
+   "triangles": 87810,
+   "geometries": 361,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "low angle on the row letters and column numbers"
+  },
+  "same-04-top": {
+   "calls": 333,
+   "triangles": 81218,
+   "geometries": 361,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "near-top view of the stud grid"
+  },
+  "composition-1440-workshop": {
+   "calls": 509,
+   "triangles": 94506,
+   "geometries": 279,
+   "textures": 13,
+   "pixelRatio": 1,
+   "note": "default framing and panels, workshop open"
+  }
+ },
+ "checks": [
+  {
+   "name": "bench view fills more of the free view than the old default camera",
+   "ok": true,
+   "detail": "85% vs 47% of the free width"
+  },
+  {
+   "name": "1440px: no horizontal overflow; chat tab present",
+   "ok": true,
+   "detail": "{\"left\":1046,\"width\":380}"
+  },
+  {
+   "name": "1440px: inspector and dock-tab targets ≥ 44 px, view buttons ≥ 44 px",
+   "ok": true,
+   "detail": "smallest 44 px"
+  },
+  {
+   "name": "ran to completion",
+   "ok": false,
+   "detail": "page.screenshot: Target page, context or browser has been closed"
+  }
+ ],
+ "composition": {
+  "after": {
+   "bench": {
+    "x": 152.00062084469016,
+    "y": 297.8759664017435,
+    "width": 803.5883055536506,
+    "height": 527.6668647360195
+   },
+   "free": {
+    "x": 98,
+    "width": 948,
+    "height": 900
+   }
+  },
+  "oldCameraInThisLayout": {
+   "bench": {
+    "x": 300.8928695322811,
+    "y": 377.9036426979042,
+    "width": 444.18088042472095,
+    "height": 218.4628176207944
+   },
+   "free": {
+    "x": 98,
+    "width": 948,
+    "height": 900
+   }
+  }
+ }
+}

@@ -1,10 +1,11 @@
 # Episode 1 · Rescue Signal Workshop — renders
 
 **App code:**
-- `e01`–`e13` at commit `dc51187`;
-- the two-client set at `a9fefef`, which differs from `dc51187` only in the diagram's wire-list position.
+- `e01`–`e05` and `e07`–`e13` at commit `10ed709` (the re-review's final app), [records](../../../qa/reference-upgrade/rereview/qa-episode-attempt2.txt);
+- **`e06` is still the `dc51187` capture.** On `10ed709` the running-transmission shot was reached only after the 110 s capture flash had ended, in both attempts (151.7 s, then 116.3 s, with the shot moved first in `88a31e2`). The run reported this as an issue, so the old file is kept and marked rather than replaced;
+- the two-client set at `10ed709` (tests `27eea0c`).
 
-Both are on branch `feat/makerspace-episodes`, built with `npm run build`. These renders show the **reference-quality layout**: the workshop is a tab of the right-hand dock, and there is a single side column. Earlier versions of these files showed `13aa2aa` and `89a238c`, with the workshop floating over the left of the scene. The same-camera before/after comparisons are in [`../../reference-upgrade/`](../../reference-upgrade/).
+All are on branch `feat/makerspace-episodes`, built with `npm run build`. These renders show the **reference-quality layout**: the workshop is a tab of the right-hand dock, and there is a single side column. Earlier versions of these files showed `13aa2aa` and `89a238c`, with the workshop floating over the left of the scene. The same-camera before/after comparisons are in [`../../reference-upgrade/`](../../reference-upgrade/).
 **Where:** a developer environment (headless Chromium 1194 with SwiftShader software WebGL, 2 CPU cores). These are not GitHub CI runs; the repository's only GitHub check is GitGuardian.
 **Rooms:** fresh random local QA rooms for every page (`Q…` and `R…` codes). The production room 7K3M was never used.
 
@@ -15,7 +16,7 @@ Software rendering is slow: a Snapino frame takes seconds. The renderer counters
 | Set | Script | Mode |
 |---|---|---|
 | `e01`–`e13` | `node scripts/qa-episode.mjs http://localhost:4173 <dir>` (static server over `dist/`) | One maker, solo sender, same-device (peer) room. Close-ups use the `?qa` camera hook, with the dock closed by its own button. The matched lit/unlit pair drives D5 HIGH/LOW through `__vmQa.pins`, the same pin path a transmission uses. |
-| `two-client-*` | `node --experimental-strip-types scripts/e2e-rescue-signal.mjs http://vm.test:8800 <dir>` (wrangler dev + `scripts/access-proxy.mjs`) | Two browsers in one room over the real Worker/Durable Object, clicking the real panel. This run passed 58/58 checks ([log](../../../qa/reference-upgrade/rescue-a9fefef.txt)). |
+| `two-client-*` | `node --experimental-strip-types scripts/e2e-rescue-signal.mjs http://vm.test:8800 <dir>` (wrangler dev + `scripts/access-proxy.mjs`) | Two browsers in one room over the real Worker/Durable Object, clicking the real panel, plus a late joiner. App `10ed709`, tests `27eea0c`: 60/60 ([log](../../../qa/reference-upgrade/rereview/rescue-attempt12-tests-27eea0c.txt)). |
 
 JPEG (quality 84) conversions of the PNG captures. Counters for `e01`–`e11` are in [`stats.json`](stats.json).
 
@@ -27,7 +28,7 @@ JPEG (quality 84) conversions of the PNG captures. Counters for `e01`–`e11` ar
 | `e02` / `e03` lamp L1 lit / unlit, identical camera, dock closed | 241 | 65,946 |
 | `e04` low angle on L1's snaps and the D5 pad | 303 | 68,546 |
 | `e05`–`e09`, `e12`, `e13` the receiver's framing, with the workshop tab | 372 | 86,246 |
-| `e10` phone 390×844, workshop open | 327 | 76,298 |
+| `e10` phone 390×844, workshop open | 325 | 76,082 |
 | `e11` phone 390×844, workshop folded | 227 | 70,370 |
 
 **Pixel check.** In the matched close-ups, separate from the scene's own state, the bulb crop has mean luminance **193.3 lit** and **158.0 unlit** (`stats.json`).
@@ -45,7 +46,7 @@ Lamp L1 seated on its snaps, D5 HIGH (left) and LOW (right), same camera:
 
 ## Running, working, error and recovery states
 
-- **`e06` running.** The transmission is running: progress bar, elapsed time, Stop, and the lamp lit on the bench. This capture round is one deliberately long 110 s flash, which is not a protocol word, so that a seconds-per-frame renderer can catch it. The shot was taken 74.3 s in, and the flash ran to its end before the script reached Stop (`stats.json`). Stop itself is exercised in the two-client run.
+- **`e06` running.** The transmission is running: progress bar, elapsed time, Stop, and the lamp lit on the bench. This capture round is one deliberately long 110 s flash, which is not a protocol word, so that a seconds-per-frame renderer can catch it. This file is the `dc51187` capture, taken 74.3 s in (see above for why it was not replaced). Stop itself is exercised in the two-client run.
 - **`e07` working round.** The solo check after the DI helper's INJURED · NORTH blocks: both words are decoded and no problems are found.
 - **`e08` error.** The return wire `W2a` is off the base, which leaves an open circuit. The code ran, but there was no light at all. The diagnosis says L1 had no end reaching GND.
 - **`e09` recovery.** The loop is rebuilt, the same message is transmitted again, and no problems are found.
@@ -68,23 +69,23 @@ These two faults come from the parent review, imported through the real project-
 |---|---|
 | ![Phone, panel](e10-phone-design.jpg) | ![Phone, 3D](e11-phone-collapsed-3d.jpg) |
 
-## Two clients over the Worker (1000×680 each, 390×844 late joiner)
+## Two clients over the Worker (800×544 each, 390×844 late joiner)
 
 | File | What it shows |
 |---|---|
 | `two-client-01-sender-design` | The sender has chosen North ridge and INJURED · NORTH, and the DI helper has written the blocks. |
-| `two-client-02-receiver-watching` | The receiver's screen, framed with "Receiver's view", right after the transmission ended. The lamp is dark, as the timeline says. |
+| `two-client-02-receiver-view` | The receiver's screen, framed with "Receiver's view" while waiting, before round 1 (a screenshot inside the round would hold the GPU process both pages need). |
 | `two-client-03-receiver-reading` | The receiver builds the first reading. The intended message is not shown. |
 | `two-client-04-sender/receiver-compare-delivered` | Both screens: intended, what the light said under the protocol, what was read, and "Message delivered". |
 | `two-client-05-ambiguous-diagnosis` | A 500 ms flash: the signal is ambiguous even though the reading guessed right. It shows the measured flash against the bands. |
 | `two-client-06-open-circuit-no-light` | The open circuit: no light reached the receiver. |
 | `two-client-07-cut-off-by-bench-change` | A teammate's bench edit cut the transmission off. The strip's axis is labelled. |
 | `two-client-08-unread-after-success` | After a delivered round, a new unread round. The header pill and stepper show **Reading** for the current round, not the earlier "Delivered". |
-| `two-client-09-phone-late-joiner` | A late joiner on a phone, joined while the 108 s recurring light ran. It gets the rounds, the current round and the roles from the room. |
-| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 200.8 lit vs 163.5 dark. |
+| `two-client-09-phone-late-joiner` | A late joiner on a phone, joined while the 107.5 s irregular light ran. It gets the rounds, the current round and the roles from the room. |
+| `two-client-pixel-lit/dark` | The receiver's lamp crops used for the pixel check: luminance 199.8 lit vs 162.5 dark. |
 
 ![Sender design](two-client-01-sender-design.jpg)
-![Receiver after the transmission](two-client-02-receiver-watching.jpg)
+![Receiver's view before round 1](two-client-02-receiver-view.jpg)
 ![Receiver reading](two-client-03-receiver-reading.jpg)
 ![Sender compare](two-client-04-sender-compare-delivered.jpg)
 ![Receiver compare](two-client-04-receiver-compare-delivered.jpg)
