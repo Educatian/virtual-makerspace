@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p .",
     "test:circuit": "node --experimental-strip-types scripts/circuit-engine-check.mjs",
-    "test:agent": "node --experimental-strip-types scripts/teachable-agent-check.mjs",
+    "test:agent": "node --experimental-strip-types scripts/teachable-agent-check.mjs && node --experimental-strip-types scripts/ai-teammate-sync-check.mjs",
     "test:project": "node --experimental-strip-types scripts/project-state-check.mjs",
     "test:snapino": "node --experimental-strip-types scripts/snapino-check.mjs && node --experimental-strip-types scripts/snapino-sketch-check.mjs",
     "test": "npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync && npm run test:tools && npm run test:episode && npm run test:diagram",

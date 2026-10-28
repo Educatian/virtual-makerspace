@@ -955,6 +955,7 @@ function inviteAiTeammate(): void {
     studio: () => activeStudio,
     phase: () => collaborationPhase,
     transforms: () => workbench?.getSharedTransforms() ?? {},
+    revOf: (componentId) => room?.sync.revs.get(componentId) ?? 0,
     placementTransform: (componentId, sockets) => workbench?.placementTransform(componentId, sockets) ?? null,
     homeTransform: (componentId) => workbench?.homeTransform(componentId) ?? null,
     yieldComponent: (componentId) => workbench?.yieldComponent(componentId),
