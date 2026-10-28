@@ -25,10 +25,13 @@ import {
 
 export const CABLE_COLORS: Record<SoundCableId, string> = { "snd-cable-a": "#e0483f", "snd-cable-b": "#e7b416", "snd-cable-c": "#4f86e6" };
 
-const NODE_X: Record<SoundModuleId, number> = { "snd-source": 20, "snd-filter": 180, "snd-drive": 340, "snd-speaker": 500 };
+// Sized to fit the dock (≈330 px) without horizontal scrolling: the text sizes are in viewBox units.
+const NODE_X: Record<SoundModuleId, number> = { "snd-source": 12, "snd-filter": 158, "snd-drive": 304, "snd-speaker": 450 };
 const NODE_Y = 64;
-const NODE_W = 120;
-const NODE_H = 72;
+const NODE_W = 112;
+const NODE_H = 84;
+const VIEW_W = 574;
+const VIEW_H = NODE_Y + NODE_H + 100;
 
 const escape = (value: string): string =>
   value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
@@ -83,13 +86,15 @@ export function renderSoundDiagramSvg(graph: SoundGraph, signal: SignalAnalysis,
     const forward = q.x > p.x;
     // Forward OUT→IN edges arch above; anything going back or sideways routes below the nodes.
     const below = !forward || edge.status !== "signal" && edge.status !== "idle";
-    const lift = below ? NODE_Y + NODE_H + 46 + (SOUND_CABLE_IDS.indexOf(edge.cable) * 18) : NODE_Y - 30 - SOUND_CABLE_IDS.indexOf(edge.cable) * 6;
+    const lift = below ? NODE_Y + NODE_H + 40 + SOUND_CABLE_IDS.indexOf(edge.cable) * 30 : NODE_Y - 30 - SOUND_CABLE_IDS.indexOf(edge.cable) * 6;
     const d = `M${p.x},${p.y} C${p.x + (SOUND_JACKS[a].port === "out" ? 60 : -60)},${lift} ${q.x + (SOUND_JACKS[b].port === "out" ? 60 : -60)},${lift} ${q.x},${q.y}`;
     const invalid = edge.status === "out-out" || edge.status === "in-in" || edge.status === "shared-jack";
     const dash = edge.status === "signal" ? "" : edge.status === "idle" ? "10 7" : edge.status === "loop" ? "4 4" : "2 7";
     const selected = edge.cable === selectedCable || touchesSelected(edge.jacks);
     const label = `${CABLE_NAMES[edge.cable]}: ${jackLabel(edge.from ?? edge.jacks[0])} ${edge.from !== undefined ? "→" : "—"} ${jackLabel(edge.to ?? edge.jacks[1])}, ${STATUS_WORDS[edge.status]}`;
-    const mid = { x: (p.x + q.x) / 2, y: below ? lift - 4 : lift + 18 };
+    // The curve's extreme is at 0.25·port + 0.75·lift; the label sits just outside it, clear of the curve.
+    const extreme = 0.25 * p.y + 0.75 * lift;
+    const mid = { x: (p.x + q.x) / 2, y: below ? extreme + 16 : extreme - 8 };
     parts.push(`<g class="sd-edge${selected ? " is-selected" : ""}" data-cable="${edge.cable}" data-status="${edge.status}" data-from="${edge.from ?? edge.jacks[0]}" data-to="${edge.to ?? edge.jacks[1]}" tabindex="0" role="button" aria-label="${escape(label)}" style="color:${color}">
       ${selected ? `<path d="${d}" class="sd-edge-halo" fill="none"/>` : ""}
       <path d="${d}" class="sd-edge-line" fill="none" stroke="${color}" stroke-width="${edge.status === "signal" ? 5 : 4}" ${dash ? `stroke-dasharray="${dash}"` : ""} ${edge.from !== undefined && !invalid ? 'marker-end="url(#sd-arrow)"' : ""}/>
@@ -121,8 +126,8 @@ export function renderSoundDiagramSvg(graph: SoundGraph, signal: SignalAnalysis,
     parts.push(`<g class="sd-node${selected ? " is-selected" : ""}" data-module="${id}" data-state="${state}" tabindex="0" role="button" aria-label="${escape(words)}">
       <rect x="${x}" y="${NODE_Y}" width="${NODE_W}" height="${NODE_H}" rx="10" class="sd-node-box"/>
       ${inLoop ? `<rect x="${x}" y="${NODE_Y}" width="${NODE_W}" height="${NODE_H}" rx="10" fill="url(#sd-hatch)"/>` : ""}
-      <text x="${x + NODE_W / 2}" y="${NODE_Y + 28}" text-anchor="middle" class="sd-node-name">${MODULE_NAMES[id]}</text>
-      <text x="${x + NODE_W / 2}" y="${NODE_Y + 50}" text-anchor="middle" class="sd-node-level">${escape(state === "signal" ? `${level} dBFS` : state === "loop" ? "loop · silenced" : "no signal")}</text>
+      <text x="${x + NODE_W / 2}" y="${NODE_Y + 32}" text-anchor="middle" class="sd-node-name">${MODULE_NAMES[id]}</text>
+      <text x="${x + NODE_W / 2}" y="${NODE_Y + 56}" text-anchor="middle" class="sd-node-level">${escape(state === "signal" ? `${level} dBFS` : state === "loop" ? "⟲ silenced" : "no signal")}</text>
     </g>`);
   }
   // Ports (on top): filled = patched, hollow = open; a ring marks the selected item's ports.
@@ -133,11 +138,11 @@ export function renderSoundDiagramSvg(graph: SoundGraph, signal: SignalAnalysis,
     parts.push(`<g class="sd-port" data-jack="${jack.index}" data-patched="${patched}">
       ${selected ? `<circle cx="${p.x}" cy="${p.y}" r="13" class="sd-port-ring"/>` : ""}
       <circle cx="${p.x}" cy="${p.y}" r="7" class="${patched ? "sd-port-dot" : "sd-port-open"}"/>
-      <text x="${p.x + (jack.port === "out" ? -10 : 10)}" y="${p.y - 12}" text-anchor="${jack.port === "out" ? "end" : "start"}" class="sd-port-label">${jack.port.toUpperCase()}${patched ? "" : " · open"}</text>
+      <text x="${p.x + (jack.port === "out" ? -8 : 8)}" y="${NODE_Y + NODE_H - 8}" text-anchor="${jack.port === "out" ? "end" : "start"}" class="sd-port-label">${jack.port.toUpperCase()}${patched ? "" : " · open"}</text>
     </g>`);
   }
   const notes = graph.faults.filter((fault) => options.showNotes || isSafetyFault(fault));
-  return `<svg class="sd-svg" viewBox="0 0 640 ${NODE_Y + NODE_H + 120}" role="group" aria-label="Signal-flow diagram of the patch as built" data-edges="${graph.edges.length}" data-loose="${graph.loose.length}" data-notes="${notes.length}">${parts.join("")}</svg>`;
+  return `<svg class="sd-svg" viewBox="0 0 ${VIEW_W} ${VIEW_H}" role="group" aria-label="Signal-flow diagram of the patch as built" data-edges="${graph.edges.length}" data-loose="${graph.loose.length}" data-notes="${notes.length}">${parts.join("")}</svg>`;
 }
 
 /** The connection list: the diagram's text alternative (every cable and every port, as patched). */

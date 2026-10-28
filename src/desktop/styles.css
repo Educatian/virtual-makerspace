@@ -2490,7 +2490,7 @@ textarea:focus-visible {
 .ss-milestone { color: #b9ffd2; }
 
 .sd-diagram { overflow-x: auto; background: #0b1017; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; --sd-fault: #ef4444; }
-.sd-svg { display: block; width: 100%; min-width: 360px; height: auto; font-family: inherit; }
+.sd-svg { display: block; width: 100%; min-width: 300px; height: auto; font-family: inherit; }
 .sd-node { cursor: pointer; }
 .sd-node-box { fill: #1a2230; stroke: #4b5b74; stroke-width: 2; }
 .sd-node[data-state="signal"] .sd-node-box { fill: #13261d; stroke: #3fa66a; }
@@ -2498,18 +2498,18 @@ textarea:focus-visible {
 .sd-node.is-selected .sd-node-box { stroke: var(--tone-a, #f59e0b); stroke-width: 4; }
 .sd-node:focus-visible .sd-node-box, .sd-edge:focus-visible .sd-edge-line { outline: none; stroke-width: 6; filter: drop-shadow(0 0 0 #53a4ff); }
 .sd-node:focus-visible { outline: 2px solid #53a4ff; }
-.sd-node-name { fill: #e8eef7; font-size: 15px; font-weight: 700; }
-.sd-node-level { fill: #9fb3d1; font-size: 11px; font-variant-numeric: tabular-nums; }
+.sd-node-name { fill: #e8eef7; font-size: 21px; font-weight: 700; }
+.sd-node-level { fill: #9fb3d1; font-size: 16px; font-variant-numeric: tabular-nums; }
 .sd-edge { cursor: pointer; }
 .sd-edge:focus-visible { outline: 2px solid #53a4ff; }
 .sd-edge-halo { stroke: var(--tone-b, #22d3ee); stroke-width: 11; stroke-opacity: 0.35; stroke-dasharray: 6 4; }
-.sd-edge-label { fill: #cfd9ea; font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #0b1017; stroke-width: 4px; }
+.sd-edge-label { fill: #cfd9ea; font-size: 15px; font-weight: 600; paint-order: stroke; stroke: #0b1017; stroke-width: 5px; }
 .sd-edge-label.is-fault { fill: #fca5a5; }
 .sd-plug { fill: #1b1d21; stroke: #9aa1aa; stroke-width: 1.5; }
 .sd-port-dot { fill: #e8eef7; stroke: #0b1017; stroke-width: 2; }
 .sd-port-open { fill: #0b1017; stroke: #9fb3d1; stroke-width: 2; stroke-dasharray: 2 2; }
 .sd-port-ring { fill: none; stroke: var(--tone-a, #f59e0b); stroke-width: 3; }
-.sd-port-label { fill: #9fb3d1; font-size: 10px; font-weight: 700; }
+.sd-port-label { fill: #9fb3d1; font-size: 13px; font-weight: 700; }
 .sd-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; color: #c4cfe0; font-size: 0.64rem; }
 .sd-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .sd-key { display: inline-block; width: 26px; height: 0; border-top: 3px solid #cfd9ea; }
