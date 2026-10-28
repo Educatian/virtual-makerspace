@@ -459,7 +459,7 @@ Their causes were not established. They are listed with their logs, not counted 
 | G4 | **Air.** Greenhouse air above 35 °C for at most 1 h. | The run's record |
 | G5 | **Reserve.** At least 8 L left in the tank at the end. | The run's record |
 
-In the model, the brief cannot be met by plugging everything in at the default settings: the default allocation leaves bed B dry for about 9 h on the brief's day. A coarse search found successful strategies (for example valve A 30 %, valve B 50 %, pump below 60 %, fan above 26 °C). The success region is narrow: about 1.3 % of a 5 % / 5-point grid of valve, threshold, priority and probe choices.
+In the model, the brief cannot be met by plugging everything in at the default settings: the default allocation leaves bed B dry for 9.5 h on the brief's day. The DI worked example meets it: valve A 30 %, valve B 50 %, pump below 60 %, fan above 26 °C. The success region is narrow: `scripts/greenhouse-model-check.mjs` finds 1,106 of 149,940 strategies (0.74 %) in a 5 % / 5-point grid of valve, threshold, priority and probe choices.
 
 These are the genuine tradeoffs:
 - **Water:** the tank cannot keep both beds wet all day. Bed B transpires half as much again as bed A, and over-watering is lost to drainage.

@@ -35,6 +35,9 @@ import {
   reduceRescue,
 } from "../src/episodes/rescue-state.ts";
 import { isSoundCable, nextCableSockets, soundJackConflict } from "./sound-rules.js";
+import { greenhousePortConflict, isGreenhouseId, isGreenhouseLine } from "./greenhouse-rules.js";
+import { deriveRig } from "./greenhouse-model.js";
+import { initialRun, onGreenhouseRoomEmpty, reduceGreenhouseRun, rigLocked } from "./greenhouse-run.js";
 
 const resourceParts = (resourceId) => {
   const match = /^(.*)::endpoint-([01])$/.exec(resourceId);
@@ -54,8 +57,24 @@ export class RoomCore {
     this.program = initial.program ?? null;
     /** Rescue Signal episode state (src/episodes/rescue-state.ts); persisted by the host. */
     this.episode = initial.episode ?? initialRescueState();
+    /** Resource-Limited Greenhouse run: model time and resources (cloudflare/greenhouse-run.js); persisted by the host. */
+    this.greenhouse = initial.greenhouse ?? initialRun();
     /** Server clock (injectable for tests). */
     this.now = initial.now ?? (() => Date.now());
+  }
+
+  /** The greenhouse rig as the room holds it (what the model runs on). */
+  greenhouseRig() {
+    return deriveRig((id) => this.state.get(id)?.transform ?? null);
+  }
+
+  greenhouseMessage() {
+    return { kind: "greenhouse-state", run: this.greenhouse, serverNow: this.now() };
+  }
+
+  /** While a greenhouse day is running, its rig cannot change (pause first). */
+  greenhouseLocked(componentIds) {
+    return componentIds.some((id) => isGreenhouseId(id)) && rigLocked(this.greenhouse, this.now());
   }
 
   episodeMessage(program) {
@@ -124,6 +143,7 @@ export class RoomCore {
       // last participant left): a reconnecting client's bench may seed it.
       fresh: this.state.size === 0,
       episode: this.episode,
+      greenhouse: this.greenhouse,
       serverNow: this.now(),
     }];
   }
@@ -178,6 +198,10 @@ export class RoomCore {
           out.sender.push({ kind: "transform-rejected", ...this.authoritative(message.componentId), holderId: conflict?.participantId ?? "", holderName: conflict?.participantName ?? "" });
           return out;
         }
+        if (this.greenhouseLocked([message.componentId])) {
+          out.sender.push({ kind: "transform-rejected", ...this.authoritative(message.componentId), holderId: "", holderName: "", reason: "running" });
+          return out;
+        }
         if (this.jackTaken(message.componentId, message.transform, new Map())) {
           out.sender.push({ kind: "transform-rejected", ...this.authoritative(message.componentId), holderId: "", holderName: "", reason: "occupied" });
           return out;
@@ -210,8 +234,10 @@ export class RoomCore {
           if (this.rev(change.componentId) !== change.expectRev) return refuse("stale", { componentId: change.componentId });
         }
         if (message.program && message.program.expectRev !== null && message.program.expectRev !== this.programRev) return refuse("stale", { componentId: "program" });
+        // A running greenhouse day keeps its rig: edits wait for a pause.
+        if (this.greenhouseLocked(message.changes.map((change) => change.componentId))) return refuse("running", { componentId: message.changes.find((change) => isGreenhouseId(change.componentId))?.componentId });
         // One plug per jack, judged on the state this whole batch would leave.
-        const batch = new Map(message.changes.filter((change) => isSoundCable(change.componentId)).map((change) => [change.componentId, nextCableSockets(this.state.get(change.componentId)?.transform, change.transform)]));
+        const batch = new Map(message.changes.filter((change) => isSoundCable(change.componentId) || isGreenhouseLine(change.componentId)).map((change) => [change.componentId, nextCableSockets(this.state.get(change.componentId)?.transform, change.transform)]));
         for (const change of message.changes) {
           if (this.jackTaken(change.componentId, change.transform, batch)) return refuse("occupied", { componentId: change.componentId });
         }
@@ -248,6 +274,21 @@ export class RoomCore {
         out.others.push({ ...message, programRev: this.programRev });
         out.sender.push({ kind: "program-ack", programRev: this.programRev });
         this.transmitterChanged([], true, out);
+        return out;
+      }
+      case "greenhouse": {
+        const result = reduceGreenhouseRun(this.greenhouse, message.action, this.now(), this.greenhouseRig());
+        if (!result.ok) {
+          out.sender.push({ kind: "greenhouse-result", opId: message.opId, ok: false, reason: result.reason });
+          out.sender.push(this.greenhouseMessage());
+          return out;
+        }
+        this.greenhouse = result.run;
+        out.persist.greenhouse = this.greenhouse;
+        const update = this.greenhouseMessage();
+        out.sender.push(update);
+        out.sender.push({ kind: "greenhouse-result", opId: message.opId, ok: true });
+        out.others.push(update);
         return out;
       }
       case "episode": {
@@ -302,6 +343,9 @@ export class RoomCore {
    * episode keeps its design and rounds; roles are freed and a running transmission ends.
    */
   reset() {
+    // A running greenhouse day pauses where it is (with the rig it ran on), keeping its resources.
+    const paused = onGreenhouseRoomEmpty(this.greenhouse, this.now(), this.greenhouseRig());
+    if (paused) this.greenhouse = paused;
     this.claims.clear();
     this.state.clear();
     const episode = onRoomEmpty(this.episode, this.now());
@@ -309,15 +353,16 @@ export class RoomCore {
   }
 
   /**
-   * Whether storing `transform` would put a second plug into a jack (sound patch cables only),
+   * Whether storing `transform` would put a second plug into a jack or port (Sound patch cables, greenhouse hoses and power cables),
    * judged on the cable's merged sockets (a cable-end move keeps the room's other end), so two
    * people each moving one end of the same cable into the same jack are refused.
    */
   jackTaken(componentId, transform, batch) {
-    if (!isSoundCable(componentId)) return false;
+    const sound = isSoundCable(componentId);
+    if (!sound && !isGreenhouseLine(componentId)) return false;
     const sockets = batch.get(componentId) ?? nextCableSockets(this.state.get(componentId)?.transform, transform);
     const socketsOf = (id) => (batch.has(id) ? batch.get(id) : this.state.get(id)?.transform.sockets ?? null);
-    return soundJackConflict(componentId, sockets, socketsOf) !== null;
+    return (sound ? soundJackConflict(componentId, sockets, socketsOf) : greenhousePortConflict(componentId, sockets, socketsOf)) !== null;
   }
 
   store(componentId, transform) {
@@ -325,7 +370,8 @@ export class RoomCore {
     let next = { ...transform };
     const end = transform.activeEndpoint;
     // A Sound patch cable the room has never stored starts unplugged on every client (the mat).
-    const unstoredSoundCable = !previous && isSoundCable(componentId) ? { ...transform, sockets: null } : null;
+    // A greenhouse hose or cable the room never stored likewise starts unplugged on its rack.
+    const unstoredSoundCable = !previous && (isSoundCable(componentId) || isGreenhouseLine(componentId)) ? { ...transform, sockets: null } : null;
     if ((end === 0 || end === 1) && (previous || unstoredSoundCable)) {
       // A cable-end move changes only that end, the one the sender holds: two people may each
       // hold one end, and each sender's view of the other end can be behind. The room's other

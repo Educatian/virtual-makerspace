@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { RoomCore } from "../cloudflare/room-core.js";
 import { componentResource, sanitizeEdit, sanitizeProgram, sanitizeTransform } from "../cloudflare/sanitize.js";
 import { sanitizeRescueAction } from "../src/episodes/rescue-state.ts";
+import { sanitizeGreenhouseAction } from "../cloudflare/greenhouse-run.js";
 
 const port = Number(process.env.COLLAB_PORT ?? 8787);
 const rooms = new Map();
@@ -24,7 +25,7 @@ function roomFor(request) {
  * rev-ack, claim-granted/denied, transform-rejected — come only from the room, never relayed. */
 const CLIENT_KINDS = new Set([
   "hello", "presence", "goodbye", "chat", "transform", "claim", "release", "voice-state", "phase", "trace",
-  "attention", "state-request", "state-response", "signal", "studio", "program", "edit", "room-state-request", "episode", "clock",
+  "attention", "state-request", "state-response", "signal", "studio", "program", "edit", "room-state-request", "episode", "greenhouse", "clock",
 ]);
 
 /** Validates the bench messages the room core acts on; other client kinds pass through. */
@@ -48,6 +49,10 @@ function sanitize(message, participant) {
     }
     case "clock":
       return typeof message.t0 === "number" && Number.isFinite(message.t0) ? { kind: "clock", t0: message.t0 } : null;
+    case "greenhouse": {
+      const action = sanitizeGreenhouseAction(message.action);
+      return action && typeof message.opId === "string" && /^[\w-]{1,80}$/.test(message.opId) ? { kind: "greenhouse", participantId: participant.id, opId: message.opId, action } : null;
+    }
     case "episode": {
       const action = sanitizeRescueAction(message.action);
       return action && typeof message.opId === "string" && /^[\w-]{1,80}$/.test(message.opId) ? { kind: "episode", participantId: participant.id, opId: message.opId, action } : null;
