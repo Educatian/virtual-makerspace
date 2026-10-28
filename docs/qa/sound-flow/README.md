@@ -17,7 +17,11 @@ Logs are kept as `.txt`, because the repository ignores `*.log`. Nothing else wa
 | [`app-ad7fd3c/`](app-ad7fd3c/) | `ad7fd3c` | After the first review fixes (two blockers, two hardening items, inspector copy). |
 | [`app-1eaf1dd/`](app-1eaf1dd/) | `1eaf1dd` | The app as first submitted in PR #5 (head `5e1a595`). |
 
-Each folder has a `summary.txt` listing every command in run order, with its exit code and duration, a log for each command, and the browser tests' `results.json`.
+Each folder has a `summary.txt` listing every command in run order, with its exit code and duration, and a complete text log for each command. The JSON files the tests write are committed only where listed here, and the text logs carry every check line either way:
+- **`app-63a3421/`:** `e2e-sound-results.json`, `cable-end-results.json`, `ai-teammate-worker-results.json`, `inspector-attempt1-limit-results.json`, `inspector-results.json`, `rescue-results.json`, `dsp-record.json`, and `qa-sound`'s `record.json` (in the renders folder).
+- **`app-ad7fd3c/`:** `e2e-sound-results.json`, `dsp-record.json`.
+- **`app-1eaf1dd/`:** `e2e-sound-results.json`, `inspector-attempt1-killed-results.json`, `inspector-results.json`, `dsp-record.json`. The cable-end and AI-worker JSON files of this app's runs are not committed.
+- `worker-sync`, `room-sync`, `snapino-history` and the peer AI test write no JSON file; their text logs are the record.
 
 ## Final app `63a3421`
 
@@ -28,15 +32,22 @@ Each folder has a `summary.txt` listing every command in run order, with its exi
 | `node scripts/sound-dsp-check.mjs` | **101/101** | — | `dsp.txt`, `dsp-record.json` |
 | `e2e-sound-worker.mjs` (two makers plus a late joiner) | **29/29**, room SH3V | 3,632 s | `e2e-sound.txt`, `e2e-sound-results.json` |
 | `e2e-worker-sync.mjs` | 18/18 | 3 s | `worker-sync.txt` |
-| `e2e-cable-end.mjs` | 12/12 | 444 s | `cable-end.txt` |
+| `e2e-cable-end.mjs` | 12/12, room WLZZ | 444 s | `cable-end.txt`, `cable-end-results.json` (room, results, trail) |
 | `e2e-room-sync.mjs` | 13/13 | 988 s | `room-sync.txt` |
 | `e2e-snapino-history.mjs` | 25/25 | 1,142 s | `snapino-history.txt` |
-| `e2e-ai-teammate-worker.mjs` | 10/10 | 384 s | `ai-teammate-worker.txt` |
+| `e2e-ai-teammate-worker.mjs` | 10/10, room WLEH (refusal probe room V82E) | 384 s | `ai-teammate-worker.txt`, `ai-teammate-worker-results.json` (room, probeRoom, results, bolt) |
 | `e2e-bench-inspector.mjs`, attempt 1 | **not completed.** Killed by this harness's own 45-minute per-test limit (exit 124, 2,700 s) while taking the `04-view-top.png` screenshot at line 271. | 2,700 s | `bench-inspector-attempt1-limit.txt`, `inspector-attempt1-limit-results.json` |
 | `e2e-bench-inspector.mjs`, attempt 2 (limit raised to 90 min; test and app unchanged) | **30/30**, room IWTT | 3,014 s | `bench-inspector.txt`, `inspector-results.json` |
 | `e2e-rescue-signal.mjs` (Episode 1; one bounded attempt) | **60/60**, room RGZS | 4,047 s | `rescue-signal.txt`, `rescue-results.json` |
 | `qa-sound.mjs` (renders) | **7/7**, no issues | 2,236 s | `qa-sound.txt`; renders in [`../../images/episodes/sound-flow/`](../../images/episodes/sound-flow/README.md) |
 | `e2e-ai-teammate.mjs` (peer) | 37/37 | 521 s | `ai-teammate-peer.txt` |
+
+**Where the two JSON sidecars came from.** Both were added in the docs commit after `72f8121`, without rerunning anything.
+- `cable-end-results.json` is the file `scripts/e2e-cable-end.mjs` wrote to `${tmpdir}/vm-e2e-cable-WLZZ-results.json`. Room WLZZ is the room named in `cable-end.txt`, and the file was written within a second of that log.
+- `ai-teammate-worker-results.json` is the file `scripts/e2e-ai-teammate-worker.mjs` wrote to `${tmpdir}/vm-e2e-ai-worker-WLEH/results.json`. Its refusal-probe room V82E is the one named in `ai-teammate-worker.txt`, and it was written at the same second as that log.
+- Both are byte-identical to the originals. There were no scratch paths or connection ids to sanitize: sha256 `cc68ea30f875ca81…` and `44f7274876d17b24…`.
+
+**`summary.txt`, line 11.** It now names the committed `bench-inspector-attempt1-limit.txt`; the original line named the scratch `.log`. Its exit code (124) and duration (2,700 s) are unchanged.
 
 **Bench-inspector attempt 1 is a partial prefix, not a pass.**
 - **Passed before the kill:** 25 checks, from building the bench through "Top view: camera above the bench, columns left to right".
