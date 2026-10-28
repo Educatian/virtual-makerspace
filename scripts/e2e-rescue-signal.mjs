@@ -488,9 +488,11 @@ await drawing([host, member], false);
 // The 250 ms bound is only meaningful for estimates whose own error (rtt / 2) is below it: wait for
 // samples with round trips of at most 400 ms (attempt 9 compared a 756 ms sample: 377 ms apart).
 const rejoined = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
-const hostClock = await episode(host);
+const hostClock = await until(() => episode(host), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
 const skew = Math.abs(rejoined.clockOffset - hostClock.clockOffset);
-check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms`);
+// until() returns its last value on timeout: the sample quality is part of the check itself.
+const goodSamples = (a, b) => a.clockRtt !== null && a.clockRtt <= 400 && b.clockRtt !== null && b.clockRtt <= 400;
+check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", goodSamples(rejoined, hostClock) && skew <= 250, `Δ ${Math.round(skew)} ms; round trips ${rejoined.clockRtt} / ${hostClock.clockRtt} ms (each must be <= 400 ms)`);
 await drawing([host, member], true);
 await stopIfStillRunning(host);
 await waitEnded(member);
@@ -627,7 +629,7 @@ await drawing([phone], false);
 const joinClock = await until(() => episode(phone), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
 const senderClock = await until(() => episode(member), (state) => state.clockRtt !== null && state.clockRtt <= 400, 180_000);
 const joinSkew = Math.abs(joinClock.clockOffset - senderClock.clockOffset);
-check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", joinSkew <= 250, `Δ ${Math.round(joinSkew)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms`);
+check("its room-clock estimate agrees with the sender's within 250 ms (same machine clock)", goodSamples(joinClock, senderClock) && joinSkew <= 250, `Δ ${Math.round(joinSkew)} ms; round trips ${joinClock.clockRtt} / ${senderClock.clockRtt} ms (each must be <= 400 ms)`);
 await drawing([phone], true);
 await shot(phone, "09-phone-late-joiner");
 const layout = await phone.evaluate(() => { const panel = document.querySelector("#episode-panel").getBoundingClientRect(); return { left: panel.left, right: panel.right, width: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }; });
