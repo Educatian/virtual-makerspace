@@ -1,0 +1,210 @@
+{
+ "room": "SYQM",
+ "base": "http://vm.test:8800",
+ "results": [
+  {
+   "name": "DI host sees the worked example; PF member does not",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T05:54:56.391Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "no AudioContext on either page before any click",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-28T05:55:11.996Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 0,
+      "snd-cable-b": 0,
+      "snd-cable-c": 0
+     }
+    }
+   }
+  },
+  {
+   "name": "pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker",
+   "ok": true,
+   "detail": "{\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]} | {\"snd-cable-a\":[0,1],\"snd-cable-b\":[2,3],\"snd-cable-c\":[4,5]}",
+   "actor": "host + member",
+   "at": "2026-10-28T06:08:47.818Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 20
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 20
+     }
+    }
+   }
+  },
+  {
+   "name": "occupied: the plug dropped on Filter IN (taken) stays out, for both; Filter IN keeps the red cable",
+   "ok": true,
+   "detail": "member C [4,null], host C [4,null]; status \"Filter IN already holds a plug (one plug per jack) · Blue cable end B stays out\"",
+   "actor": "member",
+   "at": "2026-10-28T06:10:32.105Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 31
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 31
+     }
+    }
+   }
+  },
+  {
+   "name": "host Test on the default knobs: not met (C2 tone fails), measured values shown",
+   "ok": true,
+   "detail": "[\"C1:met\",\"C2:not\",\"C3:met\",\"C4:met\",\"C5:met\"]",
+   "actor": "host",
+   "at": "2026-10-28T06:13:42.427Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 42
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 42
+     }
+    }
+   }
+  },
+  {
+   "name": "host's Source edit (220 Hz sawtooth, by keyboard) accepted and received by the member",
+   "ok": false,
+   "detail": "{\"hz\":440,\"wave\":\"sine\"}; host note: Set Source to sawtooth 220 Hz · shared with the room; host drafts {}",
+   "actor": "host",
+   "at": "2026-10-28T06:19:16.359Z",
+   "revs": {
+    "host": {
+     "participant": "host@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 42
+     }
+    },
+    "member": {
+     "participant": "member@example.test:<connection>",
+     "revs": {
+      "snd-source": 0,
+      "snd-filter": 0,
+      "snd-drive": 0,
+      "snd-speaker": 0,
+      "snd-cable-a": 20,
+      "snd-cable-b": 21,
+      "snd-cable-c": 42
+     }
+    }
+   }
+  },
+  {
+   "name": "run completed",
+   "ok": false,
+   "detail": "locator.click: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /opt/pw-browsers/chromium --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --host-resolver-rules=MAP vm.test 127.0.0.1 --unsafely-treat-insecure-origin-as-secure=http://vm.test:8799 --no-proxy-server --use-gl=swiftshader --enable-unsafe-swiftshader --autoplay-policy=user-gesture-required --user-data-dir=<tmp> --remote-debugging-pipe --no-startup-window\n<launched> pid=7609\n[pid=7609][err] [7609:7634:1028/005414.918962:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n[pid=7609][err] [7609:7634:1028/005414.927007:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7634:1028/005414.928523:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n[pid=7609][err] [7609:7634:1028/005414.929349:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n[pid=7609][err] [7649:7649:1028/005414.936923:ERROR:ui/gl/init/gl_factory.cc:102] Requested GL implementation (gl=none,angle=none) not found in allowed implementations: [(gl=egl-angle,angle=default)].\n[pid=7609][err] [7649:7649:1028/005414.943957:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization\n[pid=7609][err] [7609:7634:1028/005414.977957:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7609:1028/005414.999386:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n[pid=7609][err] [7609:7634:1028/005415.003569:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7634:1028/005415.004162:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7634:1028/005415.004856:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7634:1028/005415.005000:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7634:1028/005415.005064:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[pid=7609][err] [7609:7609:1028/005415.009009:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n[pid=7609][err] [7609:7609:1028/005415.014570:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n[pid=7609][err] [7609:7634:1028/005415.014873:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n[pid=7609][err] [7609:7634:1028/005415.014912:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n[pid=7609][err] [7609:7609:1028/005415.015153:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n[pid=7609][err] [7609:7609:1028/005415.016118:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.DBus.Properties.GetAll: object_path= /org/freedesktop/UPower/devices/DisplayDevice: unknown error type: \n[pid=7609][err] [7674:7674:1028/005415.053946:ERROR:ui/gl/init/gl_factory.cc:102] Requested GL implementation (gl=none,angle=none) not found in allowed implementations: [(gl=egl-angle,angle=default)].\n[pid=7609][err] [7674:7674:1028/005415.070501:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization\n[pid=7609][err] [7692:7692:1028/005434.973953:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x1d5400115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels\n[pid=7609][err] [7692:7692:1028/005449.420066:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x1d5400115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels\n[pid=7609][err] [7692:7692:1028/005450.696569:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x1d5400115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels\n[pid=7609][err] [7692:7692:1028/005451.938132:ERROR:gpu/command_buffer/service/gl_utils.cc:391] [.WebGL-0x1d5400115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)\n[pid=7609] <gracefully close start>\n[pid=7609] <forcefully close>\n[pid=7609] <kill>\n[pid=7609] <will force kill>\nCall log:\n\u001b[2m  - waiting for locator('#sdi-cutoff')\u001b[22m\n\n    at typeInto (/home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:140:32)\n    at /home/claude/virtual-makerspace/scripts/e2e-sound-worker.mjs:219:9",
+   "at": "2026-10-28T06:20:29.916Z"
+  }
+ ]
+}
