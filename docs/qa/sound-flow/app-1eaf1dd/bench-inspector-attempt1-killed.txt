@@ -1,0 +1,8 @@
+  [ready] host entered: 8 s (+4 frames)
+  [ready] member entered: 17 s (+3 frames)
+page.evaluate: Target page, context or browser has been closed
+    at settled (/home/claude/virtual-makerspace/scripts/lib/e2e-readiness.mjs:59:33)
+    at ready (/home/claude/virtual-makerspace/scripts/e2e-bench-inspector.mjs:50:32)
+    at /home/claude/virtual-makerspace/scripts/e2e-bench-inspector.mjs:130:9
+FAIL test ran to completion — page.evaluate: Target page, context or browser has been closed
+0/1 checks passed · room I3QZ · artifacts <scratch>/final-sound/inspector

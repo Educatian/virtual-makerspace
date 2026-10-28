@@ -1,0 +1,1 @@
+sound dsp: 101 checks passed (offline buffers and live analysers in headless Chromium; no physical speaker was heard)

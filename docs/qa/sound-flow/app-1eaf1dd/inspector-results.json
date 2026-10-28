@@ -1,0 +1,10 @@
+{
+ "room": "INTZ",
+ "results": [
+  {
+   "name": "test ran to completion",
+   "ok": false,
+   "detail": "locator.click: Timeout 300000ms exceeded."
+  }
+ ]
+}

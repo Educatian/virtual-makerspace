@@ -1,0 +1,18 @@
+PASS both makers are in the Snapino room
+PASS P/S reaches the teammate (wiring + running program) — member [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500},{"op":"write","pin":"D5","value":false},{"op":"wait","ms":500}] running=true · host [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500},{"op":"write","pin":"D5","value":false},{"op":"wait","ms":500}]
+PASS import Q/T reaches both peers — member [["sno-l1",{"sockets":[30,12]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}] · host [["sno-l1",{"sockets":[30,12]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}] · before [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]]
+PASS an imported program is loaded stopped (policy)
+PASS the import is one undo step for the importer
+PASS Undo restores P/S on the teammate — [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sock
+PASS Undo restores P/S on the importer
+PASS an undone program stays stopped (policy)
+PASS Redo brings Q/T back on both peers
+file:///home/claude/virtual-makerspace/scripts/e2e-snapino-history.mjs:72
+  if (!opened) throw new Error(`import did not ask for confirmation: ${await status(page)}`);
+                     ^
+
+Error: import did not ask for confirmation: Redid · Loaded a project · program restored, stopped
+    at importProject (file:///home/claude/virtual-makerspace/scripts/e2e-snapino-history.mjs:72:22)
+    at async file:///home/claude/virtual-makerspace/scripts/e2e-snapino-history.mjs:123:1
+
+Node.js v22.22.0

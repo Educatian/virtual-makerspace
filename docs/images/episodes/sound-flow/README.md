@@ -1,12 +1,12 @@
 # Episode 2 · Sound Flow Studio — renders
 
-**App code:** `1eaf1dd` on branch `feat/sound-flow-studio`, built with `npx vite build`. `record.json` names `813f9b7`: the capture started after a docs-only commit on top of `1eaf1dd` (`git diff 1eaf1dd 813f9b7` touches only `docs/episodes.md`), so the code shown is `1eaf1dd`'s.
+**App code:** `63a3421`, the final app of PR #5, built with `npx vite build` in its own worktree and its own `dist/`; `record.json` names it. The same capture script also ran on `1eaf1dd` (7/7, 2,000 s), with the same draw-call and triangle counts per shot as below: the review fixes after it did not change the 3D desk.
 
 **Where:** a developer environment (headless Chromium with SwiftShader software WebGL, 2 CPU cores). These are not GitHub CI runs.
 
 **Rooms:** fresh random local same-device (peer) rooms (`Q…` codes). The production room 7K3M was never used.
 
-**Script:** `node scripts/qa-sound.mjs http://127.0.0.1:4173 <dir> <sha>`, run against a static server over `dist/`. It ran 2,000 s with no issues and 7/7 checks ([`record.json`](record.json), [log](../../../qa/sound-flow/final-qa-sound.log)). The images are JPEG (quality 84) conversions of the PNG captures.
+**Script:** `node scripts/qa-sound.mjs http://127.0.0.1:4173 <dir> <sha>`, run against a static server over `dist/`. It ran 2,236 s with no issues and 7/7 checks ([`record.json`](record.json), [log](../../../qa/sound-flow/app-63a3421/qa-sound.txt)). The images are JPEG (quality 84) conversions of the PNG captures.
 
 The renderer counters are the draw calls and triangles of the frame shown. They are **not** frame rates. Nothing here was measured on a GPU, phone or Quest, and no XR view of the studio exists. **No image or number here says anything about sound from a physical speaker:** the signal display is rendered by Web Audio in an `OfflineAudioContext`, and the live line reads this tab's analysers.
 
@@ -95,7 +95,9 @@ The display shows the waveform rendered offline:
 |---|---|---|
 | ![Phone top](11-phone-top.jpg) | ![Phone dock](12-phone-dock.jpg) | ![PF](13-pf-studio.jpg) |
 
-## Earlier capture runs (not kept as images)
+## Earlier capture runs (their images were replaced)
+
+- **`1eaf1dd`**, 7/7 in 2,000 s: these files showed that app until `63a3421` was captured ([log](../../../qa/sound-flow/app-1eaf1dd/qa-sound.txt)).
 
 - **`160f1f1`** passed the same 7/7 checks in 2,302 s. Its `08b` showed the inspector diagram clipped: the Speaker node was cut off at the dock's edge because the 640-unit SVG had a 360 px minimum width. The IN label also overlapped the node name. The diagram was fixed in `0df880c` (574 units, text sized in viewBox units, labels clear of the curves), and the shots above were taken again on `1eaf1dd`. That run's images were replaced.
 - Development smoke captures were made before `160f1f1`. They fed the 3D fixes listed in the PR (jack bores, speaker cutout, wave-selector labels) and are not evidence of the final app.

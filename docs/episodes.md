@@ -5,8 +5,8 @@ episode at a time**. Each episode is reviewed before the next one starts.
 
 | # | Episode | Studio | Status |
 |---|---|---|---|
-| 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Not merged or deployed. |
-| 2 | Sound Flow Studio | Sound Flow Studio (new) | **Implemented on `feat/sound-flow-studio`.** Awaiting independent review. |
+| 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Merged into the `desktop` release branch with PRs #2–#4 (`db85d85`); production deployment and live checks are recorded outside this document. |
+| 2 | Sound Flow Studio | Sound Flow Studio (new) | **Implemented on `feat/sound-flow-studio`** (PR #5 against `desktop`, final app `63a3421`). Review findings fixed; awaiting the final gate. Not merged or deployed. |
 | 3 | Resource-Limited Greenhouse | Greenhouse | Planned. The acceptance contract is below; not started. |
 | 4 | Smart Sorting Center | new | Planned. The acceptance contract is below; not started. |
 | 5 | Structural Test Yard | new | Planned. The acceptance contract is below; not started. |
@@ -406,6 +406,29 @@ No points, XP, timers or fake measurements.
 | `npm run test:sound:dsp` | `scripts/sound-dsp-check.mjs`, the actual Web Audio graph in headless Chromium: an `OfflineAudioContext` render measured against independent references — frequency (zero crossings), the fundamental of each waveform (0.5·b₁, divided by (2/π)·Si(π) for square and sawtooth), gain transfer, the low-pass against the RBJ biquad formula written in the test (Q in dB), the digital filter against the analog prototype, exact silence for open, looped and OUT→OUT patches, the Speaker switch, real clipping (2/3 of each cycle at 2 FS), the model's numbers against the rendered buffers, and the 0.25 FS ceiling on 24 random builds. Then the live engine on the page: no AudioContext from `apply()`; `start()` without user activation refused and creating nothing; a trusted click creating and running one context; live analysers; the volume cap; mute to exactly 0 within 80 ms while the Speaker input still carries the tone; a patch change while muted; `stop()` closing the context and stopping every oscillator it started; no restart afterwards; with `resume()` held: a disconnect or studio exit during a click's pending resume closes that context, and a stale start's late failure leaves a newer running start alone. In Chromium a context created inside the click usually reports "running" by itself, so this run has no negative control for the status-"off" case; that case (and the previous guard failing it) is in `sound-engine-check.mjs`. **What it proves:** the digital signal Web Audio computes. Nothing was heard through a physical speaker; no loudness was measured. |
 | `node --experimental-strip-types scripts/e2e-sound-worker.mjs` | Two real browsers (separate processes) and a late joiner over wrangler dev (Durable Object + WebSocket), with real pointer and keyboard input; see the list at the top of the script. Every check records its time, the acting maker and the room revisions each client held. |
 | `node scripts/qa-sound.mjs` | Render evidence (peer mode): see [`docs/images/episodes/sound-flow/`](images/episodes/sound-flow/README.md). |
+
+### Results of the last developer-environment run
+
+**Final app `63a3421`.** The run used headless Chromium with SwiftShader, wrangler dev and the local access proxy, on 2 CPU cores. It is not GitHub CI. Every room was a fresh random QA room; 7K3M was never used. Every command, its exit code, its duration and every non-passing attempt are in [the test records](qa/sound-flow/README.md), per app (`app-63a3421/`, `app-ad7fd3c/`, `app-1eaf1dd/`).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, circuit 17,742, project 270, sync 858, tools 36, rescue signal 17,751, episode sync 55, diagram 66,886, **sound model 89,528**, **sound engine 47**) | `63a3421` | All passed |
+| `npx vite build` | `63a3421` | OK |
+| `npm run test:sound:dsp` | `63a3421` | **101/101** |
+| `e2e-sound-worker.mjs` (two makers plus a late joiner, Worker) | `63a3421` | **29/29** (also 29/29 on `ad7fd3c` and on `1eaf1dd`) |
+| `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync`, `e2e-snapino-history` | `63a3421` | 18/18, 12/12, 13/13, 25/25 |
+| `e2e-ai-teammate-worker` | `63a3421` | 10/10 |
+| `e2e-bench-inspector` | `63a3421` | **30/30** on attempt 2. Attempt 1 was killed by the harness's own 45-minute limit after 25 checks; that is a partial prefix, not a pass. |
+| `e2e-rescue-signal` (Episode 1) | `63a3421` | **60/60**, one bounded attempt |
+| `qa-sound.mjs` (renders) | `63a3421` | **7/7**, no issues: desk fill 0.865 at 1440 and 0.857 at 1280; phone Test reached by keyboard (44 px); PF without the worked example ([renders](images/episodes/sound-flow/README.md)) |
+| `e2e-ai-teammate` (peer) | `63a3421` | 37/37 |
+
+**On `1eaf1dd`, two runs did not pass:**
+- `e2e-snapino-history` attempt 1: an import's confirmation dialog did not open within 30 s; attempt 2 passed 25/25.
+- `e2e-bench-inspector`: one attempt was stopped by a task limit, and one stalled 300 s after the field-test click.
+
+Their causes were not established. They are listed with their logs, not counted as passes.
 
 ### Limits (honest)
 

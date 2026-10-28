@@ -1,0 +1,17 @@
+app 1eaf1dd3a8566382ae310dcfeefd929a5287b9bd
+npm-test exit=0 119s
+build exit=0 13s
+dsp exit=0 12s
+qa-sound exit=0 2000s
+ai-teammate-peer exit=0 551s
+done
+e2e-sound exit=0 4241s
+worker-sync exit=0 4s
+room-sync exit=0 1160s
+cable-end exit=0 378s
+snapino-history exit=1 623s
+bench-inspector attempt1: killed by the background task's 2 h limit while running (0/1, browser closed)
+snapino-history-attempt2 exit=0 1135s
+bench-inspector exit=1 365s
+ai-teammate-worker exit=0 445s
+chain3-done

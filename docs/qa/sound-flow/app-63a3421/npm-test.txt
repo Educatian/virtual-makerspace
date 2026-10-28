@@ -1,0 +1,66 @@
+
+> virtual-makerspace@0.1.0 test
+> npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync && npm run test:tools && npm run test:episode && npm run test:diagram && npm run test:sound
+
+
+> virtual-makerspace@0.1.0 typecheck
+> tsc --noEmit -p .
+
+
+> virtual-makerspace@0.1.0 test:circuit
+> node --experimental-strip-types scripts/circuit-engine-check.mjs
+
+generated: 821 safe loops succeeded, 223 overdriven loops refused, 3284 variants checked (reversed, bypassed, shorted, 10 Ω)
+fuzz: 3000 random layouts solved (1154 safe successes)
+circuit engine: 17742 checks passed (dc-mna-1.0.0)
+
+> virtual-makerspace@0.1.0 test:agent
+> node --experimental-strip-types scripts/teachable-agent-check.mjs && node --experimental-strip-types scripts/ai-teammate-sync-check.mjs
+
+teachable-agent: all checks passed
+A build log: [{"run":1,"event":"build started (4 moves)"},{"run":1,"part":"resistor-1k","claim":"granted","release":"accepted"},{"run":1,"event":"ended: superseded by a newer build"},{"run":4,"event":"build started (1 moves)"},{"run":4,"part":"resistor-1k","claim":"granted","release":"accepted"},{"run":4,"event":"built (0 skipped)"}]
+A Bolt said: ["Hi! I'm Bolt. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.","I'll build my plan now.","So parts only connect when they share a column. Got it.","So the current has to come back to the battery. Got it.","So the resistor keeps too much current from reaching the LED. Got it.","Done. Have a look, then we can test."]
+B build log: [{"run":1,"event":"build started (4 moves)"},{"run":1,"part":"resistor-1k","claim":"granted","release":"accepted"},{"run":1,"event":"ended: superseded by a newer build"},{"run":4,"event":"not planned: the host's board is behind on resistor-1k"},{"run":5,"event":"not planned: the host's board is behind on resistor-1k"},{"run":6,"event":"not planned: the host's board is behind on resistor-1k"},{"run":7,"event":"not planned: the host's board is behind on resistor-1k"}]
+B Bolt said: ["Hi! I'm Bolt. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.","I'll build my plan now.","So parts only connect when they share a column. Got it.","So the current has to come back to the battery. Got it.","So the resistor keeps too much current from reaching the LED. Got it.","I can't see the board's latest state yet, so I can't tell whether it matches my plan. Could you check it?"]
+ai-teammate sync: 19 checks passed (../src/desktop/ai-teammate.ts)
+
+> virtual-makerspace@0.1.0 test:project
+> node --experimental-strip-types scripts/project-state-check.mjs
+
+project state: 270 checks passed
+
+> virtual-makerspace@0.1.0 test:snapino
+> node --experimental-strip-types scripts/snapino-check.mjs && node --experimental-strip-types scripts/snapino-sketch-check.mjs
+
+snapino self-check passed
+snapino sketch: 16 generated sketches pass g++ -fsyntax-only (stub Arduino.h; not an AVR build)
+
+> virtual-makerspace@0.1.0 test:sync
+> node --experimental-strip-types scripts/sync-check.mjs
+
+sync: 400 random multi-client schedules converged (1512 edits accepted, 5273 refused)
+sync: 858 checks passed
+
+> virtual-makerspace@0.1.0 test:tools
+> node --experimental-strip-types scripts/tools-check.mjs && node --experimental-strip-types scripts/flow-plan-check.mjs
+
+workbench tools: 36 checks passed
+flow plan: 12 checks passed
+
+> virtual-makerspace@0.1.0 test:episode
+> node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs
+
+rescue signal: 17751 checks passed
+episode sync: 55 checks passed
+
+> virtual-makerspace@0.1.0 test:diagram
+> node --experimental-strip-types scripts/snapino-diagram-check.mjs
+
+66886/66886 diagram checks passed
+
+> virtual-makerspace@0.1.0 test:sound
+> node --experimental-strip-types scripts/sound-model-check.mjs && node --experimental-strip-types scripts/sound-engine-check.mjs
+
+brief met for cutoffs 105–410 Hz (5 Hz grid, gain grid 0.05)
+sound model: 89528 checks passed
+sound engine: 47 checks passed (fake AudioContext; lifecycle only, no audio; inspector draft and refusal copy)
