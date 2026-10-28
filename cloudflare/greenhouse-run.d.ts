@@ -7,7 +7,8 @@ export interface CompactRecord {
   beds: { A: { theta: number; in: number; et: number; drainage: number; state: PlantState }; B: { theta: number; in: number; et: number; drainage: number; state: PlantState } };
 }
 export interface GhRun { v: 1; runId: number; seed: number; status: RunStatus; speed: 1 | 4; tick: number; anchorAt: number; snapshot: GhSnapshot; records: CompactRecord[] }
-export type GhAction = { type: "start" } | { type: "pause" } | { type: "resume" } | { type: "step" } | { type: "speed"; speed: 1 | 4 } | { type: "reset"; seed?: number };
+/** `runId`: the run the sender saw; the room refuses the action as "stale" if it has moved on. */
+export type GhAction = ({ type: "start" } | { type: "pause" } | { type: "resume" } | { type: "step" } | { type: "speed"; speed: 1 | 4 } | { type: "reset"; seed?: number }) & { runId?: number };
 export const STEP_MS: number;
 export const SPEEDS: Array<1 | 4>;
 export function initialRun(seed?: number): GhRun;

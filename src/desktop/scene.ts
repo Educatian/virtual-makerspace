@@ -104,6 +104,42 @@ import {
 } from "../sound/sound-desk.ts";
 import { analyzeSignal, derivePatchGraph, jackLabel, soundStateFrom, type SignalAnalysis, type SoundGraph, type SoundPatchState } from "../sound/sound-model.ts";
 import { LOW_PINS, OUTPUT_PINS, type PinStates } from "./snapino.js";
+import {
+  GH_DEFAULT_PROPS,
+  GH_FIXTURE_POSES,
+  GH_PORTS,
+  greenhousePropKind,
+  isGreenhouseLine,
+  lineType,
+  sanitizeGreenhouseProps,
+  type GhPropKind,
+  type GhProps,
+} from "../../cloudflare/greenhouse-rules.js";
+import { deriveRig, type GhRig } from "../../cloudflare/greenhouse-model.js";
+import {
+  animateGh,
+  applyGhView,
+  buildGhLine,
+  createGhFixture,
+  createGreenhouseRig,
+  createProbeHolder,
+  createSoilProbe,
+  GH_BEDS_FRAME,
+  GH_DRAG_Y,
+  GH_FRAME,
+  GH_REST_Y,
+  ghControlOf,
+  ghPortPositions,
+  layoutGhLine,
+  LINE_HOME_SPAN,
+  LINE_SPECS,
+  PLINTH_TOP,
+  PROBE_HOME,
+  PROBE_PIN_SPACING,
+  showGhFixtureValues,
+  showProbeReading,
+  type GhView,
+} from "../greenhouse/gh-rig.ts";
 import { analyzeSnapino, SNAPINO_LOADS, SNAPINO_PADS, type SnapinoBench } from "../circuit/snapino-circuit.ts";
 
 export type StudioKind = "circuit" | "greenhouse" | "snap" | "snapino" | "sound";
@@ -127,12 +163,23 @@ export type ComponentKind =
   /** Sound Flow Studio: a fixed module on the patch desk (knobs, jacks), never moved. */
   | "soundmodule"
   /** Sound Flow Studio: a patch cable whose two plugs go into jacks. */
-  | "patch";
+  | "patch"
+  /** Greenhouse (Episode 3): fixed equipment (pump, manifold, controller, fan, solar, sensors). */
+  | "ghfixture"
+  /** Greenhouse: an irrigation hose (water ports) or a power cable (power ports). */
+  | "ghhose"
+  | "ghcable"
+  /** Greenhouse: the soil probe (two pins into one bed's probe slot). */
+  | "ghprobe";
 
 /** Parts that bend between two independently draggable ends. */
-export const isFlexibleKind = (kind: ComponentKind): boolean => kind === "wire" || kind === "hose" || kind === "patch";
-/** Every editable value a part may carry (Circuit Bench and Sound Flow Studio). */
-type AnyProps = PartProps & SoundProps;
+export const isFlexibleKind = (kind: ComponentKind): boolean => kind === "wire" || kind === "hose" || kind === "patch" || kind === "ghhose" || kind === "ghcable";
+/** Fixed equipment: selected and edited, never dragged. */
+const isFixtureKind = (kind: ComponentKind): boolean => kind === "soundmodule" || kind === "ghfixture";
+/** Lines whose ends go into one-plug ports (Sound patch cables, greenhouse hoses and cables). */
+const isPortLineKind = (kind: ComponentKind): boolean => kind === "patch" || kind === "ghhose" || kind === "ghcable";
+/** Every editable value a part may carry (Circuit Bench, Sound Flow Studio, Greenhouse). */
+type AnyProps = PartProps & SoundProps & GhProps;
 
 export interface ComponentSpec {
   id: string;
@@ -188,8 +235,10 @@ export interface SceneEvents {
   onSnapinoChange?: () => void;
   /** Sound Flow Studio: the patch or a knob changed (here or remotely); the model's view of it. */
   onSoundChange?: (state: SoundPatchState, graph: SoundGraph, signal: SignalAnalysis) => void;
-  /** Sound Flow Studio: a knob was clicked in 3D (focus its control in the inspector). */
-  onKnobPick?: (moduleId: string, param: "hz" | "wave" | "cutoff" | "gain" | "on") => void;
+  /** Sound Flow Studio / Greenhouse: a knob, valve or dial was clicked in 3D (focus its control in the inspector). */
+  onKnobPick?: (moduleId: string, param: string) => void;
+  /** Greenhouse: the rig as built changed (here or remotely); the model's view of it. */
+  onGreenhouseRig?: (rig: GhRig) => void;
 }
 
 /** A stud the Snapino inspector highlights: tone "a"/"b" for a part's two nets, "fault" for a bypass. */
@@ -200,7 +249,7 @@ export interface StudHighlight {
   terminal: boolean;
 }
 
-export type CameraPreset = "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener";
+export type CameraPreset = "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener" | "beds";
 
 /** Ring geometry per tone pattern: a solid ring, eight dashes, or two concentric rings. */
 function ringPattern(pattern: NetToneStyle["pattern"]): BufferGeometry {
@@ -280,15 +329,18 @@ const CIRCUIT_COMPONENTS: ComponentSpec[] = [
   { id: "battery-9v", name: "9V Battery", detail: "Power", kind: "battery", color: 0x222222, leadSeparation: PITCH * 2, studio: "circuit" },
 ];
 
+// Resource-Limited Greenhouse (Episode 3): fixed equipment, four hoses, three power cables and the
+// soil probe (cloudflare/greenhouse-rules.js; the rig in src/greenhouse/gh-rig.ts).
 const GREENHOUSE_COMPONENTS: ComponentSpec[] = [
-  { id: "soil-sensor", name: "Soil Sensor", detail: "Moisture", kind: "sensor", color: 0x22c55e, leadSeparation: PITCH * 2, studio: "greenhouse" },
-  { id: "temp-sensor", name: "Climate Sensor", detail: "Temp + humidity", kind: "sensor", color: 0x38bdf8, leadSeparation: PITCH * 2, studio: "greenhouse" },
-  { id: "light-sensor", name: "Light Sensor", detail: "PAR level", kind: "sensor", color: 0xfacc15, leadSeparation: PITCH * 2, studio: "greenhouse" },
-  { id: "farm-controller", name: "Farm Controller", detail: "Rules + relay", kind: "controller", color: 0x2563eb, leadSeparation: PITCH * 4, studio: "greenhouse" },
-  { id: "water-pump", name: "Water Pump", detail: "12 V DC", kind: "pump", color: 0x0ea5e9, leadSeparation: PITCH * 3, studio: "greenhouse" },
-  { id: "irrigation-hose", name: "Irrigation Hose", detail: "Flexible line", kind: "hose", color: 0x16a34a, leadSeparation: PITCH * 7, studio: "greenhouse" },
-  { id: "vent-fan", name: "Vent Fan", detail: "Airflow", kind: "fan", color: 0x94a3b8, leadSeparation: PITCH * 3, studio: "greenhouse" },
-  { id: "solar-panel", name: "Solar Panel", detail: "18 W source", kind: "solar", color: 0x1d4ed8, leadSeparation: PITCH * 4, studio: "greenhouse" },
+  { id: "water-pump", name: "Water Pump", detail: "12 V · 0.4 L/min", kind: "ghfixture", color: 0x9b2a24, leadSeparation: 1, studio: "greenhouse" },
+  { id: "valve-manifold", name: "Valve Manifold", detail: "Valves A and B", kind: "ghfixture", color: 0xc79a3c, leadSeparation: 1, studio: "greenhouse" },
+  { id: "farm-controller", name: "Farm Controller", detail: "Rules · CH1/CH2 · 12 Wh", kind: "ghfixture", color: 0x2563eb, leadSeparation: 1, studio: "greenhouse" },
+  { id: "vent-fan", name: "Vent Fan", detail: "8 W · cools 7 °C", kind: "ghfixture", color: 0x94a3b8, leadSeparation: 1, studio: "greenhouse" },
+  { id: "solar-panel", name: "Solar Panel", detail: "18 W peak", kind: "ghfixture", color: 0x1d4ed8, leadSeparation: 1, studio: "greenhouse" },
+  { id: "temp-sensor", name: "Climate Sensor", detail: "Air °C", kind: "ghfixture", color: 0x38bdf8, leadSeparation: 1, studio: "greenhouse" },
+  { id: "light-sensor", name: "Light Sensor", detail: "Sun %", kind: "ghfixture", color: 0xfacc15, leadSeparation: 1, studio: "greenhouse" },
+  ...LINE_SPECS.map((line): ComponentSpec => ({ id: line.id, name: line.name.split(" · ")[0], detail: line.kind === "ghhose" ? `Irrigation hose · ${line.name.split(" · ")[1]}` : `Power cable · ${line.name.split(" · ")[1]}`, kind: line.kind, color: line.kind === "ghhose" ? 0x3fa35f : 0xe2b93b, leadSeparation: line.rest, studio: "greenhouse" })),
+  { id: "soil-sensor", name: "Soil Probe", detail: "Moisture · bed slot", kind: "ghprobe", color: 0x22c55e, leadSeparation: PROBE_PIN_SPACING, studio: "greenhouse" },
 ];
 
 // Snap Circuits-style accessible kit (Jung & Chang, ISLS 2024 symposium; Seo et al. BLV maker curriculum).
@@ -374,7 +426,13 @@ export class DesktopWorkbenchScene {
   private snapinoInputHigh = false;
   private snapinoRunningLoads: string[] = [];
   private readonly circuitSockets: Vector3[] = [];
-  private readonly greenhouseSockets: Vector3[] = [];
+  private readonly greenhouseSockets: Vector3[] = ghPortPositions();
+  /** Greenhouse: the rig (static scene with live soil, plants, tank) and the last model view shown. */
+  private ghRig: Group | null = null;
+  private ghView: GhView | null = null;
+  private ghRigState: GhRig | null = null;
+  private ghAnimFixtures: Map<string, Group> | null = null;
+  private ghAnimLines: Map<string, Group> | null = null;
   private readonly snapSockets: Vector3[] = [];
   private sockets: Vector3[] = this.circuitSockets;
   private readonly remoteOwners = new Map<string, { id: string; name: string }>();
@@ -559,11 +617,12 @@ export class DesktopWorkbenchScene {
     // The Snapino bench fills the free view (the panels' insets are applied by then).
     if (studio === "snapino") requestAnimationFrame(() => this.activeStudio === "snapino" && this.viewPreset("bench"));
     if (studio === "sound") requestAnimationFrame(() => this.activeStudio === "sound" && this.viewPreset("overview"));
+    if (studio === "greenhouse") requestAnimationFrame(() => this.activeStudio === "greenhouse" && this.viewPreset("overview"));
     this.evaluateCurrentSystem();
     if (announce) {
       this.events.onStatus(
         studio === "greenhouse"
-          ? "Greenhouse Studio ready · connect sensors, water, air, and power"
+          ? "Resource-Limited Greenhouse ready · hose the tank to the pump and beds, power the loads, probe a bed"
           : studio === "snap"
             ? "Snap Lab ready · snap a battery, switch, lamp, and motor onto the base grid"
             : studio === "snapino"
@@ -601,6 +660,10 @@ export class DesktopWorkbenchScene {
   viewPreset(preset: CameraPreset): void {
     if (this.activeStudio === "sound") {
       this.soundPreset(preset);
+      return;
+    }
+    if (this.activeStudio === "greenhouse") {
+      this.greenhousePreset(preset);
       return;
     }
     if (preset === "receiver") {
@@ -647,6 +710,28 @@ export class DesktopWorkbenchScene {
       box = new Box3(new Vector3(pose[0] - half - 0.9, 0, pose[2] - 1.4), new Vector3(pose[0] + half, 0.9, pose[2] + 1.4));
       direction = new Vector3(0.42, 0.62, 0.66).normalize();
       fill = 0.9;
+    }
+    const fit = this.fitBox(box, direction, fill);
+    this.moveCamera(fit.position, fit.target);
+  }
+
+  /**
+   * Greenhouse views: the whole house with the tank, plinth and solar panel (overview), straight
+   * down on the floor plan (top), and the two beds with their probe slots and inlets (beds).
+   */
+  private greenhousePreset(preset: CameraPreset): void {
+    const name = preset === "plan" || preset === "top" ? "top" : preset === "beds" || preset === "receiver" || preset === "listener" ? "beds" : "overview";
+    let box = new Box3(GH_FRAME.min.clone(), new Vector3(GH_FRAME.max.x, 1.5, GH_FRAME.max.z));
+    let direction = new Vector3(0.1, 0.72, 0.69).normalize();
+    let fill = 0.95;
+    if (name === "top") {
+      box = new Box3(GH_FRAME.min.clone(), new Vector3(GH_FRAME.max.x, 0.9, GH_FRAME.max.z));
+      direction = new Vector3(0, Math.cos(MathUtils.degToRad(10)), Math.sin(MathUtils.degToRad(10)));
+      fill = 0.9;
+    } else if (name === "beds") {
+      box = new Box3(GH_BEDS_FRAME.min.clone(), GH_BEDS_FRAME.max.clone());
+      direction = new Vector3(0.1, 0.86, 0.5).normalize();
+      fill = 0.94;
     }
     const fit = this.fitBox(box, direction, fill);
     this.moveCamera(fit.position, fit.target);
@@ -721,6 +806,8 @@ export class DesktopWorkbenchScene {
     // The episode's artifact: the snap base and carrier, or the Sound desk with its cable mat.
     const box = this.activeStudio === "sound"
       ? new Box3(DESK_FRAME.min.clone(), DESK_FRAME.max.clone()).union(new Box3(MAT_FRAME.min.clone(), MAT_FRAME.max.clone()))
+      : this.activeStudio === "greenhouse"
+      ? new Box3(GH_FRAME.min.clone(), new Vector3(GH_FRAME.max.x, 1.5, GH_FRAME.max.z))
       : new Box3(new Vector3(BOARD_X - 2.31, 0, -1.95), new Vector3(BOARD_X + 2.31, 0.3, 2.01));
     const canvas = this.renderer.domElement.getBoundingClientRect();
     this.camera.updateMatrixWorld(true);
@@ -940,8 +1027,8 @@ export class DesktopWorkbenchScene {
   }
 
   resetView(): void {
-    if (this.activeStudio === "snapino" || this.activeStudio === "sound") {
-      this.viewPreset(this.activeStudio === "sound" ? "overview" : "bench");
+    if (this.activeStudio === "snapino" || this.activeStudio === "sound" || this.activeStudio === "greenhouse") {
+      this.viewPreset(this.activeStudio === "sound" || this.activeStudio === "greenhouse" ? "overview" : "bench");
       return;
     }
     this.cameraTween = null;
@@ -999,7 +1086,7 @@ export class DesktopWorkbenchScene {
   placeFromScreen(componentId: string, clientX: number, clientY: number): void {
     const component = this.components.get(componentId);
     const spec = component?.userData.spec as ComponentSpec | undefined;
-    if (!component || spec?.studio !== this.activeStudio || !this.events.onClaim(componentId)) return;
+    if (!component || !spec || spec.studio !== this.activeStudio || isFixtureKind(spec.kind) || !this.events.onClaim(componentId)) return;
     this.select(component);
     this.updatePointer(clientX, clientY);
     this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -1282,7 +1369,7 @@ export class DesktopWorkbenchScene {
     const midpoint = a.clone().add(b).multiplyScalar(0.5);
     const direction = b.clone().sub(a);
     const rotationY = Math.atan2(-direction.z, direction.x);
-    const lift = spec.studio === "sound" ? SOUND_DRAG_Y : DRAG_Y;
+    const lift = spec.studio === "sound" ? SOUND_DRAG_Y : spec.kind === "ghprobe" ? a.y : spec.studio === "greenhouse" ? GH_DRAG_Y : DRAG_Y;
     const transform: SharedTransform = {
       position: [midpoint.x, lift, midpoint.z],
       rotation: [0, rotationY, 0],
@@ -1304,6 +1391,32 @@ export class DesktopWorkbenchScene {
     return transform;
   }
 
+  /**
+   * Greenhouse: the shared transform of a hose or cable with one end in a port and the other out
+   * (lying at its coil in the aisle). Pure, like placementTransform.
+   */
+  partialLineTransform(componentId: string, sockets: [number | null, number | null]): SharedTransform | null {
+    const component = this.components.get(componentId);
+    const home = component?.userData.home as Vector3 | undefined;
+    if (!component || !home || !isGreenhouseLine(componentId)) return null;
+    if ((sockets[0] === null) === (sockets[1] === null)) return null;
+    const plugged: 0 | 1 = sockets[0] !== null ? 0 : 1;
+    const port = this.greenhouseSockets[sockets[plugged] as number];
+    if (!port) return null;
+    const half = LINE_HOME_SPAN / 2;
+    const frame = new Object3D();
+    frame.position.copy(home);
+    frame.updateMatrixWorld(true);
+    const local = frame.worldToLocal(port.clone()).toArray() as [number, number, number];
+    const free: [number, number, number] = [plugged === 0 ? half : -half, 0, 0];
+    return {
+      position: home.toArray() as [number, number, number],
+      rotation: [0, 0, 0],
+      sockets: [sockets[0], sockets[1]],
+      endpoints: plugged === 0 ? [local, free] : [free, local],
+    };
+  }
+
   /** The shared transform that returns a part to its tray slot, off the board. */
   homeTransform(componentId: string): SharedTransform | null {
     const component = this.components.get(componentId);
@@ -1318,7 +1431,7 @@ export class DesktopWorkbenchScene {
     const props = this.getPartProps(componentId);
     if (props) transform.props = props;
     if (isFlexibleKind(spec.kind)) {
-      const half = spec.leadSeparation / 2;
+      const half = spec.kind === "ghhose" || spec.kind === "ghcable" ? LINE_HOME_SPAN / 2 : spec.leadSeparation / 2;
       transform.endpoints = [[-half, 0, 0], [half, 0, 0]];
     }
     if (spec.id === "snd-speaker") transform.on = Boolean(component.userData.switchOn);
@@ -1333,8 +1446,8 @@ export class DesktopWorkbenchScene {
   }
 
   /** What a project file may contain for `studio`: its part ids, value kinds and socket range. */
-  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, "resistor" | "battery" | SoundPropKind | null>; socketCount: number; switches: string[]; sharedSockets: boolean; fixtures: string[] } {
-    const parts: Record<string, "resistor" | "battery" | SoundPropKind | null> = {};
+  studioCatalog(studio: StudioKind): { studio: StudioKind; parts: Record<string, AnyPropKind | null>; socketCount: number; switches: string[]; sharedSockets: boolean; fixtures: string[] } {
+    const parts: Record<string, AnyPropKind | null> = {};
     for (const spec of COMPONENTS) if (spec.studio === studio) parts[spec.id] = propKind(spec);
     return {
       studio,
@@ -1344,8 +1457,8 @@ export class DesktopWorkbenchScene {
       // Snap Lab and Snapino parts stack on shared studs; breadboard holes, greenhouse ports and
       // Sound jacks take one plug each.
       sharedSockets: studio === "snap" || studio === "snapino",
-      // Sound modules are fixtures: never seated in sockets, never moved.
-      fixtures: COMPONENTS.filter((spec) => spec.studio === studio && spec.kind === "soundmodule").map((spec) => spec.id),
+      // Sound modules and greenhouse equipment are fixtures: never seated in sockets, never moved.
+      fixtures: COMPONENTS.filter((spec) => spec.studio === studio && isFixtureKind(spec.kind)).map((spec) => spec.id),
     };
   }
 
@@ -1428,20 +1541,6 @@ export class DesktopWorkbenchScene {
     const component = this.pickComponent(event.clientX, event.clientY);
     if (component && (component.userData.spec as ComponentSpec).kind === "snapswitch") this.toggleSwitch(component);
   };
-
-  loadGreenhouseDemo(): void {
-    if (this.activeStudio !== "greenhouse") return;
-    this.submitLayout({
-      "soil-sensor": [0, 1],
-      "temp-sensor": [2, 3],
-      "light-sensor": [4, 5],
-      "farm-controller": [6, 8],
-      "solar-panel": [9, 11],
-      "water-pump": [12, 14],
-      "irrigation-hose": [15, 18],
-      "vent-fan": [19, 21],
-    }, "Field test layout connected");
-  }
 
   dispose(): void {
     this.remoteHands.dispose();
@@ -1538,146 +1637,8 @@ export class DesktopWorkbenchScene {
   }
 
   private setupGreenhouse(): void {
-    const floor = new Mesh(
-      new BoxGeometry(8.6, 0.18, 5.9),
-      new MeshStandardMaterial({ color: 0x5d4934, roughness: 0.9 }),
-    );
-    floor.position.y = 0.02;
-    floor.receiveShadow = true;
-    this.greenhouseGroup.add(floor);
-
-    const soilMaterial = new MeshStandardMaterial({ color: 0x503621, roughness: 1 });
-    this.greenhouseGroup.userData.soilMaterial = soilMaterial;
-    const bed = new Mesh(new BoxGeometry(4.1, 0.45, 2.35), soilMaterial);
-    bed.position.set(-1.35, 0.34, -0.55);
-    bed.receiveShadow = true;
-    this.greenhouseGroup.add(bed);
-    const bedFrameMaterial = new MeshStandardMaterial({ color: 0x9b6a3d, roughness: 0.82 });
-    for (const z of [-1.77, 0.67]) {
-      const rail = new Mesh(new BoxGeometry(4.35, 0.42, 0.16), bedFrameMaterial);
-      rail.position.set(-1.35, 0.48, z);
-      this.greenhouseGroup.add(rail);
-    }
-    for (const x of [-3.45, 0.75]) {
-      const rail = new Mesh(new BoxGeometry(0.16, 0.42, 2.35), bedFrameMaterial);
-      rail.position.set(x, 0.48, -0.55);
-      this.greenhouseGroup.add(rail);
-    }
-
-    const stemMaterial = new MeshStandardMaterial({ color: 0x2f7d3f, roughness: 0.72 });
-    const leafMaterial = new MeshStandardMaterial({ color: 0x48b95b, roughness: 0.68 });
-    const plantRoots: Group[] = [];
-    for (const x of [-2.75, -1.7, -0.65, 0.3]) {
-      for (const z of [-1.22, 0.1]) {
-        const plant = new Group();
-        const stem = new Mesh(new CylinderGeometry(0.035, 0.05, 0.72, 8), stemMaterial);
-        stem.position.y = 0.7;
-        plant.add(stem);
-        for (const [dx, dy, rotation] of [[-0.16, 0.84, -0.52], [0.16, 1.02, 0.52], [-0.14, 1.17, -0.42]] as const) {
-          const leaf = new Mesh(new SphereGeometry(0.16, 12, 8), leafMaterial);
-          leaf.scale.set(1.45, 0.34, 0.68);
-          leaf.position.set(dx, dy, 0);
-          leaf.rotation.z = rotation;
-          plant.add(leaf);
-        }
-        plant.position.set(x, 0, z);
-        plantRoots.push(plant);
-        this.greenhouseGroup.add(plant);
-      }
-    }
-    this.greenhouseGroup.userData.plants = plantRoots;
-
-    const frameMaterial = new MeshStandardMaterial({ color: 0xd7e2e4, roughness: 0.32, metalness: 0.72 });
-    for (const x of [-3.65, 0.95]) {
-      for (const z of [-1.95, 0.9]) {
-        const post = new Mesh(new BoxGeometry(0.08, 2.85, 0.08), frameMaterial);
-        post.position.set(x, 1.45, z);
-        this.greenhouseGroup.add(post);
-      }
-    }
-    for (const z of [-1.95, 0.9]) {
-      const beam = new Mesh(new BoxGeometry(4.68, 0.08, 0.08), frameMaterial);
-      beam.position.set(-1.35, 2.88, z);
-      this.greenhouseGroup.add(beam);
-    }
-    const ridge = new Mesh(new BoxGeometry(4.68, 0.08, 0.08), frameMaterial);
-    ridge.position.set(-1.35, 3.5, -0.52);
-    this.greenhouseGroup.add(ridge);
-    const glazingMaterial = new MeshPhysicalMaterial({ color: 0xbde9dd, transparent: true, opacity: 0.2, roughness: 0.12, transmission: 0.42, clearcoat: 0.48 });
-    for (const [z, tilt] of [[-1.25, -0.42], [0.2, 0.42]] as const) {
-      const canopy = new Mesh(new BoxGeometry(4.72, 0.035, 1.58), glazingMaterial);
-      canopy.position.set(-1.35, 3.19, z);
-      canopy.rotation.x = tilt;
-      this.greenhouseGroup.add(canopy);
-    }
-
-    const tank = new Mesh(
-      new CylinderGeometry(0.66, 0.66, 1.72, 32),
-      new MeshPhysicalMaterial({ color: 0x237aa1, roughness: 0.25, metalness: 0.12, transparent: true, opacity: 0.82 }),
-    );
-    tank.position.set(2.85, 0.92, -1.15);
-    this.greenhouseGroup.add(tank);
-    const water = new Mesh(
-      new CylinderGeometry(0.6, 0.6, 1.08, 32),
-      new MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0c4a6e, emissiveIntensity: 0.45, transparent: true, opacity: 0.72 }),
-    );
-    water.position.set(2.85, 0.68, -1.15);
-    this.greenhouseGroup.add(water);
-    this.greenhouseGroup.userData.water = water;
-    const tankMetal = new MeshStandardMaterial({ color: 0xb8c6cc, roughness: 0.28, metalness: 0.76 });
-    for (const y of [0.35, 1.5]) {
-      const band = new Mesh(new TorusGeometry(0.665, 0.035, 10, 36), tankMetal);
-      band.rotation.x = Math.PI / 2;
-      band.position.set(2.85, y, -1.15);
-      this.greenhouseGroup.add(band);
-    }
-    const lid = new Mesh(new CylinderGeometry(0.7, 0.66, 0.12, 32), tankMetal);
-    lid.position.set(2.85, 1.82, -1.15);
-    this.greenhouseGroup.add(lid);
-    const cap = new Mesh(new CylinderGeometry(0.16, 0.16, 0.14, 24), new MeshStandardMaterial({ color: 0x1f3642, roughness: 0.55 }));
-    cap.position.set(2.85, 1.94, -1.15);
-    this.greenhouseGroup.add(cap);
-    const gauge = new Mesh(new CircleGeometry(0.16, 24), new MeshStandardMaterial({ color: 0xe7f2f4, roughness: 0.42 }));
-    gauge.position.set(2.85, 1.2, -0.48);
-    this.greenhouseGroup.add(gauge);
-    const needle = new Mesh(new BoxGeometry(0.018, 0.12, 0.014), new MeshBasicMaterial({ color: 0xef4444 }));
-    needle.position.set(2.89, 1.23, -0.465);
-    needle.rotation.z = -0.65;
-    this.greenhouseGroup.add(needle);
-    const supplyCurve = new CatmullRomCurve3([
-      new Vector3(2.85, 0.34, -1.15),
-      new Vector3(2.2, 0.2, -1.05),
-      new Vector3(1.55, 0.22, -0.25),
-      new Vector3(0.65, 0.24, -0.35),
-    ]);
-    const supplyPipe = new Mesh(
-      new TubeGeometry(supplyCurve, 42, 0.055, 12, false),
-      new MeshPhysicalMaterial({ color: 0x2ea663, roughness: 0.68, clearcoat: 0.16 }),
-    );
-    this.greenhouseGroup.add(supplyPipe);
-
-    const panel = new Mesh(
-      new BoxGeometry(5.8, 0.26, 1.05),
-      new MeshStandardMaterial({ color: 0x17293a, roughness: 0.6, metalness: 0.22 }),
-    );
-    panel.position.set(0.1, 0.34, 2.05);
-    this.greenhouseGroup.add(panel);
-    const socketMaterial = new MeshStandardMaterial({ color: 0x0a1018, roughness: 0.38, metalness: 0.65 });
-    const ringMaterial = new MeshStandardMaterial({ color: 0x57d68d, emissive: 0x0b4f2b, emissiveIntensity: 0.7, roughness: 0.4 });
-    const terminalXs = [-2.55, -2.07, -1.59, -1.11, -0.63, -0.15, 0.33, 0.81, 1.29, 1.77, 2.25, 2.73];
-    for (const z of [1.85, 2.22]) {
-      for (const x of terminalXs) {
-        this.greenhouseSockets.push(new Vector3(x, BOARD_TOP + 0.05, z));
-        const ring = new Mesh(new RingGeometry(0.062, 0.095, 18), ringMaterial);
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.set(x, BOARD_TOP + 0.07, z);
-        this.greenhouseGroup.add(ring);
-        const port = new Mesh(new CylinderGeometry(0.03, 0.025, 0.05, 10), socketMaterial);
-        port.rotation.x = Math.PI;
-        port.position.set(x, BOARD_TOP + 0.045, z);
-        this.greenhouseGroup.add(port);
-      }
-    }
+    this.ghRig = createGreenhouseRig();
+    this.greenhouseGroup.add(this.ghRig, createProbeHolder());
   }
 
   private setupComponents(): void {
@@ -1691,16 +1652,11 @@ export class DesktopWorkbenchScene {
       [3.55, DRAG_Y, 1.55],
       [3.55, DRAG_Y, 2.45],
     ];
-    const greenhousePositions: Array<[number, number, number]> = [
-      [2.2, DRAG_Y, 0.15],
-      [3.05, DRAG_Y, 0.15],
-      [3.85, DRAG_Y, 0.15],
-      [2.35, DRAG_Y, 0.95],
-      [3.55, DRAG_Y, 0.95],
-      [2.9, DRAG_Y, 1.65],
-      [4.0, DRAG_Y, 1.75],
-      [3.15, DRAG_Y, 2.5],
-    ];
+    // Greenhouse: fixtures at their poses, lines coiled in the aisle, the probe in its holder.
+    const greenhousePositions: Array<[number, number, number]> = GREENHOUSE_COMPONENTS.map((spec) =>
+      spec.kind === "ghfixture" ? [...GH_FIXTURE_POSES[spec.id]] as [number, number, number]
+        : spec.kind === "ghprobe" ? [...PROBE_HOME] as [number, number, number]
+          : [...LINE_SPECS.find((line) => line.id === spec.id)!.home] as [number, number, number]);
     const snapPositions = [-2.45, -1.75, -1.05, -0.35, 0.35, 1.05, 1.75, 2.45]
       .map((z): [number, number, number] => [3.55, DRAG_Y, z]);
     const layouts: Record<StudioKind, { positions: Array<[number, number, number]>; specs: ComponentSpec[]; group: Group }> = {
@@ -1735,6 +1691,8 @@ export class DesktopWorkbenchScene {
       if (spec.kind === "soundmodule") showModuleValues(component, component.userData.props as AnyProps | undefined, SOUND_SPEAKER_DEFAULT_ON);
       if (spec.id === "snd-speaker") component.userData.switchOn = SOUND_SPEAKER_DEFAULT_ON;
       if (spec.kind === "patch") layoutPatchCable(component, [false, false]);
+      if (spec.kind === "ghhose" || spec.kind === "ghcable") layoutGhLine(component, [false, false]);
+      if (spec.kind === "ghfixture") showGhFixtureValues(component, component.userData.props as GhProps | undefined);
       component.traverse((child) => {
         child.userData.componentRoot = component;
         if (child instanceof Mesh) {
@@ -1776,6 +1734,14 @@ export class DesktopWorkbenchScene {
       group.userData.soundVisuals = module.userData.soundVisuals;
     }
     if (spec.kind === "patch") buildPatchCable(group, spec.color, spec.leadSeparation);
+    if (spec.kind === "ghfixture") group.add(createGhFixture(spec.id));
+    if (spec.kind === "ghfixture") group.userData.ghVisuals = group.children[group.children.length - 1].userData.ghVisuals;
+    if (spec.kind === "ghhose" || spec.kind === "ghcable") buildGhLine(group, LINE_SPECS.find((line) => line.id === spec.id)!);
+    if (spec.kind === "ghprobe") {
+      const probe = createSoilProbe();
+      group.add(probe);
+      group.userData.ghVisuals = probe.userData.ghVisuals;
+    }
 
     if (spec.kind === "wire" || spec.kind === "hose") {
       const half = spec.leadSeparation / 2;
@@ -2284,6 +2250,12 @@ export class DesktopWorkbenchScene {
       if (control) this.events.onKnobPick?.(id, control);
       return;
     }
+    if ((component.userData.spec as ComponentSpec).kind === "ghfixture") {
+      this.select(component);
+      const control = this.pickGhControl(event.clientX, event.clientY);
+      if (control) this.events.onKnobPick?.(id, control);
+      return;
+    }
     const resourceId = endpointHit ? this.endpointResourceId(id, endpointHit.index) : id;
     const endpointOwner = endpointHit
       ? this.remoteOwners.get(resourceId)
@@ -2642,19 +2614,24 @@ export class DesktopWorkbenchScene {
       this.updateFlexibleWireGeometry(component, true);
       this.flashMagneticEndpoint(socket, index);
       this.events.onStatus(
-        `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} magnetically connected`,
+        this.activeStudio === "greenhouse"
+          ? `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} into ${GH_PORTS[nearest.index].label}`
+          : `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} magnetically connected`,
         "valid",
       );
     } else {
       sockets[index] = null;
       component.userData.sockets = sockets.some((socket) => socket !== null) ? sockets : null;
       if ((component.userData.spec as ComponentSpec).kind === "patch") this.restPatchEnd(component, index);
+      if (this.isGhLine(component)) this.restGhEnd(component, index);
       this.updateFlexibleWireGeometry(component, sockets.some((socket) => socket !== null));
       this.hideSnapPreview();
       const full = blocked && blocked.distance <= SNAP_THRESHOLD && occupied.has(blocked.index);
       this.events.onStatus(
         full
-          ? `${jackLabel(blocked.index)} already holds a plug (one plug per jack) · ${component.userData.spec.name} end ${index === 0 ? "A" : "B"} stays out`
+          ? this.activeStudio === "greenhouse"
+            ? this.ghBlockedCopy(component, blocked.index, index)
+            : `${jackLabel(blocked.index)} already holds a plug (one plug per jack) · ${component.userData.spec.name} end ${index === 0 ? "A" : "B"} stays out`
           : `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} remains free`,
         full ? "warning" : "neutral",
       );
@@ -2747,8 +2724,8 @@ export class DesktopWorkbenchScene {
     const spec = component.userData.spec as ComponentSpec;
     const flexible = isFlexibleKind(spec.kind);
     this.setEndpointIndicators(component, flexible);
-    // Sound modules are fixtures: no rotation gizmo.
-    if (flexible || spec.kind === "soundmodule") this.transform.detach();
+    // Fixtures (Sound modules, greenhouse equipment) and the soil probe: no rotation gizmo.
+    if (flexible || isFixtureKind(spec.kind) || spec.kind === "ghprobe") this.transform.detach();
     else this.transform.attach(component);
     this.events.onSelection(spec);
   }
@@ -2785,7 +2762,8 @@ export class DesktopWorkbenchScene {
       } else {
         const midpoint = a.clone().add(b).multiplyScalar(0.5);
         const direction = b.clone().sub(a);
-        component.position.set(midpoint.x, DRAG_Y, midpoint.z);
+        // The soil probe seats at its slot's height (its prongs reach into the soil).
+        component.position.set(midpoint.x, spec.kind === "ghprobe" ? a.y : DRAG_Y, midpoint.z);
         component.rotation.set(0, Math.atan2(-direction.z, direction.x), 0);
         this.updateFlexibleWire(component, a.distanceTo(b), true);
       }
@@ -2795,7 +2773,7 @@ export class DesktopWorkbenchScene {
         this.activeStudio === "sound"
           ? `${component.userData.spec.name} plugged into ${jackLabel(socketA)} and ${jackLabel(socketB)}`
           : this.activeStudio === "greenhouse"
-          ? `${component.userData.spec.name} magnetically connected to the farm terminal`
+          ? spec.kind === "ghprobe" ? `Soil probe pushed into ${GH_PORTS[socketA].label.replace(" SLOT", "").toLowerCase()}` : `${component.userData.spec.name} connected to ${GH_PORTS[socketA].label} and ${GH_PORTS[socketB].label}`
           : this.activeStudio === "snap" || this.activeStudio === "snapino"
             ? `${component.userData.spec.name} snapped onto the base grid`
             : `${component.userData.spec.name} connected to the breadboard`,
@@ -2807,6 +2785,11 @@ export class DesktopWorkbenchScene {
         this.restPatchEnd(component, 0);
         this.restPatchEnd(component, 1);
       }
+      if (this.isGhLine(component)) {
+        this.restGhEnd(component, 0);
+        this.restGhEnd(component, 1);
+      }
+      if (spec.kind === "ghprobe") component.position.set(...PROBE_HOME);
       if (flexible) this.updateFlexibleWireGeometry(component, false);
       else this.updateFlexibleWire(component, spec.leadSeparation, false);
       this.events.onStatus("Placement remains free · move both leads closer to sockets", "neutral");
@@ -2886,7 +2869,19 @@ export class DesktopWorkbenchScene {
    */
   private occupiedJacks(component: Group): Set<number> {
     const taken = new Set<number>();
-    if ((component.userData.spec as ComponentSpec).kind !== "patch") return taken;
+    const kind = (component.userData.spec as ComponentSpec).kind;
+    if (kind === "ghhose" || kind === "ghcable" || kind === "ghprobe") {
+      // Typed ports: a hose fits only water couplers, a cable only power sockets, the probe only
+      // a probe slot; and one plug per port (as the room enforces).
+      const type = kind === "ghprobe" ? "probe" : lineType(component.userData.componentId as string);
+      GH_PORTS.forEach((port, index) => { if (port.type !== type) taken.add(index); });
+      for (const [id, other] of this.components) {
+        if (other === component || !isGreenhouseLine(id)) continue;
+        for (const socket of (other.userData.sockets as EndpointSockets) ?? []) if (socket !== null) taken.add(socket);
+      }
+      return taken;
+    }
+    if (kind !== "patch") return taken;
     for (const [id, other] of this.components) {
       if (other === component || !isSoundCable(id)) continue;
       const sockets = other.userData.sockets as EndpointSockets;
@@ -2897,7 +2892,46 @@ export class DesktopWorkbenchScene {
 
   /** Height a dragged part or end is carried at in the active studio. */
   private get dragY(): number {
-    return this.activeStudio === "sound" ? SOUND_DRAG_Y : DRAG_Y;
+    return this.activeStudio === "sound" ? SOUND_DRAG_Y : this.activeStudio === "greenhouse" ? GH_DRAG_Y : DRAG_Y;
+  }
+
+  private isGhLine(component: Group): boolean {
+    const kind = (component.userData.spec as ComponentSpec).kind;
+    return kind === "ghhose" || kind === "ghcable";
+  }
+
+  /** A released, unplugged greenhouse hose or cable end lies on the plinth (over it) or the floor. */
+  private restGhEnd(component: Group, index: 0 | 1): void {
+    const endpoint = this.getEndpointPositions(component)[index];
+    const world = component.localToWorld(endpoint.clone());
+    const overPlinth = world.x > -2.6 && world.x < 2.9 && world.z > 1.55 && world.z < 2.55;
+    world.y = overPlinth ? PLINTH_TOP + 0.05 : GH_REST_Y;
+    endpoint.copy(component.worldToLocal(world));
+  }
+
+  /** Why a greenhouse line end could not go into the port under it (wrong connector, or taken). */
+  private ghBlockedCopy(component: Group, port: number, index: 0 | 1): string {
+    const id = component.userData.componentId as string;
+    const end = `${component.userData.spec.name} end ${index === 0 ? "A" : "B"} stays out`;
+    const type = lineType(id);
+    if (GH_PORTS[port].type !== type) {
+      const fits = type === "water" ? "a hose fits water couplers only" : "a power cable fits power sockets only";
+      return `${GH_PORTS[port].label} takes a ${GH_PORTS[port].type === "probe" ? "probe" : GH_PORTS[port].type === "water" ? "hose" : "power plug"} (${fits}) · ${end}`;
+    }
+    return `${GH_PORTS[port].label} already holds a line (one per port) · ${end}`;
+  }
+
+  /** Which greenhouse fixture control (valve handle, controller dial) is under the pointer, if any. */
+  private pickGhControl(clientX: number, clientY: number): string | null {
+    this.updatePointer(clientX, clientY);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const targets: Object3D[] = [];
+    for (const id of ["valve-manifold", "farm-controller"]) {
+      const component = this.components.get(id);
+      if (component) targets.push(component);
+    }
+    const hit = this.raycaster.intersectObjects(targets, true)[0];
+    return hit ? ghControlOf(hit.object as unknown as { userData: Record<string, unknown>; parent: unknown }) : null;
   }
 
   private nearestSocket(point: Vector3, exclude?: Set<number>): { index: number; distance: number } {
@@ -3072,6 +3106,11 @@ export class DesktopWorkbenchScene {
     if (spec.kind === "patch") {
       const sockets = component.userData.sockets as EndpointSockets;
       layoutPatchCable(component, [sockets?.[0] != null, sockets?.[1] != null], sway, motion);
+      return;
+    }
+    if (spec.kind === "ghhose" || spec.kind === "ghcable") {
+      const sockets = component.userData.sockets as EndpointSockets;
+      layoutGhLine(component, [sockets?.[0] != null, sockets?.[1] != null], sway, motion);
       return;
     }
     const body = component.userData.wireBody as Mesh<TubeGeometry, MeshStandardMaterial> | undefined;
@@ -3324,9 +3363,51 @@ export class DesktopWorkbenchScene {
    * drag plane right above the jack, where a dragged plug must be released to land in it.
    */
   jackScreenPoint(index: number, carried = false): { x: number; y: number } | null {
-    const socket = this.soundSockets[index];
+    const sockets = this.activeStudio === "greenhouse" ? this.greenhouseSockets : this.soundSockets;
+    const socket = sockets[index];
     if (!socket) return null;
-    return this.projectWorld(carried ? new Vector3(socket.x, SOUND_DRAG_Y, socket.z) : socket);
+    return this.projectWorld(carried ? new Vector3(socket.x, this.activeStudio === "greenhouse" ? GH_DRAG_Y : SOUND_DRAG_Y, socket.z) : socket);
+  }
+
+  /** QA (real pointer input): where a component (fixture or the soil probe) is on screen, in client px. */
+  componentScreenPoint(componentId: string): { x: number; y: number } | null {
+    const component = this.components.get(componentId);
+    if (!component) return null;
+    component.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(component);
+    return this.projectWorld(box.getCenter(new Vector3()));
+  }
+
+  /**
+   * QA (real pointer input): where to press on a part and where to release it so its two leads
+   * land over sockets `a` and `b` (the drag keeps the grab offset, as a hand would).
+   */
+  partDragPoints(componentId: string, a: number, b: number): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
+    const component = this.components.get(componentId);
+    const sa = this.sockets[a];
+    const sb = this.sockets[b];
+    if (!component || !sa || !sb) return null;
+    component.updateMatrixWorld(true);
+    const grab = new Box3().setFromObject(component).getCenter(new Vector3());
+    const from = this.projectWorld(grab);
+    this.updatePointer(from.x, from.y);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const plane = this.dragPlane.clone();
+    const hit = new Vector3();
+    if (!this.raycaster.ray.intersectPlane(plane, hit)) return null;
+    const offset = component.position.clone().sub(hit);
+    const target = sa.clone().add(sb).multiplyScalar(0.5).setY(this.dragY).sub(offset).setY(this.dragY);
+    return { from, to: this.projectWorld(target) };
+  }
+
+  /** QA (real pointer input): where a greenhouse fixture control (valve handle, dial) is on screen. */
+  ghControlScreenPoint(control: string): { x: number; y: number } | null {
+    for (const id of ["valve-manifold", "farm-controller"]) {
+      let found: Object3D | null = null;
+      this.components.get(id)?.traverse((child) => { if (!found && child.userData.ghControl === control) found = child; });
+      if (found) return this.projectWorld((found as Object3D).getWorldPosition(new Vector3()));
+    }
+    return null;
   }
 
   /** QA (real pointer input): where a cable end's plug can be grabbed on screen, in client px. */
@@ -3360,6 +3441,7 @@ export class DesktopWorkbenchScene {
     const props = component.userData.props as AnyProps | undefined;
     if (refresh && props) refresh(props);
     if ((component.userData.spec as ComponentSpec).kind === "soundmodule") showModuleValues(component, props);
+    if ((component.userData.spec as ComponentSpec).kind === "ghfixture") showGhFixtureValues(component, props);
   }
 
   /**
@@ -3551,51 +3633,68 @@ export class DesktopWorkbenchScene {
     }, "Snapino lamp wired to D5");
   }
 
-  private evaluateGreenhouse(announce = false): boolean {
-    const connected = (id: string): boolean => {
+  /**
+   * Greenhouse: the rig as built (lines' ports, probe slot, valve and rule values) through the
+   * same derivation the room and the model use. The model's resources come from the room's run
+   * state (main.ts → setGreenhouseView); this only reports what is built.
+   */
+  /** The greenhouse rig as this bench holds it now (any studio active). */
+  deriveGreenhouseRig(): GhRig {
+    return deriveRig((id) => {
       const component = this.components.get(id);
-      return this.isFullyConnected(component?.userData.sockets as EndpointSockets | undefined);
-    };
-    const controller = connected("farm-controller");
-    const soil = connected("soil-sensor");
-    const pump = connected("water-pump");
-    const hose = connected("irrigation-hose");
-    const climate = connected("temp-sensor");
-    const lightSensor = connected("light-sensor");
-    const fan = connected("vent-fan");
-    const solar = connected("solar-panel");
-    const irrigation = controller && soil && pump && hose;
-    const ventilation = controller && climate && fan;
-    const systemReady = irrigation && ventilation && solar && lightSensor;
+      if (!component) return null;
+      return { sockets: component.userData.sockets ?? null, props: component.userData.props };
+    });
+  }
 
-    this.environmentState.irrigation = irrigation;
-    this.environmentState.ventilation = ventilation;
-    this.environmentState.systemReady = systemReady;
-    this.environmentTarget.moisture = irrigation ? 72 : 34;
-    this.environmentTarget.temperature = ventilation ? 23.8 : 28.6;
-    this.environmentTarget.light = solar && lightSensor ? 84 : lightSensor ? 66 : 58;
-    this.environmentTarget.flow = irrigation ? 1.8 : 0;
-    this.events.onCircuitState(systemReady);
-
+  private evaluateGreenhouse(announce = false): boolean {
+    const rig = this.deriveGreenhouseRig();
+    this.ghRigState = rig;
+    this.events.onGreenhouseRig?.(rig);
+    this.events.onCircuitState(rig.complete);
     if (announce) {
-      const missing = [
-        !soil && "soil sensor",
-        !controller && "controller",
-        !pump && "pump",
-        !hose && "irrigation hose",
-        !climate && "climate sensor",
-        !fan && "vent fan",
-        !solar && "solar panel",
-        !lightSensor && "light sensor",
-      ].filter(Boolean) as string[];
       this.events.onStatus(
-        systemReady
-          ? "Greenhouse balanced · irrigation, ventilation, and solar monitoring are live"
-          : `System check · connect ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ` +${missing.length - 3} more` : ""}`,
-        systemReady ? "valid" : "warning",
+        rig.complete
+          ? "Rig complete · water reaches a bed, both loads have power, a bed is probed · run the day to test it"
+          : `Rig check · ${rig.faults.length ? `${rig.faults.length} issue${rig.faults.length === 1 ? "" : "s"} (see the connection list)` : "incomplete"}`,
+        rig.complete ? "valid" : "warning",
       );
     }
-    return systemReady;
+    return rig.complete;
+  }
+
+  /** The id of the part selected in 3D, if any. */
+  get selectedId(): string | null {
+    return (this.selected?.userData.componentId as string | undefined) ?? null;
+  }
+
+  /** The rig as last derived (null before the greenhouse is first evaluated). */
+  get greenhouseRig(): GhRig | null {
+    return this.ghRigState;
+  }
+
+  /** Shows a model state on the rig: tank level, soil, plants, fixtures, flowing hoses, faults. */
+  setGreenhouseView(view: GhView): void {
+    this.ghView = view;
+    if (!this.ghRig) return;
+    const fixtures = new Map<string, Group>();
+    const lines = new Map<string, Group>();
+    for (const [id, component] of this.components) {
+      const kind = (component.userData.spec as ComponentSpec).kind;
+      if (kind === "ghfixture") fixtures.set(id, component);
+      if (kind === "ghhose" || kind === "ghcable") lines.set(id, component);
+    }
+    applyGhView(this.ghRig, fixtures, lines, view);
+    const probe = this.components.get("soil-sensor");
+    if (probe) showProbeReading(probe, view.reading);
+    this.environmentState.moisture = view.reading === null ? NaN : view.reading * 100;
+    this.environmentState.temperature = view.air;
+    this.environmentState.light = view.sun * 100;
+    this.environmentState.flow = view.pump === "running" || view.pump === "tank-ran-out" ? 0.4 : 0;
+    this.environmentState.irrigation = view.pump === "running" || view.pump === "tank-ran-out";
+    this.environmentState.ventilation = view.fan === "running";
+    this.environmentState.systemReady = Boolean(this.ghRigState?.complete);
+    this.shadowDirtyFrames = Math.max(this.shadowDirtyFrames, 2);
   }
 
   /**
@@ -3770,23 +3869,12 @@ export class DesktopWorkbenchScene {
       if (rotor && motor?.userData.motorOn) rotor.rotation.y += 0.42;
     }
     if (this.activeStudio === "greenhouse") {
-      const delta = 0.018;
-      this.environmentState.moisture = MathUtils.lerp(this.environmentState.moisture, this.environmentTarget.moisture, delta);
-      this.environmentState.temperature = MathUtils.lerp(this.environmentState.temperature, this.environmentTarget.temperature, delta);
-      this.environmentState.light = MathUtils.lerp(this.environmentState.light, this.environmentTarget.light, delta);
-      this.environmentState.flow = MathUtils.lerp(this.environmentState.flow, this.environmentTarget.flow, delta * 1.8);
-      const fanRotor = this.components.get("vent-fan")?.userData.rotor as Group | undefined;
-      if (fanRotor && this.environmentState.ventilation) fanRotor.rotation.y += 0.22;
-      const pumpRotor = this.components.get("water-pump")?.userData.rotor as Mesh | undefined;
-      if (pumpRotor && this.environmentState.irrigation) pumpRotor.rotation.x += 0.15;
-      const soilMaterial = this.greenhouseGroup.userData.soilMaterial as MeshStandardMaterial | undefined;
-      soilMaterial?.color.lerp(new Color(this.environmentState.irrigation ? 0x35271d : 0x624329), 0.02);
-      const plants = (this.greenhouseGroup.userData.plants ?? []) as Group[];
-      const now = performance.now() * 0.001;
-      plants.forEach((plant, index) => {
-        plant.rotation.z = Math.sin(now * 1.2 + index) * (this.environmentState.ventilation ? 0.025 : 0.006);
-      });
-      if (performance.now() - this.environmentEmitAt > 180) {
+      // Motion follows the model only: the fan and pump turn while they run, water marks move
+      // along hoses that carried water this step (real seconds, so independent of frame rate).
+      const fixtures = this.ghAnimFixtures ??= new Map(["vent-fan", "water-pump"].map((id) => [id, this.components.get(id)!]));
+      const lines = this.ghAnimLines ??= new Map([...this.components].filter(([, component]) => this.isGhLine(component)));
+      animateGh(fixtures, lines, frameSeconds);
+      if (performance.now() - this.environmentEmitAt > 250) {
         this.events.onEnvironmentState({ ...this.environmentState });
         this.environmentEmitAt = performance.now();
       }
@@ -3829,8 +3917,10 @@ export class DesktopWorkbenchScene {
   }
 }
 
-function propKind(spec: ComponentSpec): "resistor" | "battery" | SoundPropKind | null {
+type AnyPropKind = "resistor" | "battery" | SoundPropKind | GhPropKind;
+function propKind(spec: ComponentSpec): AnyPropKind | null {
   if (spec.studio === "sound") return soundPropKind(spec.id);
+  if (spec.studio === "greenhouse") return greenhousePropKind(spec.id);
   if (spec.studio !== "circuit") return null;
   if (spec.kind === "resistor") return "resistor";
   if (spec.kind === "battery") return "battery";
@@ -3838,12 +3928,14 @@ function propKind(spec: ComponentSpec): "resistor" | "battery" | SoundPropKind |
 }
 
 /** Values for either studio's kinds (the Circuit Bench's or the Sound desk's), or null. */
-function sanitizeAnyProps(kind: "resistor" | "battery" | SoundPropKind, raw: unknown): AnyProps | null {
+function sanitizeAnyProps(kind: AnyPropKind, raw: unknown): AnyProps | null {
+  if (kind === "manifold" || kind === "controller") return sanitizeGreenhouseProps(kind, raw) as AnyProps | null;
   return kind === "resistor" || kind === "battery" ? sanitizeProps(kind, raw) : sanitizeSoundProps(kind, raw);
 }
 
 function defaultProps(spec: ComponentSpec): AnyProps | null {
   if (isSoundModule(spec.id) && spec.id !== "snd-speaker") return { ...SOUND_DEFAULT_PROPS[spec.id as Exclude<SoundModuleId, "snd-speaker">] };
+  if (spec.id === "valve-manifold" || spec.id === "farm-controller") return { ...GH_DEFAULT_PROPS[spec.id] } as AnyProps;
   if (spec.id === "resistor-220") return { ohms: 220 };
   if (spec.id === "resistor-1k") return { ohms: 1000 };
   if (spec.id === "battery-9v") return { volts: 9 };

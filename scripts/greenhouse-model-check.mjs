@@ -413,6 +413,9 @@ ok(r.ok && r.run.status === "idle" && r.run.tick === 0 && r.run.snapshot.tank ==
 ok(runs.reduceGreenhouseRun(pausedAt10, { type: "reset", seed: 4242 }, 3_000_000, rig).run.seed === 4242, "reset may choose another day's seed");
 ok(!runs.reduceGreenhouseRun(pausedAt10, { type: "reset", seed: 0 }, 3_000_000, rig).ok && runs.sanitizeGreenhouseAction({ type: "reset", seed: 1.5 }) === null, "invalid seeds are refused");
 ok(runs.sanitizeGreenhouseAction({ type: "speed", speed: 3 }) === null && runs.sanitizeGreenhouseAction({ type: "warp" }) === null && runs.sanitizeGreenhouseAction(null) === null, "malformed actions are dropped");
+ok(runs.sanitizeGreenhouseAction({ type: "pause", runId: 1.5 }) === null && runs.sanitizeGreenhouseAction({ type: "pause", runId: "2" }) === null && runs.sanitizeGreenhouseAction({ type: "pause", runId: 0 }) === null, "a malformed run id drops the action");
+ok(JSON.stringify(runs.sanitizeGreenhouseAction({ type: "reset", seed: 7, runId: 3, extra: "x" })) === JSON.stringify({ type: "reset", seed: 7, runId: 3 }), "a run id is kept; unknown keys are dropped");
+ok(runs.reduceGreenhouseRun(pausedAt10, { type: "resume", runId: pausedAt10.runId + 1 }, 3_000_000, rig).reason === "stale", "an action for another run is stale");
 const tampered = JSON.parse(JSON.stringify(pausedAt10));
 tampered.snapshot.tank = 400;
 ok(runs.sanitizeGreenhouseRun(tampered) === null, "a stored run with an impossible tank is refused");
@@ -490,6 +493,15 @@ ok(sanitizeEdit({ kind: "edit", opId: "x", changes: [{ componentId: "irrigation-
   out = core.handle(bob, { kind: "greenhouse", opId: "g4", action: { type: "resume" } });
   ok(out.sender.some((m) => m.kind === "greenhouse-result" && !m.ok && m.reason === "idle"), "a resume based on a stale view (the day was just reset) is refused (idle)");
   ok(firstReset.tick === 0 && firstReset.snapshot.tank === 40, "reset: tick 0, full tank");
+  // A stale reset (decided on the run before the one just started) is refused and wipes nothing.
+  core.handle(alice, { kind: "greenhouse", opId: "g3b", action: { type: "step", runId: firstReset.runId } });
+  const stepped = core.greenhouse;
+  out = core.handle(bob, { kind: "greenhouse", opId: "g3c", action: { type: "reset", runId: firstReset.runId - 1 } });
+  ok(out.sender.some((m) => m.kind === "greenhouse-result" && !m.ok && m.reason === "stale") && out.others.length === 0 && core.greenhouse === stepped && core.greenhouse.tick === 4, "a reset decided on an older run is refused (stale): the newer day keeps its hour", JSON.stringify(core.greenhouse.tick));
+  out = core.handle(bob, { kind: "greenhouse", opId: "g3d", action: { type: "pause", runId: firstReset.runId + 7 } });
+  ok(out.sender.some((m) => m.kind === "greenhouse-result" && !m.ok && m.reason === "stale"), "an action naming a run the room never had is refused (stale)");
+  out = core.handle(bob, { kind: "greenhouse", opId: "g3e", action: { type: "reset", runId: firstReset.runId } });
+  ok(out.others.some((m) => m.kind === "greenhouse-state" && m.run.runId === firstReset.runId + 1 && m.run.tick === 0), "a reset naming the current run applies");
   // Running again, then the room empties: the run pauses where it is and keeps its resources.
   core.handle(alice, { kind: "greenhouse", opId: "g5", action: { type: "start" } });
   now += runs.STEP_MS * 5 + 10;

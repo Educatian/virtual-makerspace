@@ -73,9 +73,13 @@ export function settle(run, now, rig) {
  * { ok: false, reason } (the run is unchanged).
  * Actions: { type: "start" } · { type: "pause" } · { type: "resume" } · { type: "step" } (one
  * model hour, while idle or paused) · { type: "speed", speed: 1 | 4 } · { type: "reset", seed? }.
+ * Any action may carry `runId`, the run the sender saw: if the room has moved on to another run
+ * (a teammate reset the day meanwhile), it is refused as "stale" and changes nothing, so a reset
+ * decided on an old view never wipes a newer day, and a pause never lands on the wrong run.
  */
 export function reduceGreenhouseRun(run, action, now, rig) {
   const type = action?.type;
+  if (action?.runId !== undefined && action.runId !== run.runId) return { ok: false, reason: "stale" };
   if (type === "reset") {
     const seed = action.seed === undefined ? run.seed : action.seed;
     if (!isSeed(seed)) return { ok: false, reason: "invalid" };
@@ -140,11 +144,13 @@ export function sanitizeGreenhouseRun(value) {
 /** A run action from a client, validated (null if malformed). */
 export function sanitizeGreenhouseAction(value) {
   if (!value || typeof value !== "object") return null;
-  if (["start", "pause", "resume", "step"].includes(value.type)) return { type: value.type };
-  if (value.type === "speed" && SPEEDS.includes(value.speed)) return { type: "speed", speed: value.speed };
+  if (value.runId !== undefined && (!Number.isSafeInteger(value.runId) || value.runId < 1)) return null;
+  const seen = value.runId === undefined ? {} : { runId: value.runId };
+  if (["start", "pause", "resume", "step"].includes(value.type)) return { type: value.type, ...seen };
+  if (value.type === "speed" && SPEEDS.includes(value.speed)) return { type: "speed", speed: value.speed, ...seen };
   if (value.type === "reset") {
-    if (value.seed === undefined) return { type: "reset" };
-    return isSeed(value.seed) ? { type: "reset", seed: value.seed } : null;
+    if (value.seed === undefined) return { type: "reset", ...seen };
+    return isSeed(value.seed) ? { type: "reset", seed: value.seed, ...seen } : null;
   }
   return null;
 }

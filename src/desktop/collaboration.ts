@@ -1,5 +1,9 @@
 import type { SnapinoStatement } from "./snapino.js";
 import type { SoundProps } from "../../cloudflare/sound-rules.js";
+import type { GhProps } from "../../cloudflare/greenhouse-rules.js";
+import type { GhRig } from "../../cloudflare/greenhouse-model.js";
+import { initialRun, reduceGreenhouseRun, rigLocked, sanitizeGreenhouseRun, type GhAction, type GhRun } from "../../cloudflare/greenhouse-run.js";
+import { isGreenhouseId } from "../../cloudflare/greenhouse-rules.js";
 import { acceptClockSample, CLOCK_GOOD_RTT } from "./room-clock.ts";
 import {
   SyncReplica,
@@ -26,6 +30,8 @@ import {
 } from "../episodes/rescue-state.ts";
 
 export type EpisodeResult = { ok: true } | { ok: false; reason: RescueRefusal | "offline" | "timeout" | "disconnected" };
+/** A greenhouse run action's answer: accepted, refused by the room (its reason), or not confirmed. */
+export type GreenhouseResult = { ok: true } | { ok: false; reason: string };
 
 /** How long an edit waits for the room's answer before it counts as failed. */
 const EDIT_TIMEOUT_MS = 8_000;
@@ -47,7 +53,7 @@ export interface SharedTransform {
    * Sound Flow Studio modules carry their knob values here (hz/wave, cutoff, gain), validated by
    * cloudflare/sound-rules.js on the server.
    */
-  props?: { ohms?: number; volts?: number } & SoundProps;
+  props?: { ohms?: number; volts?: number } & SoundProps & GhProps;
 }
 
 export interface Participant {
@@ -176,7 +182,11 @@ type RoomMessage =
       program?: { program: SnapinoStatement[]; running: boolean };
       /** Peer mode: the episode state and its stamp. */
       episode?: { state: RescueState; stamp: Stamp };
+      /** Peer mode: the greenhouse run and its stamp. */
+      greenhouse?: { run: GhRun; stamp: Stamp };
     }
+  | { kind: "greenhouse"; participantId: string; opId: string; action: GhAction }
+  | { kind: "greenhouse-peer"; participantId: string; run: GhRun; stamp: Stamp }
   | { kind: "episode"; participantId: string; opId: string; action: RescueAction }
   | { kind: "episode-peer"; participantId: string; state: RescueState; stamp: Stamp; program?: { program: SnapinoStatement[]; running: boolean } }
   | {
@@ -217,7 +227,7 @@ export interface RoomEvents {
    */
   onApply: (componentId: string, transform: SharedTransform, options: { force: boolean; propsOnly: boolean; participantId: string }) => void;
   /** The room refused this participant's move or claim; `transform` null = the part's default. */
-  onRevert: (componentId: string, transform: SharedTransform | null, options: { superseded: boolean; holderName?: string; reason?: "occupied" }) => void;
+  onRevert: (componentId: string, transform: SharedTransform | null, options: { superseded: boolean; holderName?: string; reason?: "occupied" | "running" }) => void;
   onClaimDenied: (resourceId: string, holderName: string) => void;
   /**
    * The room's full state arrived (server mode, on every (re)join). Parts not in
@@ -229,6 +239,8 @@ export interface RoomEvents {
   onEpisode: (state: RescueState) => void;
   /** The realtime socket opened (true) or dropped (false); server mode only. */
   onConnection?: (online: boolean) => void;
+  /** The greenhouse run (model time + resources) changed or arrived on join. Place it with `serverTime()`. */
+  onGreenhouse?: (run: GhRun) => void;
 }
 
 const noOpEvents: RoomEvents = {
@@ -265,6 +277,8 @@ const SERVER_REPLY_KINDS = new Set([
   "program-ack",
   "episode-state",
   "episode-result",
+  "greenhouse-state",
+  "greenhouse-result",
   "clock",
 ]);
 
@@ -302,6 +316,11 @@ export class DesktopRoom {
   private readonly episodeWaiters = new Map<string, { resolve: (result: EpisodeResult) => void; timer: number }>();
   /** The latest episode state (room-authoritative in server mode). */
   episode: RescueState | null = null;
+  private readonly greenhouseWaiters = new Map<string, { resolve: (result: GreenhouseResult) => void; timer: number }>();
+  /** The latest greenhouse run (room-authoritative in server mode). */
+  greenhouse: GhRun | null = null;
+  /** Peer mode: the greenhouse rig as this tab holds it (the reducer settles the model with it). */
+  greenhouseRig: (() => GhRig) | null = null;
   /** Server clock minus this tab's clock, from the last message that carried `serverNow`. */
   private serverOffset = 0;
   private offsetAt = 0;
@@ -400,6 +419,10 @@ export class DesktopRoom {
       delete copy.activeEndpoint;
       return { componentId: id, transform: copy };
     });
+    // Peer mode has no room server: refuse a greenhouse rig edit while the day runs, as the room would.
+    if (this.sync.mode === "peer" && this.greenhouse && rigLocked(this.greenhouse, Date.now()) && clean.some((change) => isGreenhouseId(change.componentId))) {
+      return Promise.resolve({ ok: false, reason: "running", componentId: clean.find((change) => isGreenhouseId(change.componentId))?.componentId });
+    }
     const { message, immediate } = this.sync.createEdit(opId, clean, program);
     if (this.sync.mode === "peer") {
       if (program) this.noteTransmitterChange("program-changed");
@@ -519,6 +542,62 @@ export class DesktopRoom {
       this.episodeWaiters.set(opId, { resolve, timer });
       this.post({ kind: "episode", participantId: this.participant.id, opId, action });
     });
+  }
+
+  /**
+   * One greenhouse run action (start, pause, resume, step, speed, reset). Server mode: the room
+   * orders and answers it, and the new run arrives through `onGreenhouse` (for everyone, this tab
+   * included) before this resolves. Peer mode: applied here with the same reducer and the shared
+   * same-device clock, and shared with the other tabs (Lamport order).
+   */
+  greenhouseAction(action: GhAction): Promise<GreenhouseResult> {
+    if (this.closed) return Promise.resolve({ ok: false, reason: "disconnected" });
+    if (this.sync.mode === "peer") {
+      const rig = this.greenhouseRig?.();
+      if (!rig) return Promise.resolve({ ok: false, reason: "invalid" });
+      const result = reduceGreenhouseRun(this.greenhouse ?? initialRun(), action, Date.now(), rig);
+      if (!result.ok) return Promise.resolve({ ok: false, reason: result.reason });
+      const stamp = this.sync.stampTransform("greenhouse");
+      this.applyGreenhouse(result.run);
+      this.post({ kind: "greenhouse-peer", participantId: this.participant.id, run: result.run, stamp });
+      return Promise.resolve({ ok: true });
+    }
+    if (this.offline) return Promise.resolve({ ok: false, reason: "offline" });
+    const opId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        this.greenhouseWaiters.delete(opId);
+        resolve({ ok: false, reason: "timeout" });
+      }, EDIT_TIMEOUT_MS);
+      this.greenhouseWaiters.set(opId, { resolve, timer });
+      this.post({ kind: "greenhouse", participantId: this.participant.id, opId, action });
+    });
+  }
+
+  /** Peer mode only: the brief's day, not started, until a teammate tab's day arrives. */
+  initPeerGreenhouse(): void {
+    if (this.sync.mode !== "peer" || this.greenhouse) return;
+    this.applyGreenhouse(initialRun());
+  }
+
+  private applyGreenhouse(run: GhRun): void {
+    this.greenhouse = run;
+    this.events.onGreenhouse?.(run);
+  }
+
+  /** Server-mode greenhouse messages (run states and results), in the room's order. */
+  private receiveGreenhouse(message: Record<string, unknown>): void {
+    this.noteServerNow(message.serverNow);
+    if (message.kind === "greenhouse-result") {
+      const waiter = this.greenhouseWaiters.get(String(message.opId));
+      if (!waiter) return;
+      this.greenhouseWaiters.delete(String(message.opId));
+      window.clearTimeout(waiter.timer);
+      waiter.resolve(message.ok === true ? { ok: true } : { ok: false, reason: typeof message.reason === "string" ? message.reason.slice(0, 40) : "invalid" });
+      return;
+    }
+    const run = sanitizeGreenhouseRun(message.run);
+    if (run) this.applyGreenhouse(run);
   }
 
   /**
@@ -687,6 +766,7 @@ export class DesktopRoom {
       clock: this.sync.clock,
       ...(program ? { program } : {}),
       ...(this.episode ? { episode: { state: this.episode, stamp: this.sync.stampTransform("episode") } } : {}),
+      ...(this.greenhouse ? { greenhouse: { run: this.greenhouse, stamp: this.sync.stampTransform("greenhouse") } } : {}),
     });
   }
 
@@ -895,6 +975,11 @@ export class DesktopRoom {
       waiter.resolve({ ok: false, reason: "disconnected" });
     }
     this.episodeWaiters.clear();
+    for (const waiter of this.greenhouseWaiters.values()) {
+      window.clearTimeout(waiter.timer);
+      waiter.resolve({ ok: false, reason: "disconnected" });
+    }
+    this.greenhouseWaiters.clear();
     for (const timer of this.transformTimers.values()) window.clearTimeout(timer);
     this.transformTimers.clear();
     this.pendingTransforms.clear();
@@ -936,6 +1021,10 @@ export class DesktopRoom {
         this.receiveEpisode(message as unknown as Record<string, unknown>);
         return;
       }
+      if (kind === "greenhouse-state" || kind === "greenhouse-result") {
+        this.receiveGreenhouse(message as unknown as Record<string, unknown>);
+        return;
+      }
       if (kind === "clock") {
         const raw = message as unknown as Record<string, unknown>;
         this.noteClockSample(raw.t0, raw.serverNow);
@@ -951,6 +1040,9 @@ export class DesktopRoom {
           this.episode = null;
           this.applyEpisode(episode);
         }
+        // Likewise the greenhouse run: the room's model time and resources, never this tab's.
+        const greenhouse = sanitizeGreenhouseRun(raw.greenhouse);
+        if (greenhouse) this.applyGreenhouse(greenhouse);
         return;
       }
       this.runEffects(this.sync.receive(message as unknown as Record<string, unknown>));
@@ -1023,6 +1115,13 @@ export class DesktopRoom {
         // Peer mode: a same-device tab's edit, applied by Lamport order.
         this.runEffects(this.sync.receive(message as unknown as Record<string, unknown>));
         break;
+      case "greenhouse-peer": {
+        if (this.sync.mode !== "peer") break;
+        const run = sanitizeGreenhouseRun(message.run);
+        if (!run || !this.sync.acceptTransform("greenhouse", message.stamp)) break;
+        this.applyGreenhouse(run);
+        break;
+      }
       case "episode-peer": {
         if (this.sync.mode !== "peer") break;
         const state = sanitizeRescueState(message.state);
@@ -1094,6 +1193,8 @@ export class DesktopRoom {
           this.events.onState(message.transforms, message.program);
           const episode = message.episode ? sanitizeRescueState(message.episode.state) : null;
           if (episode && this.sync.acceptTransform("episode", message.episode?.stamp)) this.applyEpisode(episode);
+          const greenhouse = message.greenhouse ? sanitizeGreenhouseRun(message.greenhouse.run) : null;
+          if (greenhouse && this.sync.acceptTransform("greenhouse", message.greenhouse?.stamp)) this.applyGreenhouse(greenhouse);
         }
         break;
       case "signal":
