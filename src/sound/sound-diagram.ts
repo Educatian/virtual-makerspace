@@ -63,7 +63,7 @@ const STATUS_SHORT: Record<EdgeStatus, string> = {
 export interface DiagramOptions {
   /** The selected module or cable (its node/edges are marked). */
   selected: string | null;
-  /** Explanatory fault notes allowed (DI always; PF after the team's first Test). Safety notes always. */
+  /** Explanatory fault notes allowed (DI always; PF after this learner's own first Test in this session). Safety notes always. */
   showNotes: boolean;
 }
 

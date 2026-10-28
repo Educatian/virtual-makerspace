@@ -13,13 +13,14 @@
  *
  * PF/DI: the brief, ratings, safety limits, the signal display and post-Test measurements in both;
  * the worked example and per-criterion explanations in DI only; explanatory diagram notes in PF
- * only after the first Test. Bolt is not involved.
+ * only after this learner's own first Test in this browser session (a personal gate; teammates'
+ * Tests do not unlock it). Bolt is not involved.
  */
 import { SOUND_BOUNDS, SOUND_WAVES, type SoundWave } from "../../cloudflare/sound-rules.js";
 import type { SharedTransform } from "../desktop/collaboration.js";
 import type { DesktopWorkbenchScene, StudHighlight } from "../desktop/scene.js";
 import { NET_TONES } from "../desktop/selection-style.ts";
-import { measure, renderOffline, SoundEngine, type AudioStatus } from "./sound-audio.ts";
+import { measure, renderOffline, SoundEngine, stopEngineForExit, type AudioStatus } from "./sound-audio.ts";
 import { CABLE_COLORS, faultNotes, renderConnectionList, renderSoundDiagramSvg } from "./sound-diagram.ts";
 import {
   BRIEF,
@@ -80,7 +81,7 @@ interface Attempt {
 
 interface Session {
   attempts: Attempt[];
-  /** Explanatory notes unlocked (PF): the team's first Test happened here. */
+  /** Explanatory notes unlocked (PF): this learner's first Test in this browser session (not the team's). */
   firstTestAt: number | null;
 }
 
@@ -96,9 +97,34 @@ const REFUSALS: Record<string, string> = {
   invalid: "the room's validation refused the value",
   occupied: "that jack already holds a plug",
   offline: "reconnecting to the room",
-  timeout: "not confirmed in time (if the room accepted it, it will still appear)",
+  timeout: "not confirmed in time",
   disconnected: "the connection closed",
 };
+
+/**
+ * After the room accepted an edit: clears the module's drafts that are exactly what was submitted,
+ * and keeps any value typed (or changed) while the edit was on its way. Returns whether a newer
+ * draft was kept.
+ */
+export function clearSubmittedDrafts(drafts: Map<string, string>, module: string, submitted: ReadonlyMap<string, string>): boolean {
+  let newer = false;
+  for (const key of [...drafts.keys()]) {
+    if (!key.startsWith(`${module}:`)) continue;
+    if (submitted.has(key) && submitted.get(key) === drafts.get(key)) drafts.delete(key);
+    else newer = true;
+  }
+  return newer;
+}
+
+/**
+ * Why an edit was not applied. A timeout is uncertain: the room may still have accepted it, so it
+ * never says "nothing changed"; every other refusal is definite.
+ */
+export function notAppliedCopy(reason: string | null | undefined, verb: string, draftNote: string): string {
+  if (reason === "timeout") return `${verb} yet · the room did not confirm it in time. If it accepted it, the new value will appear here on its own; otherwise nothing changed.${draftNote ? ` ${draftNote}.` : ""}`;
+  const why = REFUSALS[reason ?? ""] ?? "the room did not confirm it";
+  return `${verb} · ${why}; nothing changed.${draftNote ? ` ${draftNote}.` : ""}`;
+}
 
 /** DI only: why a criterion failed, in teaching terms (shown after a Test). */
 const DI_EXPLANATIONS: Record<CriterionId, string> = {
@@ -377,7 +403,7 @@ export class SoundPanel {
 
   /** Studio left, room left or the connection lost: audio stops and needs a new click. */
   stopAudio(reason: string): void {
-    if (this.engine.status !== "off") this.engine.stop(reason);
+    stopEngineForExit(this.engine, reason);
     this.renderAudio();
   }
 
@@ -516,7 +542,13 @@ export class SoundPanel {
   /** One room edit with the module's drafted values. Nothing changes until the room accepts it. */
   private async applyModule(module: SoundModuleId): Promise<void> {
     const workbench = this.host.workbench();
-    if (!workbench || this.pending.has(module) || module === "snd-speaker") return;
+    if (!workbench || module === "snd-speaker") return;
+    if (this.pending.has(module)) {
+      // Enter pressed again while the previous value is still on its way: say so; the draft stays.
+      this.editNote = { module, text: "Still waiting for the room to confirm the previous value · your new draft is kept; apply it again once that is answered", tone: "neutral" };
+      this.render();
+      return;
+    }
     const before = workbench.getSharedTransforms()[module];
     if (!before) return;
     const props = module === "snd-source"
@@ -531,16 +563,19 @@ export class SoundPanel {
       return;
     }
     const label = module === "snd-source" ? `Set Source to ${props.wave} ${props.hz} Hz` : module === "snd-filter" ? `Set Filter cutoff to ${formatHz(props.cutoff!)}` : `Set Drive gain to ${formatGain(props.gain!)}`;
+    // The drafts this edit carries, as typed: only these are cleared when the room accepts it.
+    const submitted = new Map([...this.drafts].filter(([key]) => key.startsWith(`${module}:`)));
     this.pending.add(module);
     this.editNote = { module, text: "Sending to the room…", tone: "neutral" };
     this.render();
     const result = await this.host.submit([{ id: module, transform: { ...before, props } }], label, module);
     this.pending.delete(module);
     if (result.ok) {
-      for (const key of [...this.drafts.keys()]) if (key.startsWith(`${module}:`)) this.drafts.delete(key);
-      this.editNote = { module, text: `${label} · shared with the room`, tone: "valid" };
+      // A value typed while this edit was on its way is a newer draft: it stays.
+      const newer = clearSubmittedDrafts(this.drafts, module, submitted);
+      this.editNote = { module, text: `${label} · shared with the room${newer ? " · the newer value you typed meanwhile is kept as a draft below" : ""}`, tone: "valid" };
     } else {
-      this.editNote = { module, text: `Not applied · ${REFUSALS[result.reason ?? ""] ?? "the room did not confirm it"}. Your draft is kept below; nothing changed.`, tone: "warning" };
+      this.editNote = { module, text: notAppliedCopy(result.reason, "Not applied", "Your draft is kept below"), tone: "warning" };
     }
     this.render();
   }
@@ -567,7 +602,7 @@ export class SoundPanel {
     this.pending.delete("snd-speaker");
     this.editNote = result.ok
       ? { module: "snd-speaker", text: `Speaker switched ${on ? "on" : "off"} for everyone`, tone: "valid" }
-      : { module: "snd-speaker", text: `Not switched · ${REFUSALS[result.reason ?? ""] ?? "the room did not confirm it"}; nothing changed`, tone: "warning" };
+      : { module: "snd-speaker", text: notAppliedCopy(result.reason, "Not switched", ""), tone: "warning" };
     this.render();
   }
 
@@ -853,7 +888,7 @@ export class SoundPanel {
     if (this.write(diagram, "diagram", renderSoundDiagramSvg(graph, signal, { selected, showNotes })) && focusKey) diagram.querySelector<SVGElement>(`[data-module="${focusKey}"], [data-cable="${focusKey}"]`)?.focus();
     this.write(list, "list", renderConnectionList(graph, signal));
     const { shown, withheld } = faultNotes(graph, showNotes);
-    this.write(notes, "notes", `${shown.map((note) => `<p><i class="ph ph-warning-circle" aria-hidden="true"></i> ${escape(note)}</p>`).join("")}${withheld ? `<p class="sd-withheld">${withheld} explanatory note${withheld === 1 ? "" : "s"} appear${withheld === 1 ? "s" : ""} after your team's first Test (the diagram above already shows the patch as built).</p>` : ""}`);
+    this.write(notes, "notes", `${shown.map((note) => `<p><i class="ph ph-warning-circle" aria-hidden="true"></i> ${escape(note)}</p>`).join("")}${withheld ? `<p class="sd-withheld">${withheld} explanatory note${withheld === 1 ? "" : "s"} appear${withheld === 1 ? "s" : ""} after your first Test in this session (the diagram above already shows the patch as built).</p>` : ""}`);
     if (summary) summary.textContent = graph.reachesSpeaker ? (state.speakerOn ? "Tone reaches the Speaker" : "Tone reaches the Speaker · switched off") : "No tone at the Speaker";
     this.renderPart(selected);
   }
