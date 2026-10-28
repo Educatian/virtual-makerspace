@@ -324,11 +324,13 @@ export class RoomCore {
     const previous = this.state.get(componentId);
     let next = { ...transform };
     const end = transform.activeEndpoint;
-    if ((end === 0 || end === 1) && previous) {
+    // A Sound patch cable the room has never stored starts unplugged on every client (the mat).
+    const unstoredSoundCable = !previous && isSoundCable(componentId) ? { ...transform, sockets: null } : null;
+    if ((end === 0 || end === 1) && (previous || unstoredSoundCable)) {
       // A cable-end move changes only that end, the one the sender holds: two people may each
       // hold one end, and each sender's view of the other end can be behind. The room's other
       // end is always kept, whatever the message says about it (the claim covers one end only).
-      const base = previous.transform;
+      const base = previous ? previous.transform : unstoredSoundCable;
       const sockets = Array.isArray(base.sockets) ? [base.sockets[0], base.sockets[1]] : [null, null];
       sockets[end] = transform.sockets?.[end] ?? null;
       next = { ...base, sockets: sockets.some((socket) => socket !== null) ? sockets : null };

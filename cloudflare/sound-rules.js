@@ -143,14 +143,14 @@ export function sanitizeSoundTransform(componentId, raw, clean) {
 }
 
 /**
- * The cable's sockets once `transform` is stored over `previous` (mirrors RoomCore.store: a
- * cable-end move over a stored cable changes only that end, whatever the sender says about the
- * other end).
+ * A sound cable's sockets once `transform` is stored over `previous` (mirrors RoomCore.store): a
+ * cable-end move changes only that end, whatever the sender says about the other end. A cable the
+ * room has never stored is on the mat (unplugged), as every client starts it.
  */
 export function nextCableSockets(previous, transform) {
   const end = transform.activeEndpoint;
-  if ((end === 0 || end === 1) && previous) {
-    const base = Array.isArray(previous.sockets) ? [previous.sockets[0], previous.sockets[1]] : [null, null];
+  if (end === 0 || end === 1) {
+    const base = Array.isArray(previous?.sockets) ? [previous.sockets[0], previous.sockets[1]] : [null, null];
     base[end] = transform.sockets?.[end] ?? null;
     return base;
   }

@@ -468,6 +468,28 @@ ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev:
     ok(notHers.sender[0]?.kind === "transform-rejected" && socketsIn(core, "snd-cable-a") === "[0,2]", "review (b): Alice cannot move Bob's end", JSON.stringify(notHers.sender[0]));
   }
 
+  // Independent review of ad7fd3c: a cable the room has NEVER stored (fresh room, or after everyone
+  // left) — an end move must still change only its end (clients start every cable on the mat).
+  for (const after of ["fresh", "reset"]) {
+    const core = new RoomCore();
+    const alice = { id: "alice", name: "Alice" };
+    const bob = { id: "bob", name: "Bob" };
+    const carol = { id: "carol", name: "Carol" };
+    if (after === "reset") {
+      deliver(core, alice, { kind: "edit", opId: "s", changes: [{ componentId: "snd-cable-a", expectRev: 0, transform: { position: [-1, 0.48, 1], rotation: [0, 0, 0], sockets: [2, 3], endpoints: ends } }] });
+      core.reset();
+    }
+    deliver(core, alice, { kind: "claim", componentId: "snd-cable-a::endpoint-0" });
+    deliver(core, bob, { kind: "claim", componentId: "snd-cable-a::endpoint-1" });
+    const moved = deliver(core, alice, endMove("snd-cable-a", [1, 5], 0, 1));
+    ok(moved.sender[0]?.kind === "rev-ack" && socketsIn(core, "snd-cable-a") === "[1,null]", `review (never stored, ${after}): an end-0 move claiming the other end is in jack 5 stores only end 0 ([1,null]), as clients apply it`, socketsIn(core, "snd-cable-a"));
+    deliver(core, carol, { kind: "claim", componentId: "snd-cable-b" });
+    const carolMove = deliver(core, carol, { kind: "transform", componentId: "snd-cable-b", sequence: 1, transform: { position: [0, 0.48, 0], rotation: [0, 0, 0], sockets: [5, 2], endpoints: ends } });
+    ok(carolMove.sender[0]?.kind === "rev-ack", `review (never stored, ${after}): jack 5, empty on every client, is empty in the room too`, JSON.stringify(carolMove.sender[0]));
+    const same = deliver(core, bob, endMove("snd-cable-a", [null, 1], 1, 1));
+    ok(same.sender[0]?.kind === "transform-rejected" && same.sender[0].reason === "occupied" && socketsIn(core, "snd-cable-a") === "[1,null]", `review (never stored, ${after}): Bob's end into Alice's jack is still refused`, JSON.stringify(same.sender[0]));
+  }
+
   // Batch atomicity: an edit that would leave one cable with both plugs in one jack is refused whole.
   {
     const core = new RoomCore();
@@ -487,8 +509,17 @@ ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev:
   {
     let seed = 12345;
     const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+    const unseeded = () => {
+      const core = new RoomCore();
+      const alice = { id: "alice", name: "Alice" };
+      const bob = { id: "bob", name: "Bob" };
+      deliver(core, alice, { kind: "claim", componentId: "snd-cable-a::endpoint-0" });
+      deliver(core, bob, { kind: "claim", componentId: "snd-cable-a::endpoint-1" });
+      return { core, alice, bob };
+    };
     for (let run = 0; run < 400; run += 1) {
-      const { core, alice, bob } = seeded();
+      // Half the runs start from a cable the room has never stored.
+      const { core, alice, bob } = run % 2 === 0 ? seeded() : unseeded();
       deliver(core, bob, { kind: "claim", componentId: "snd-cable-b" });
       let sequence = 1;
       for (let step = 0; step < 12; step += 1) {
@@ -506,7 +537,7 @@ ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev:
         if (out.sender[0]?.kind === "transform-rejected" && JSON.stringify(core.join()[0].transforms) !== before) ok(false, "review B1 random: a refusal changed the room", before);
       }
     }
-    ok(true, "review B1 random: 400 runs × 12 moves by opposite end holders and a whole-cable mover never left two plugs in one jack");
+    ok(true, "review B1 random: 400 runs × 12 moves (half from a never-stored cable) by opposite end holders and a whole-cable mover never left two plugs in one jack");
   }
 }
 
