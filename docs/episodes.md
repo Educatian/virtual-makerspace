@@ -7,11 +7,11 @@ episode at a time**. Each episode is reviewed before the next one starts.
 |---|---|---|---|
 | 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Merged into the `desktop` release branch with PRs #2–#4 (`db85d85`); production deployment and live checks are recorded outside this document. |
 | 2 | Sound Flow Studio | Sound Flow Studio (new) | **Implemented on `feat/sound-flow-studio`** (PR #5 against `desktop`, final app `63a3421`). Review findings fixed; awaiting the final gate. Not merged or deployed. |
-| 3 | Resource-Limited Greenhouse | Greenhouse | Planned. The acceptance contract is below; not started. |
+| 3 | Resource-Limited Greenhouse | Greenhouse | **In progress on `feat/resource-limited-greenhouse`**. The model and criteria below are fixed before the code. |
 | 4 | Smart Sorting Center | new | Planned. The acceptance contract is below; not started. |
 | 5 | Structural Test Yard | new | Planned. The acceptance contract is below; not started. |
 
-Episodes 3–5 are not in the app. There are no placeholder buttons, rooms or stubs for them.
+Episodes 4–5 are not in the app. There are no placeholder buttons, rooms or stubs for them.
 
 ## Quality contract (applies to every episode)
 
@@ -442,6 +442,104 @@ Their causes were not established. They are listed with their logs, not counted 
 - **Predictions, explanations and attempts are per learner and per tab session** (sessionStorage): they are not shared, synced or exported, so a teammate sees only the `test`/`reflect` activity traces.
 - **Desktop only.** The WebXR path does not include the studio.
 - **Software-rendered evidence.** Captures and frame counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured.
+
+## Episode 3 · Resource-Limited Greenhouse
+
+### Goal and model (fixed before the code was written)
+
+**Story.** A school greenhouse must get through one hot, dry day on the water already in its tank. Two raised beds need different amounts of water, the solar panel cannot run the pump and the vent fan at full power together, and clouds pass over. The team plumbs and wires the existing rig, sets the controller and valves, predicts, runs the day, inspects what happened, explains it and revises.
+
+**The bounded goal: brief "Dry-spell day".** One complete run of the brief's day (scenario seed **11**, 06:00 to 06:00) meets all five criteria. They are task rules, visible in both conditions:
+
+| # | Criterion | Measured on |
+|---|---|---|
+| G1 | **Plumbed and wired.** Water can reach both beds through the pump (tank → pump → bed A and bed B), the pump and fan are powered from the controller's channels, the solar panel feeds the controller, and the soil probe is in a bed. | The build |
+| G2 | **Bed A.** Dry (θ < 30 %) or waterlogged (θ > 90 %) for at most 2 h of the day. | The run's record |
+| G3 | **Bed B.** The same. | The run's record |
+| G4 | **Air.** Greenhouse air above 35 °C for at most 1 h. | The run's record |
+| G5 | **Reserve.** At least 8 L left in the tank at the end. | The run's record |
+
+In the model, the brief cannot be met by plugging everything in at the default settings: the default allocation leaves bed B dry for about 9 h on the brief's day. A coarse search found successful strategies (for example valve A 30 %, valve B 50 %, pump below 60 %, fan above 26 °C). The success region is narrow: about 1.3 % of a 5 % / 5-point grid of valve, threshold, priority and probe choices.
+
+These are the genuine tradeoffs:
+- **Water:** the tank cannot keep both beds wet all day. Bed B transpires half as much again as bed A, and over-watering is lost to drainage.
+- **Power:** the solar panel's 18 W peak is less than the 20 W the pump and fan draw together, and the 12 Wh battery covers the gap only briefly. The controller's channel 1 is served first.
+- **Climate:** the fan is the only cooling, and the heat peaks when the pump is busiest.
+- **Sensing:** there is one soil probe. The bed it sits in decides when the pump runs; the other bed is watered blind.
+
+**The learning loop** (the same structure as Episode 2):
+1. **Predict / design.** A private prediction per attempt: meets the brief, a bed dries out, a bed gets waterlogged, overheating, or the tank runs low. The learner adds why.
+2. **Build / allocate.** Hoses, power cables, the soil probe, the valves, the controller thresholds. Every change is a room edit, and edits are refused while the day is running.
+3. **Run / test / inspect.** Start, pause, step one hour, resume, speed ×1 or ×4, reset. The live resource graph, sensors and inspector show the current model time. The verdict and the measured values appear when the day ends.
+4. **Explain.** What happened and why. The goal counts as met only for a passing run that has an explanation.
+5. **Revise.** A new attempt resets the day (the tank refills only by an explicit reset, which starts a new run) and keeps the history of earlier attempts.
+
+There are no points, XP or countdowns. The model clock is a time control, not a challenge timer.
+
+**PF / DI.**
+- **Both conditions:** the brief and criteria, the part ratings and safety limits, the live graph and sensors, and the measured values after each finished run.
+- **DI only:** a worked example (one strategy that meets the brief, checked by the model's own test) and, after a run, a reason for each failed criterion.
+- **PF:**
+  - no solution, hint or auto-build;
+  - explanatory fault notes on the diagram appear after the learner's own first finished run in this browser session (a personal gate);
+  - safety notes (invalid hose carries nothing, no unregulated power) appear in both conditions.
+- **Bolt** keeps to the Circuit Bench.
+
+**Model (a teaching water-balance and climate abstraction; not a validated botanical, crop or weather prediction).**
+
+| Quantity | Model |
+|---|---|
+| Time | 96 steps of 15 min (dt = 0.25 h), 06:00 → 06:00. Sensors are read at the start of a step; the controller decides the step's loads from those readings. |
+| Weather (seeded) | Outside air T_out = T_min + (T_max − T_min)·(0.5 − 0.5·cos(2π(h − 4)/24)), peaking at 16:00. Sun S = sin(π(h − 6)/14) from 06:00 to 20:00, else 0. The seed sets T_max (31–37 °C), T_min (16–20 °C) and one or two cloud spells of 1–3 h (sun × 0.35). A seeded xorshift32 generator gives the same day everywhere. |
+| Greenhouse air | T_air = T_out + 4 °C·S − 7 °C if the fan ran that step (steady state per step, no thermal mass). |
+| Solar panel | 18 W × S, only when its cable reaches the controller's SOLAR IN. |
+| Controller | A 12 Wh battery (starts at 6 Wh). Channel 1 is served before channel 2. A load runs a whole step only if solar + battery can supply its energy; otherwise it is starved for the step. Solar surplus charges the battery; the rest is curtailed. |
+| Rules | The pump runs when the probed bed's soil θ < "pump below" (10–90 %, 5 % steps). The fan runs when the last air reading > "fan above" (20–40 °C, 1 °C steps). There is no probe reading without a probe, so the pump never runs. |
+| Pump | 12 W, 0.4 L/min (6 L per step) when both valves allow it. It needs a hose from TANK OUT to PUMP IN and a hose from PUMP OUT to the manifold or a bed. Without a supply or an outlet it runs dry: it uses its power and delivers 0 L. |
+| Valves | Manifold outlets A and B, 0–100 % in 5 % steps. Outlet flow q_i = Q·v_i / max(1, v_A + v_B). The pump delivers Q·min(1, v_A + v_B), and less if the tank holds less. An unconnected outlet is closed. |
+| Fan | 8 W, cools the air by 7 °C for the step. |
+| Beds | Water store W (L) of capacity 20 L, starting at 11 L; θ = W / 20. Uptake and evaporation ET = k·(0.5 + 0.05·(T_air − 20 °C))·dt·min(1, θ/0.4), with k = 0.8 L/h (bed A) and 1.2 L/h (bed B), never more than W. Gravity drainage removes 25 % of the water above θ = 0.8 per step, and anything above 20 L overflows. |
+| Tank | 40 L at the start. It falls only by what the pump delivers. It is refilled only by resetting the day, which starts a new run. |
+| Plant state | Shown per bed from θ and air: wilting below 30 %, severe below 15 %, waterlogged above 90 %, heat-stressed above 35 °C, otherwise healthy. There is no growth or yield model. |
+
+**Water and energy balance.** Every step is accounted, and the tests check it to 1e-9 L or Wh:
+- **Water:** tank₀ + W_A₀ + W_B₀ = tank + W_A + W_B + ET_total + drainage_total + overflow_total. Hoses hold no water, and nothing is created.
+- **Energy:** solar_in + battery₀ = loads_used + battery + curtailed.
+- No quantity is ever negative.
+
+**Wrong builds are drawn as built, never repaired.** Each of these carries zero flow or power and is marked in the 3D rig, the diagram and the inspector:
+- OUT→OUT and IN→IN hoses;
+- loose hose ends;
+- a hose from the tank straight to a bed (no pump, and the tank sits below the beds);
+- the pump fed from its own outlet (a loop);
+- solar wired straight to a load (unregulated, not supported);
+- a power cable in a hose port or the reverse (the room refuses it: wrong connector type);
+- two plugs in one port (refused, as in Episode 2).
+
+An empty tank, a pump without supply, starved loads, no probe, extreme soil and heat are all reachable and named.
+
+**One authoritative state.** The room's versioned parts drive the 3D rig, the model inputs, the graph, the inspector and project files: hose and cable ports, the probe slot, the valves and the thresholds. The room's **run state** drives model time and resources:
+- seed, status, speed, attempt counter;
+- the anchor tick and its server time;
+- the resource snapshot at the anchor: tank, beds, battery, last air reading, and running totals for the balance and stress;
+- the per-step record up to the anchor.
+
+The current state at server time t is `simulate(anchor, current build, ticks since anchor)`. That is deterministic, so every client computes the same values regardless of frame rate.
+
+**Time and collaboration policy.**
+- Run actions are start, pause, resume, step one hour, speed ×1 (2.5 s per step) or ×4, and reset. Each is a room action, ordered and answered (accepted or refused) like an edit.
+- Pause and step settle the model on the server: the snapshot and record advance to the current tick.
+- While a day is running, every change to the rig is refused (`running`): edits, cable moves, imports, reset bench, Undo/Redo. Pause first. A change and a pause that race are ordered by the room.
+- When the last participant leaves, the run pauses at that model time and its resources are kept. The bench resets as in every studio, and Recovery restores it. Nobody gets elapsed time or water for being away.
+- A late joiner or a reconnecting client receives the run state and the server time, and so shows the same model time and resources.
+- The run ends at step 96. If the server restarts mid-run, it continues from its persisted anchor by server time, up to that end.
+- Project files hold the build only, never resources or model time, so importing cannot refill the tank or resurrect an old run.
+- Same-device peer rooms (no server) apply the run actions in each tab with a shared clock, like Episode 1.
+
+**Assumptions stated in the studio.**
+- These are teaching numbers. Water uptake, weather and plant response are not validated crop, weather or botanical models.
+- The greenhouse has no thermal mass, the pump has fixed flow, hoses are lossless, and valves split flow linearly.
+- Power is accounted per 15-minute step.
 
 ---
 
