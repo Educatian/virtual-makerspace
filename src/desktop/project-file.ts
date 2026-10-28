@@ -30,6 +30,9 @@ import type { SharedTransform, StudioChoice } from "./collaboration.js";
 import { sanitizeProgram, type SnapinoStatement } from "./snapino.ts";
 import { isMission, isWord, MAX_WORDS, MISSIONS, type Word } from "../episodes/rescue-signal.ts";
 
+/** Sound projects carry no DC readings: their stamp names the signal model instead. */
+export const SOUND_MODEL_VERSION = "sound-flow-signal-1";
+
 /** Episode 1's design in a Snapino project: the mission and the sender's intended words. */
 export interface ProjectEpisode {
   id: "rescue-signal";
@@ -66,7 +69,7 @@ export interface ProjectPart {
 export interface ProjectFile {
   format: typeof PROJECT_FORMAT;
   version: 1 | 2;
-  /** DC solver that produced any readings the learner saw; informative only. */
+  /** The model behind any readings the learner saw (the DC solver, or the Sound Flow signal model); informative only. */
   solver: string;
   studio: StudioChoice;
   savedAt: string;
@@ -122,7 +125,7 @@ export function buildProject(
   const project: ProjectFile = {
     format: PROJECT_FORMAT,
     version: versionFor(catalog.studio),
-    solver: SOLVER_VERSION,
+    solver: catalog.studio === "sound" ? SOUND_MODEL_VERSION : SOLVER_VERSION,
     studio: catalog.studio,
     savedAt: now.toISOString(),
     parts,

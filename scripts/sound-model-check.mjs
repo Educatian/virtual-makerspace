@@ -420,6 +420,7 @@ ok(sanitizeEdit({ opId: "op-2", changes: [{ componentId: "snd-drive", expectRev:
   };
   const built = project.buildProject(catalog, transforms, null, new Date("2026-10-27T10:00:00Z"));
   ok(built.version === 2 && built.studio === "sound", "a Sound project is written as version 2");
+  ok(built.solver === "sound-flow-signal-1", "a Sound project names the signal model, not the DC solver", built.solver);
   eq(built.parts.map((part) => [part.id, part.sockets, part.props ?? null, part.on ?? null]), [
     ["snd-source", null, { hz: 220, wave: "sawtooth" }, null], ["snd-filter", null, { cutoff: 300 }, null], ["snd-drive", null, { gain: 1.7 }, null], ["snd-speaker", null, null, true],
     ["snd-cable-a", [0, 1], null, null], ["snd-cable-b", [2, 3], null, null], ["snd-cable-c", null, null, null],
