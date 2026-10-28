@@ -193,6 +193,18 @@ export function measure(samples: Float32Array, sampleRate: number, f0: number, c
 export type AudioStatus = "off" | "running" | "suspended" | "needs-gesture" | "unsupported" | "error";
 
 /**
+ * Leaving the studio or the room, or losing the connection: stop unconditionally. A click may
+ * have created the AudioContext while its resume has not settled (status still "off"); that
+ * context is closed too, so a late resume can never start audio afterwards. The reason is only
+ * reported when there was something to stop. Returns whether there was.
+ */
+export function stopEngineForExit(engine: SoundEngine, reason: string): boolean {
+  const active = engine.active;
+  engine.stop(active ? reason : "");
+  return active;
+}
+
+/**
  * One listener's audio. Created stopped; `start()` from a click/key handler creates the
  * AudioContext. `apply()` follows the room's patch while running and never starts anything.
  */
@@ -217,6 +229,14 @@ export class SoundEngine {
 
   get running(): boolean {
     return this.status === "running";
+  }
+
+  /**
+   * Whether anything exists that `stop()` must release: an AudioContext (running, suspended, or
+   * created by a click whose resume has not settled yet, while the status still says "off").
+   */
+  get active(): boolean {
+    return this.context !== null || this.status !== "off";
   }
 
   get isMuted(): boolean {
@@ -256,11 +276,14 @@ export class SoundEngine {
         if (this.state) this.rebuild(this.state);
       }
       const context = this.context;
+      // The resume can settle after a stop (or a later start): only the context it was called
+      // on may report, success or failure, so an old start never touches a newer one.
       return context.resume().then(() => {
         if (this.context !== context) return false;
         this.setStatus(context.state === "running" ? "running" : "suspended");
         return context.state === "running";
       }, (error: unknown) => {
+        if (this.context !== context) return false;
         this.setStatus("error", String((error as Error)?.message ?? error));
         return false;
       });

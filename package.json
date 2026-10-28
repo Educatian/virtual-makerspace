@@ -25,7 +25,7 @@
     "test:tools": "node --experimental-strip-types scripts/tools-check.mjs && node --experimental-strip-types scripts/flow-plan-check.mjs",
     "test:episode": "node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs",
     "test:diagram": "node --experimental-strip-types scripts/snapino-diagram-check.mjs",
-    "test:sound": "node --experimental-strip-types scripts/sound-model-check.mjs",
+    "test:sound": "node --experimental-strip-types scripts/sound-model-check.mjs && node --experimental-transform-types --no-warnings scripts/sound-engine-check.mjs",
     "test:sound:dsp": "node scripts/sound-dsp-check.mjs",
     "test:e2e:rescue": "node --experimental-strip-types scripts/e2e-rescue-signal.mjs"
   },

@@ -8,7 +8,9 @@
 //  - the model's numbers (sound-model.ts) against the rendered buffers;
 //  - the live engine in the page: no AudioContext before a trusted click, refusal without one,
 //    a real click starts it, mute silences the output within 50 ms, stop() closes the context and
-//    stops every oscillator it started.
+//    stops every oscillator it started; a disconnect or studio exit while the click's resume is
+//    still pending closes that context (the late resume never plays), and a stale start's late
+//    failure never touches a newer running start.
 // What this proves: the digital signal Web Audio computes. Nothing here was heard through a
 // physical speaker, and no loudness (SPL) is measured.
 //   node scripts/sound-dsp-check.mjs
@@ -269,6 +271,79 @@ record.live.stopped = stopped;
 ok(stopped.state === "closed" && stopped.status === "off" && stopped.osc.started > 0 && stopped.osc.started === stopped.osc.stopped && stopped.levels === null, "stop(): the context is closed and every oscillator it started was stopped", JSON.stringify(stopped));
 await page.evaluate(() => window.__engine.apply({ cables: { "snd-cable-a": [0, 5], "snd-cable-b": [null, null], "snd-cable-c": [null, null] }, source: { hz: 440, wave: "sine" }, filter: { cutoff: 2000 }, drive: { gain: 1 }, speakerOn: true }));
 ok(await page.evaluate(() => window.__contexts.length === 1 && window.__engine.status === "off"), "after stop, a remote change does not restart audio");
+
+// Review finding B2 (PR #5): a click creates the context, but its resume() settles later. Leaving
+// the room (disconnect) or the studio in between must still stop it, so the late resume never
+// plays; and a stale start's failure must not touch a newer running start. resume() is held here
+// until the test settles it; everything else is the real engine and the real exit helper.
+await page.evaluate(() => {
+  const PATCH = { cables: { "snd-cable-a": [0, 5], "snd-cable-b": [null, null], "snd-cable-c": [null, null] }, source: { hz: 440, wave: "sine" }, filter: { cutoff: 2000 }, drive: { gain: 1 }, speakerOn: true };
+  const original = AudioContext.prototype.resume;
+  window.__pending = [];
+  AudioContext.prototype.resume = function () {
+    return new Promise((resolve, reject) => window.__pending.push({ context: this, release: () => original.call(this).then(resolve, reject), fail: (error) => reject(error) }));
+  };
+  window.__engines = {};
+  window.__exitStatuses = {};
+  for (const name of ["disconnect", "studio", "race"]) {
+    window.__exitStatuses[name] = [];
+    const engine = new window.__sound.audio.SoundEngine((status) => window.__exitStatuses[name].push(status));
+    engine.apply(PATCH);
+    window.__engines[name] = engine;
+    const button = document.createElement("button");
+    button.id = `start-${name}`;
+    button.textContent = `Start ${name}`;
+    button.style.cssText = "display:block;width:200px;height:60px";
+    button.addEventListener("click", () => void engine.start());
+    document.body.append(button);
+  }
+});
+const pendingCount = () => page.evaluate(() => window.__pending.length);
+const osc = () => page.evaluate(() => ({ ...window.__osc }));
+record.live.delayedResume = {};
+for (const [name, reason] of [["disconnect", "Connection to the room lost · audio stopped"], ["studio", "Left Sound Flow Studio · audio stopped"]]) {
+  const n = await pendingCount();
+  const oscBefore = await osc();
+  await page.click(`#start-${name}`);
+  await page.waitForFunction((count) => window.__pending.length === count + 1, n);
+  const pendingState = await page.evaluate((engineName) => ({ status: window.__engines[engineName].status, active: window.__engines[engineName].active, contexts: window.__contexts.length }), name);
+  const stoppedSomething = await page.evaluate(({ engineName, why }) => window.__sound.audio.stopEngineForExit(window.__engines[engineName], why), { engineName: name, why: reason });
+  await page.evaluate((index) => window.__pending[index].release(), n);
+  await page.waitForTimeout(300);
+  const result = await page.evaluate(({ engineName, index }) => ({
+    status: window.__engines[engineName].status,
+    statuses: window.__exitStatuses[engineName],
+    state: window.__pending[index].context.state,
+    levels: window.__engines[engineName].levels(),
+    active: window.__engines[engineName].active,
+  }), { engineName: name, index: n });
+  const oscAfter = await osc();
+  const started = oscAfter.started - oscBefore.started;
+  const stopped = oscAfter.stopped - oscBefore.stopped;
+  record.live.delayedResume[name] = { pendingState, stoppedSomething, result, started, stopped };
+  // In Chromium a context created inside a click usually starts running on its own, so the status
+  // may already say "running" here; the "off while pending" case is covered with a context that
+  // starts suspended in scripts/sound-engine-check.mjs.
+  ok(stoppedSomething === true && pendingState.active === true && result.state === "closed" && result.status === "off" && result.levels === null && result.active === false && started === stopped && result.statuses[result.statuses.length - 1] === "off",
+    `${name} while the click's resume is pending (real Chromium): the exit helper closes that context and the late resume does not bring audio back (oscillators started ${started} = stopped ${stopped})`, JSON.stringify({ pendingState, result }));
+}
+// Finding (a): start A → stop → start B (runs) → A's resume fails late: B keeps running, no error status.
+{
+  const n = await pendingCount();
+  await page.click("#start-race");
+  await page.waitForFunction((count) => window.__pending.length === count + 1, n);
+  await page.evaluate(() => window.__engines.race.stop("restart"));
+  await page.click("#start-race");
+  await page.waitForFunction((count) => window.__pending.length === count + 2, n);
+  await page.evaluate((index) => window.__pending[index].release(), n + 1);
+  await page.waitForFunction(() => window.__engines.race.status === "running", null, { timeout: 10_000 });
+  await page.evaluate((index) => window.__pending[index].fail(new Error("late failure of the first start")), n);
+  await page.waitForTimeout(300);
+  const race = await page.evaluate(() => ({ status: window.__engines.race.status, statuses: window.__exitStatuses.race, state: window.__engines.race.contextState() }));
+  record.live.delayedResume.race = race;
+  ok(race.status === "running" && race.state === "running" && !race.statuses.includes("error"), "a stale start's late failure does not touch the newer running start (no error status)", JSON.stringify(race));
+  await page.evaluate(() => window.__engines.race.stop("done"));
+}
 
 ok(issues.length === 0, "no page errors", issues.join("; "));
 record.checks = checks;
