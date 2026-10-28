@@ -22,7 +22,7 @@
     "test:e2e:cable": "node scripts/e2e-cable-end.mjs",
     "qa:3d": "node scripts/qa-3d.mjs",
     "test:sync": "node --experimental-strip-types scripts/sync-check.mjs",
-    "test:tools": "node --experimental-strip-types scripts/tools-check.mjs",
+    "test:tools": "node --experimental-strip-types scripts/tools-check.mjs && node --experimental-strip-types scripts/flow-plan-check.mjs",
     "test:episode": "node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs",
     "test:diagram": "node --experimental-strip-types scripts/snapino-diagram-check.mjs",
     "test:e2e:rescue": "node --experimental-strip-types scripts/e2e-rescue-signal.mjs"

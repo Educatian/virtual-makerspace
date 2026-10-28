@@ -462,11 +462,13 @@ export class WorkbenchTools {
     const note = document.querySelector<HTMLElement>("#inspector-flow-note");
     const flow = this.host.workbench()?.currentFlowState();
     if (!note || !flow) return;
+    const listed = (wires: Array<{ id: string; amps: number }>): string => wires.map((wire) => `${PART_NAMES[wire.id] ?? wire.id} ${formatAmps(Math.abs(wire.amps))}`).join(", ");
+    const small = flow.small.length ? ` Too small to draw (not zero): ${listed(flow.small)}.` : "";
     const text = !flow.enabled
       ? "Arrows show the solved conventional current on each jumper wire (the DC model above). Their speed is not to scale."
       : flow.wires.length
-        ? `Solved current: ${flow.wires.map((wire) => `${PART_NAMES[wire.id] ?? wire.id} ${formatAmps(Math.abs(wire.amps))}`).join(", ")}. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above.${flow.moving ? "" : " (Still arrows: reduced motion.)"}`
-        : `No flow drawn: ${flow.reason}.`;
+        ? `Solved current: ${listed(flow.wires)}. Arrows point along conventional current; speed is not to scale. Parts' own currents are in the readings above.${small}${flow.moving ? "" : " (Still arrows: reduced motion.)"}`
+        : `No flow drawn: ${flow.reason}.${small}`;
     if (note.textContent !== text) note.textContent = text;
   }
 

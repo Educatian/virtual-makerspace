@@ -55,6 +55,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { formatAmps, formatVolts } from "../circuit/dc-engine.ts";
 import { sanitizeProps, type PartProps } from "../circuit/part-props.ts";
 import { analyzeCircuit, type CircuitAnalysis, type CircuitPlacements, type CircuitProps } from "./circuit-topology.js";
+import { planFlow } from "./flow-plan.ts";
 import type { SharedTransform } from "./collaboration.js";
 import {
   BOARD_SURFACE,
@@ -339,6 +340,7 @@ export class DesktopWorkbenchScene {
   private flowMarkers: InstancedMesh | null = null;
   private flowWires: Array<{ id: string; amps: number; direction: 1 | -1; speed: number }> = [];
   private flowReason = "off";
+  private flowSmall: Array<{ id: string; amps: number }> = [];
   private flowPhase = 0;
   private readonly flowTemp = { point: new Vector3(), tangent: new Vector3(), up: new Vector3(0, 1, 0), quaternion: new Quaternion(), worldQuaternion: new Quaternion(), dummy: new Object3D() };
   /** Smooth camera moves for the view presets (instant with reduced motion). */
@@ -674,7 +676,7 @@ export class DesktopWorkbenchScene {
   }
 
   /** What the flow view shows (inspector note and QA). */
-  currentFlowState(): { enabled: boolean; reason: string; wires: Array<{ id: string; amps: number; direction: 1 | -1 }>; arrows: number; moving: boolean; first: [number, number, number] | null; firstPointsTo: [number, number, number] | null } {
+  currentFlowState(): { enabled: boolean; reason: string; wires: Array<{ id: string; amps: number; direction: 1 | -1 }>; small: Array<{ id: string; amps: number }>; arrows: number; moving: boolean; first: [number, number, number] | null; firstPointsTo: [number, number, number] | null } {
     let first: [number, number, number] | null = null;
     let firstPointsTo: [number, number, number] | null = null;
     if (this.flowMarkers?.visible && this.flowMarkers.count > 0) {
@@ -691,6 +693,7 @@ export class DesktopWorkbenchScene {
       enabled: this.flowEnabled,
       reason: this.flowReason,
       wires: this.flowWires.map(({ id, amps, direction }) => ({ id, amps, direction })),
+      small: this.flowSmall.map((wire) => ({ ...wire })),
       arrows: this.flowMarkers?.visible ? this.flowMarkers.count : 0,
       moving: this.flowEnabled && this.flowWires.length > 0 && !(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false),
     };
@@ -698,24 +701,14 @@ export class DesktopWorkbenchScene {
 
   private recomputeFlow(): void {
     this.flowWires = [];
+    this.flowSmall = [];
     const analysis = this.circuitAnalysis;
     if (!this.flowEnabled) this.flowReason = "off";
-    else if (!analysis) this.flowReason = "not solved yet";
     else {
-      const status = analysis.board.result.status;
-      if (analysis.short || status === "short-circuit") this.flowReason = "short circuit";
-      else if (status === "open-circuit") this.flowReason = "open circuit";
-      else if (status === "no-source") this.flowReason = "no supply in the circuit";
-      else if (status !== "ok" && status !== "unsafe") this.flowReason = "the circuit could not be solved";
-      else {
-        for (const id of ["wire-red", "wire-blue", "wire-yellow"]) {
-          const reading = analysis.board.result.elements[id];
-          if (!reading?.connected || Math.abs(reading.amps) < 1e-4) continue;
-          const speed = MathUtils.clamp(0.12 + 0.1 * Math.log10(Math.abs(reading.amps) / 1e-4), 0.12, 0.5);
-          this.flowWires.push({ id, amps: reading.amps, direction: reading.amps > 0 ? 1 : -1, speed });
-        }
-        this.flowReason = this.flowWires.length ? "solved" : "no current through any jumper wire";
-      }
+      const plan = planFlow(analysis ? analysis.board.result : null, Boolean(analysis?.short), ["wire-red", "wire-blue", "wire-yellow"]);
+      this.flowWires = plan.wires;
+      this.flowSmall = plan.small;
+      this.flowReason = plan.reason;
     }
     if (this.flowMarkers) {
       this.flowMarkers.count = this.flowWires.length * 4;
