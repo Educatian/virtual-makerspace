@@ -763,6 +763,7 @@ export class WorkbenchTools {
       this.host.status(`Import refused · ${parsed.error}`, "warning");
       return false;
     }
+    if (parsed.notice && confirm && !(await confirmDialog("Older greenhouse file", parsed.notice, "Load default rig"))) return false;
     const project = parsed.project;
     if (project.studio !== this.host.studio()) {
       this.host.status(`Import refused · this project is for the ${project.studio} studio; switch studios first`, "warning");
@@ -779,7 +780,12 @@ export class WorkbenchTools {
     ))) return false;
     const changes: Array<{ id: string; transform: SharedTransform }> = [];
     for (const part of project.parts) {
-      const transform = part.sockets ? workbench.placementTransform(part.id, part.sockets) : workbench.homeTransform(part.id);
+      const sockets = part.sockets;
+      const transform = !sockets
+        ? workbench.homeTransform(part.id)
+        : sockets[0] === null || sockets[1] === null
+          ? workbench.partialLineTransform(part.id, sockets)
+          : workbench.placementTransform(part.id, [sockets[0], sockets[1]]);
       if (!transform) {
         this.host.status(`Import refused · ${part.id} cannot be placed there`, "warning");
         return false;
@@ -887,6 +893,8 @@ function refusalCopy(label: string, result: Exclude<EditResult, { ok: true }>): 
       return `${label} refused by the room's validation (a value or jack outside the rules) · nothing changed`;
     case "occupied":
       return `${label} refused · that jack already holds another cable's plug (one plug per jack) · nothing changed`;
+    case "running":
+      return `${label} refused · the greenhouse day is running; pause it to change the rig · nothing changed`;
     case "offline":
       return `${label} not sent · reconnecting to the room, nothing changed`;
     case "timeout":

@@ -32,6 +32,8 @@ import { confirmDialog, WorkbenchTools } from "./workbench-tools.js";
 import { RescueEpisode } from "../episodes/rescue-panel.ts";
 import { SnapinoInspector } from "./snapino-inspector.ts";
 import { SoundPanel } from "../sound/sound-panel.ts";
+import { GreenhousePanel } from "../greenhouse/gh-panel.ts";
+import type { GhRun } from "../../cloudflare/greenhouse-run.js";
 import { transmitting as episodeTransmitting, type RescueState } from "../episodes/rescue-state.ts";
 import { sameProgram, sameTransform } from "./edit-history.ts";
 import type { SharedTransform } from "./collaboration.js";
@@ -94,6 +96,9 @@ let episode: RescueEpisode | null = null;
 let inspector: SnapinoInspector | null = null;
 /** Episode 2, Sound Flow Studio: the Studio and Inspector tabs and this listener's audio. */
 let soundPanel: SoundPanel | null = null;
+/** Episode 3, Resource-Limited Greenhouse: its dock tab (brief, day, flow, selected part, attempt). */
+let greenhousePanel: GreenhousePanel | null = null;
+let queuedGreenhouse: GhRun | null = null;
 let queuedEpisode: RescueState | null = null;
 /** A transmission drives the Snapino pins; Run's loop() must not touch them meanwhile. */
 let transmissionActive = false;
@@ -127,7 +132,7 @@ const STUDIO_PATH: Array<{ studio: StudioKind; name: string; icon: string; stage
   { studio: "snap", name: "Accessible Snap Lab", icon: "ph-puzzle-piece", stage: "Spark", time: "15 min", alt: "Snap Circuits-style base grid with a battery, switch, lamp and motor loop" },
   { studio: "snapino", name: "Snapino Bridge", icon: "ph-code-block", stage: "Skill build", time: "30 min", alt: "Snapino board with an Arduino Nano on a snap base, a lamp wired from pin D5 to GND" },
   { studio: "circuit", name: "Circuit Bench", icon: "ph-circuitry", stage: "Skill build", time: "45 min", alt: "3D workbench with a breadboard, LEDs, resistors and a battery" },
-  { studio: "greenhouse", name: "Greenhouse", icon: "ph-plant", stage: "Challenge", time: "Multi-session", alt: "Smart greenhouse bench with sensors, pump, fan and solar panel" },
+  { studio: "greenhouse", name: "Resource-Limited Greenhouse", icon: "ph-plant", stage: "Episode 3", time: "40 min", alt: "Greenhouse with two raised beds, a water tank, pump, valve manifold, controller, vent fan and solar panel" },
   { studio: "sound", name: "Sound Flow Studio", icon: "ph-wave-sawtooth", stage: "Episode 2", time: "30 min", alt: "Desktop patch case with Source, Filter, Drive and Speaker modules, patched with red, yellow and blue cables" },
 ];
 
@@ -170,20 +175,20 @@ const STUDIO_COPY: Record<StudioKind, StudioCopy> = {
     testTrace: "Ran motherboard power-path test",
   },
   greenhouse: {
-    subtitle: "Smart Greenhouse",
+    subtitle: "Resource-Limited Greenhouse",
     heading: "Greenhouse",
-    caption: "Route sensors, water, air, and power",
-    testTooltip: "Test greenhouse system",
-    challenge: "Protect seedlings: moisture >65%, temperature <25°C",
-    challengeAction: "Load a connected field-test layout",
-    challengeLabel: "Load field-test layout",
-    hypothesis: "If the soil and climate sensors control the pump and fan, the seedlings should remain in the safe growing range.",
-    chat: "Discuss this system…",
-    seed: "Inspect the growing system from two angles. Agree on which subsystem—sensing, water, air, or power—to connect first.",
-    goal: "Co-design a stable growing system that senses soil and climate, then controls water and airflow.",
-    opened: "Greenhouse Studio opened",
-    testActivity: "Field test",
-    testTrace: "Ran greenhouse field test",
+    caption: "Share one tank and one solar panel between two beds through a hot, dry day",
+    testTooltip: "Check the rig as built (G1)",
+    challenge: "Brief: both beds in range, air under control and 8 L left after one dry day",
+    challengeAction: "Open the brief",
+    challengeLabel: "Open the brief",
+    hypothesis: "If bed B gets the larger share of each pump run and the fan starts early, both beds stay in range without emptying the tank.",
+    chat: "Discuss your allocation…",
+    seed: "Resource-Limited Greenhouse: predict what the day will do, plumb and wire the rig together, set the valves and rules, run the day, then explain what the graph shows and revise. Run controls and the rig are shared; your notes are yours.",
+    goal: "Co-allocate water and solar power so both beds and the air stay in range through one day, and explain the tradeoffs.",
+    opened: "Resource-Limited Greenhouse opened",
+    testActivity: "Rig check",
+    testTrace: "Checked the greenhouse rig",
   },
   snapino: {
     subtitle: "Snapino Bridge",
@@ -646,9 +651,9 @@ function enterWorkspace(): void {
       workbench?.applyRemoteTransform(componentId, transform, true, { force, propsOnly });
       tools?.noteChange();
     },
-    onRevert: (componentId, transform, { superseded, holderName }) => {
+    onRevert: (componentId, transform, { superseded, holderName, reason }) => {
       workbench?.revertPart(componentId, transform, superseded);
-      if (!superseded) showSceneStatus(holderName ? `${holderName} is holding this part · the room's position was kept` : "The room did not accept that move · the shared position was kept", "warning");
+      if (!superseded) showSceneStatus(reason === "running" ? "The greenhouse day is running: the rig is locked · pause the day to change it; nothing changed" : holderName ? `${holderName} is holding this part · the room's position was kept` : "The room did not accept that move · the shared position was kept", "warning");
       tools?.noteChange();
     },
     onClaimDenied: (resourceId, holderName) => {
@@ -744,6 +749,11 @@ function enterWorkspace(): void {
     onConnection: (online) => {
       if (!online) soundPanel?.stopAudio("Connection to the room lost · audio stopped; press Start audio after reconnecting");
     },
+    // The room's greenhouse day (model time and resources): never this tab's own clock.
+    onGreenhouse: (run) => {
+      if (greenhousePanel) greenhousePanel.setRun(run);
+      else queuedGreenhouse = run;
+    },
   }, authProfile.id);
 
   workbench = new DesktopWorkbenchScene(sceneHost, {
@@ -755,7 +765,9 @@ function enterWorkspace(): void {
       tools?.refreshPart();
       inspector?.refresh();
       soundPanel?.refresh();
+      greenhousePanel?.refresh();
       if (component && (activeStudio === "snapino" || activeStudio === "circuit" || activeStudio === "sound")) focusInspectorTab();
+      if (component && activeStudio === "greenhouse") focusGreenhouseTab();
       updatePresetButtons();
     },
     onSnapinoChange: () => inspector?.refresh(),
@@ -763,10 +775,16 @@ function enterWorkspace(): void {
       soundPanel?.update(state, graph, signal);
       tools?.noteChange();
     },
-    onKnobPick: (moduleId, param) => soundPanel?.focusControl(moduleId, param),
+    onKnobPick: (moduleId, param) => (activeStudio === "greenhouse" ? greenhousePanel?.focusControl(moduleId, param) : soundPanel?.focusControl(moduleId, param)),
+    onGreenhouseRig: (rig) => greenhousePanel?.setRig(rig),
     onStatus: showSceneStatus,
     onTransform: (componentId, transform) => room?.sendTransform(componentId, transform),
     onClaim: (componentId) => {
+      // The room refuses rig changes while the greenhouse day runs: say so before any drag.
+      if (activeStudio === "greenhouse" && greenhousePanel?.rigLocked()) {
+        showSceneStatus("The greenhouse day is running: the rig is locked · pause the day to change it", "warning");
+        return false;
+      }
       // A whole part conflicts with either cable end, and an end with the whole part.
       const owner = conflictingOwner(componentId);
       if (owner) {
@@ -907,7 +925,7 @@ function enterWorkspace(): void {
       flow: () => workbench?.currentFlowState() ?? null,
       wireEnds: (id: string) => workbench?.wireEnds(id) ?? null,
       /** Camera presets and where the camera is (framing checks). */
-      preset: (name: "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener") => workbench?.viewPreset(name),
+      preset: (name: "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener" | "beds") => workbench?.viewPreset(name),
       camera: () => workbench?.cameraState() ?? null,
       /** Studs the 3D bench is highlighting for the inspector right now. */
       highlights: () => workbench?.studHighlightState() ?? [],
@@ -936,6 +954,14 @@ function enterWorkspace(): void {
       soundRevs: () => ({ participant: room?.participant.id ?? null, revs: Object.fromEntries(["snd-source", "snd-filter", "snd-drive", "snd-speaker", "snd-cable-a", "snd-cable-b", "snd-cable-c"].map((id) => [id, room?.sync.revs.get(id) ?? 0])) }),
       plugPoint: (id: string, end: 0 | 1) => workbench?.plugScreenPoint(id, end) ?? null,
       knobPoint: (id: string) => workbench?.moduleScreenPoint(id) ?? null,
+      /** Greenhouse: what the panel shows (no private text), the run as this client holds it, the room clock. */
+      greenhouse: () => ({ panel: greenhousePanel?.qaState() ?? null, run: room?.greenhouse ?? null, serverTime: room?.serverTime() ?? null }),
+      /** Greenhouse screen points for real pointer input: a component, a fixture control. */
+      partPoint: (id: string) => workbench?.componentScreenPoint(id) ?? null,
+      ghControlPoint: (control: string) => workbench?.ghControlScreenPoint(control) ?? null,
+      partDragPoints: (id: string, a: number, b: number) => workbench?.partDragPoints(id, a, b) ?? null,
+      /** The part selected in 3D (cross-link checks). */
+      selected: () => workbench?.selectedId ?? null,
       /** Seat a part locally (no room traffic) for close-up captures. */
       place: (componentId: string, a: number, b: number) => {
         const transform = workbench?.placementTransform(componentId, [a, b]);
@@ -965,6 +991,7 @@ function enterWorkspace(): void {
   createEpisode();
   createInspector();
   createSoundPanel();
+  createGreenhousePanel();
   workbench.reevaluate();
   // Offer local recovery once any shared state from teammates has had time to arrive.
   window.setTimeout(() => tools?.offerRecovery(), 2600);
@@ -1100,18 +1127,8 @@ function renderWorkspace(): void {
               <div><i class="ph ph-arrows-clockwise"></i><span><strong>Rotate</strong>Drag the selected ring</span></div>
               <div><i class="ph ph-magnet"></i><span><strong>Magnetism</strong>Guides both leads</span></div>
             </div>
-            <section class="environment-hud" id="environment-hud" hidden aria-label="Greenhouse live conditions">
-              <div class="environment-heading"><span data-tooltip="Live greenhouse conditions"><i class="ph ph-waveform"></i><span class="sr-only">Live conditions</span></span><small id="greenhouse-status" data-tooltip="Connect every subsystem">Incomplete</small></div>
-              <div class="environment-metrics">
-                <article data-tooltip="Soil moisture"><i class="ph ph-drop"></i><span><small class="sr-only">Soil moisture</small><strong id="metric-moisture">34%</strong></span></article>
-                <article data-tooltip="Air temperature"><i class="ph ph-thermometer"></i><span><small class="sr-only">Temperature</small><strong id="metric-temperature">28.6°C</strong></span></article>
-                <article data-tooltip="Available grow light"><i class="ph ph-sun"></i><span><small class="sr-only">Grow light</small><strong id="metric-light">58%</strong></span></article>
-                <article data-tooltip="Irrigation flow"><i class="ph ph-waves"></i><span><small class="sr-only">Water flow</small><strong id="metric-flow">0.0 L/m</strong></span></article>
-              </div>
-              <div class="system-lines">
-                <span id="irrigation-line" data-tooltip="Irrigation offline"><i class="ph ph-circle"></i><span class="sr-only">Irrigation offline</span></span>
-                <span id="ventilation-line" data-tooltip="Ventilation offline"><i class="ph ph-circle"></i><span class="sr-only">Ventilation offline</span></span>
-              </div>
+            <section class="environment-hud" id="environment-hud" hidden aria-label="Greenhouse model time and resources">
+              ${GreenhousePanel.hudMarkup()}
             </section>
             <aside class="challenge-card" id="challenge-card" hidden aria-label="Community challenge tools">
               <button class="challenge-orb" type="button" aria-label="Community challenge" data-tooltip="Protect seedlings: moisture >65%, temperature <25°C"><i class="ph ph-flag-banner"></i></button>
@@ -1133,6 +1150,7 @@ function renderWorkspace(): void {
           <div class="discussion-tabs" role="tablist">
             <button class="discussion-tab" data-tab="episode" data-tooltip="Rescue Signal Workshop" aria-label="Rescue Signal Workshop" type="button" hidden><i class="ph ph-broadcast"></i><span class="sr-only">Workshop</span></button>
             <button class="discussion-tab" data-tab="sound" data-tooltip="Sound Flow Studio: brief, attempt, audio and signal" aria-label="Sound Flow Studio" type="button" hidden><i class="ph ph-wave-sawtooth"></i><span class="sr-only">Studio</span></button>
+            <button class="discussion-tab" data-tab="greenhouse" data-tooltip="Greenhouse: brief, the day, resource flow, selected part and attempt" aria-label="Greenhouse" type="button" hidden><i class="ph ph-plant"></i><span class="sr-only">Greenhouse</span></button>
             <button class="discussion-tab" data-tab="inspect" data-tooltip="Inspector: the selected part, readings and the live diagram" aria-label="Inspector" type="button" hidden><i class="ph ph-circuitry"></i><span class="sr-only">Inspector</span></button>
             <button class="discussion-tab is-active" data-tab="chat" data-tooltip="Text chat" aria-label="Text chat" type="button"><i class="ph ph-chat-circle-text"></i><span class="sr-only">Chat</span></button>
             <button class="discussion-tab" data-tab="voice" data-tooltip="Voice chat" aria-label="Voice chat" type="button"><i class="ph ph-waveform"></i><span class="sr-only">Voice</span></button>
@@ -1159,6 +1177,10 @@ function renderWorkspace(): void {
 
           <div class="discussion-panel" data-panel="sound">
             ${SoundPanel.studioMarkup()}
+          </div>
+
+          <div class="discussion-panel" data-panel="greenhouse">
+            ${GreenhousePanel.markup()}
           </div>
 
           <div class="discussion-panel" data-panel="inspect">
@@ -1259,8 +1281,8 @@ function renderComponentPalette(): void {
     const card = document.createElement("button");
     card.className = "component-card";
     card.type = "button";
-    // Sound modules are fixtures on the desk: select them, never drag them.
-    card.draggable = component.kind !== "soundmodule";
+    // Sound modules and greenhouse equipment are fixtures: select them, never drag them.
+    card.draggable = component.kind !== "soundmodule" && component.kind !== "ghfixture";
     card.dataset.componentId = component.id;
     card.dataset.tooltip = `${component.name} · ${component.detail}`;
     card.title = card.dataset.tooltip;
@@ -1283,6 +1305,12 @@ function renderComponentPalette(): void {
 }
 
 function componentIcon(component: ComponentSpec): string {
+  if (component.kind === "ghfixture") {
+    return ({ "water-pump": "ph-drop", "valve-manifold": "ph-arrows-split", "farm-controller": "ph-cpu", "vent-fan": "ph-fan", "solar-panel": "ph-solar-panel", "temp-sensor": "ph-thermometer", "light-sensor": "ph-sun" } as Record<string, string>)[component.id] ?? "ph-cube";
+  }
+  if (component.kind === "ghhose") return "ph-waves";
+  if (component.kind === "ghcable") return "ph-plug";
+  if (component.kind === "ghprobe") return "ph-plant";
   if (component.kind === "battery") return "ph-battery-high";
   if (component.kind === "wire") return "ph-path";
   if (component.kind === "hose") return "ph-waves";
@@ -1349,7 +1377,7 @@ function bindWorkspaceEvents(): void {
     const view = (event.target as Element).closest<HTMLButtonElement>("button[data-view]")?.dataset.view;
     if (!view) return;
     if (view === "fit") workbench?.focusSelected();
-    else workbench?.viewPreset(view as "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener");
+    else workbench?.viewPreset(view as "bench" | "top" | "table" | "receiver" | "overview" | "plan" | "listener" | "beds");
   });
   document.querySelector("#episode-button")?.addEventListener("click", () => {
     if (!episode) return;
@@ -1411,7 +1439,12 @@ function bindWorkspaceEvents(): void {
       if (dockCollapsed) setDockCollapsed(false);
       switchDiscussionTab("sound");
       document.querySelector<HTMLElement>("#sound-studio-title")?.scrollIntoView({ block: "nearest" });
-    } else if (activeStudio === "greenhouse") workbench?.loadGreenhouseDemo();
+    } else if (activeStudio === "greenhouse") {
+      // No auto-built rig in either condition: the orb opens the brief.
+      if (dockCollapsed) setDockCollapsed(false);
+      switchDiscussionTab("greenhouse");
+      document.querySelector<HTMLElement>("#gh-title")?.scrollIntoView({ block: "nearest" });
+    }
     else if (activeStudio === "snap") workbench?.loadSnapDemo();
     else if (activeStudio === "snapino") workbench?.loadSnapinoDemo();
     else workbench?.loadCircuitDemo();
@@ -1587,14 +1620,18 @@ function updateStudioUi(): void {
   if (soundInspector) soundInspector.hidden = activeStudio !== "sound";
   const soundTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="sound"]');
   if (soundTab) soundTab.hidden = activeStudio !== "sound";
+  const greenhouseTab = document.querySelector<HTMLElement>('.discussion-tab[data-tab="greenhouse"]');
+  if (greenhouseTab) greenhouseTab.hidden = activeStudio !== "greenhouse";
   const audioToggle = document.querySelector<HTMLElement>("#sound-audio-toggle");
   if (audioToggle) audioToggle.hidden = activeStudio !== "sound";
   renderViewPresets();
   if (activeStudio !== "snapino") workbench?.setStudHighlights([]);
   if (activeStudio !== "sound") workbench?.setJackHighlights([]);
-  if ((activeStudio !== "snapino" && codeTab?.classList.contains("is-active")) || (inspectTab?.hidden && inspectTab.classList.contains("is-active")) || (soundTab?.hidden && soundTab.classList.contains("is-active"))) switchDiscussionTab("chat");
+  if ((activeStudio !== "snapino" && codeTab?.classList.contains("is-active")) || (inspectTab?.hidden && inspectTab.classList.contains("is-active")) || (soundTab?.hidden && soundTab.classList.contains("is-active")) || (greenhouseTab?.hidden && greenhouseTab.classList.contains("is-active"))) switchDiscussionTab("chat");
   if (activeStudio === "sound" && !document.querySelector(".discussion-tab.is-active:not([hidden])")?.matches('[data-tab="sound"], [data-tab="inspect"]')) switchDiscussionTab("sound");
+  if (activeStudio === "greenhouse" && !document.querySelector(".discussion-tab.is-active:not([hidden])")?.matches('[data-tab="greenhouse"]')) switchDiscussionTab("greenhouse");
   soundPanel?.refresh();
+  greenhousePanel?.refresh();
   inspector?.refresh();
   updatePresetButtons();
   renderCodePanel();
@@ -1882,10 +1919,10 @@ function phasePrompt(phase: CollaborationPhase): string {
       reflect: "Compare the attempt with the evidence and state one transferable circuit rule.",
     },
     greenhouse: {
-      frame: "One maker proposes a sensing-to-action chain. Reviewers identify crop and safety risks.",
-      build: "One maker connects a subsystem while the team checks power, signal, and physical routing.",
-      test: "The team inspects water, air, sensing, and power, then everyone marks ready for the field test.",
-      reflect: "Use the live readings to explain what changed and name one rule for the next design.",
+      frame: "Each maker records a prediction for the day before anyone plugs in. Agree how to share the tank and the solar power between the beds and the fan.",
+      build: "One maker plumbs (tank → pump → manifold → beds) while the other wires power and places the probe; check each port's type before plugging.",
+      test: "Run the day together. Pause at the first sign of trouble and read the graph and the diagram before changing anything.",
+      reflect: "Use the day's record to explain which tradeoff decided the result, and name the one change for the next attempt.",
     },
     snapino: {
       frame: "Agree which pin drives which load. The coder states the plan for loop() before anyone snaps a part.",
@@ -2298,9 +2335,9 @@ function renderCircuitState(): void {
   button.classList.toggle("is-valid", powered);
   if (activeStudio === "greenhouse") {
     button.innerHTML = powered
-      ? '<i class="ph ph-check-circle"></i><span class="sr-only">Climate balanced</span>'
-      : '<i class="ph ph-gauge"></i><span class="sr-only">Test system</span>';
-    button.dataset.tooltip = powered ? "Climate balanced" : "Test greenhouse system";
+      ? '<i class="ph ph-check-circle"></i><span class="sr-only">Rig complete (G1)</span>'
+      : '<i class="ph ph-gauge"></i><span class="sr-only">Check the rig</span>';
+    button.dataset.tooltip = powered ? "Rig complete (G1): run the day to test the allocation" : "Check the rig as built (G1)";
   } else {
     button.innerHTML = powered
       ? '<i class="ph ph-check-circle"></i><span class="sr-only">Circuit powered</span>'
@@ -2310,33 +2347,8 @@ function renderCircuitState(): void {
 }
 
 function renderEnvironmentState(): void {
-  if (activeStudio !== "greenhouse") return;
-  const moisture = document.querySelector<HTMLElement>("#metric-moisture");
-  const temperature = document.querySelector<HTMLElement>("#metric-temperature");
-  const light = document.querySelector<HTMLElement>("#metric-light");
-  const flow = document.querySelector<HTMLElement>("#metric-flow");
-  const status = document.querySelector<HTMLElement>("#greenhouse-status");
-  const irrigation = document.querySelector<HTMLElement>("#irrigation-line");
-  const ventilation = document.querySelector<HTMLElement>("#ventilation-line");
-  if (moisture) moisture.textContent = `${Math.round(environmentState.moisture)}%`;
-  if (temperature) temperature.textContent = `${environmentState.temperature.toFixed(1)}°C`;
-  if (light) light.textContent = `${Math.round(environmentState.light)}%`;
-  if (flow) flow.textContent = `${environmentState.flow.toFixed(1)} L/m`;
-  if (status) {
-    status.textContent = environmentState.systemReady ? "Stable" : "Incomplete";
-    status.dataset.tooltip = environmentState.systemReady ? "Growing range stable" : "Connect every subsystem";
-    status.classList.toggle("is-ready", environmentState.systemReady);
-  }
-  if (irrigation) {
-    irrigation.classList.toggle("is-live", environmentState.irrigation);
-    irrigation.dataset.tooltip = `Irrigation ${environmentState.irrigation ? "running" : "offline"}`;
-    irrigation.innerHTML = `<i class="ph ${environmentState.irrigation ? "ph-check-circle" : "ph-circle"}"></i><span class="sr-only">Irrigation ${environmentState.irrigation ? "running" : "offline"}</span>`;
-  }
-  if (ventilation) {
-    ventilation.classList.toggle("is-live", environmentState.ventilation);
-    ventilation.dataset.tooltip = `Ventilation ${environmentState.ventilation ? "running" : "offline"}`;
-    ventilation.innerHTML = `<i class="ph ${environmentState.ventilation ? "ph-check-circle" : "ph-circle"}"></i><span class="sr-only">Ventilation ${environmentState.ventilation ? "running" : "offline"}</span>`;
-  }
+  // The greenhouse HUD shows the room's model state; GreenhousePanel writes it when model time
+  // or the rig changes (nothing here, so the HUD never shows anything the model did not compute).
 }
 
 let statusTimer = 0;
@@ -2374,6 +2386,9 @@ function onKeyboardShortcut(event: KeyboardEvent): void {
   }
   if (activeStudio === "sound" && ["1", "2", "3"].includes(event.key)) {
     workbench?.viewPreset((["overview", "plan", "listener"] as const)[Number(event.key) - 1]);
+  }
+  if (activeStudio === "greenhouse" && ["1", "2", "3"].includes(event.key)) {
+    workbench?.viewPreset((["overview", "top", "beds"] as const)[Number(event.key) - 1]);
   }
   if (event.key === " " && workbench?.toggleSelectedSwitch()) event.preventDefault();
   if (event.key === "Escape") document.querySelector<HTMLDialogElement>("#reflection-dialog")?.close();
@@ -2702,6 +2717,71 @@ function createSoundPanel(): void {
   document.querySelector("#sound-audio-toggle")?.addEventListener("click", () => soundPanel?.toggleFromToolbar());
 }
 
+/** Episode 3: the greenhouse dock tab, wired to the room's run state and parts. */
+function createGreenhousePanel(): void {
+  greenhousePanel = new GreenhousePanel({
+    workbench: () => workbench,
+    condition: () => ((params.get("condition") ?? "DI").toUpperCase() === "PF" ? "PF" : "DI"),
+    roomCode: () => currentRoomCode,
+    serverTime: () => room?.serverTime() ?? Date.now(),
+    action: async (action) => {
+      if (!room) return { ok: false, reason: "offline" };
+      const result = await room.greenhouseAction(action);
+      if (result.ok) room.recordTrace("edit", collaborationPhase, activeStudio, { detail: `Greenhouse day (run control): ${action.type}${action.type === "speed" ? ` ×${action.speed}` : action.type === "reset" && action.seed ? ` (seed ${action.seed})` : ""}` });
+      return result.ok ? { ok: true, reason: null } : { ok: false, reason: result.reason };
+    },
+    selectedId: () => (selectedComponent?.studio === "greenhouse" ? selectedComponent.id : null),
+    select: (id) => workbench?.selectById(id),
+    holderOf: (id) => {
+      for (const resourceId of [id, `${id}::endpoint-0`, `${id}::endpoint-1`]) {
+        const owner = owners.get(resourceId);
+        if (owner && owner.id !== room?.participant.id) return owner.name;
+      }
+      return null;
+    },
+    submit: async (changes, label, traceId) => {
+      if (!tools) return { ok: false, reason: "offline" };
+      const ok = await tools.submit(changes, label, { traceId });
+      return { ok, reason: ok ? null : tools.lastRefusal ?? "held" };
+    },
+    returnHome: async (id) => {
+      const transform = workbench?.homeTransform(id);
+      if (!transform || !tools) return false;
+      return tools.applyBulk([{ id, transform }], id === "soil-sensor" ? "Probe back to its holder" : "Unplugged and coiled in the aisle");
+    },
+    trace: (action, detail) => room?.recordTrace(action, collaborationPhase, activeStudio, { detail }),
+    status: showSceneStatus,
+    confirm: confirmDialog,
+    showTab: () => {
+      if (dockCollapsed) setDockCollapsed(false);
+      switchDiscussionTab("greenhouse");
+    },
+    active: () => activeStudio === "greenhouse",
+  });
+  greenhousePanel.bind();
+  if (room) room.greenhouseRig = () => workbench!.deriveGreenhouseRig();
+  if (workbench) greenhousePanel.setRig(workbench.deriveGreenhouseRig());
+  const run = queuedGreenhouse ?? room?.greenhouse ?? null;
+  queuedGreenhouse = null;
+  if (run) greenhousePanel.setRun(run);
+  // A same-device peer room has no server to hand out the day: the first tab starts from the
+  // brief's day; a teammate tab's stamped day replaces it when it arrives.
+  else if (room?.mode === "peer") room.initPeerGreenhouse();
+}
+
+/** A greenhouse part was selected: show the Selected card, unless the learner is typing elsewhere. */
+function focusGreenhouseTab(): void {
+  const active = document.querySelector<HTMLElement>(".discussion-tab.is-active")?.dataset.tab ?? "chat";
+  const typing = document.activeElement?.matches("#discussion-dock textarea, #discussion-dock input") ?? false;
+  const unsent = Boolean(document.querySelector<HTMLTextAreaElement>("#chat-input")?.value.trim());
+  if (active !== "greenhouse" && (typing || unsent)) {
+    document.querySelector('.discussion-tab[data-tab="greenhouse"]')?.classList.add("has-unread");
+    return;
+  }
+  if (active !== "greenhouse") switchDiscussionTab("greenhouse");
+  if (!typing) greenhousePanel?.revealSelected();
+}
+
 function focusInspectorTab(): void {
   const active = document.querySelector<HTMLElement>(".discussion-tab.is-active")?.dataset.tab ?? "chat";
   const typing = document.activeElement?.matches("#discussion-dock textarea, #discussion-dock input") ?? false;
@@ -2720,6 +2800,11 @@ const VIEW_PRESETS: Partial<Record<StudioKind, Array<{ view: string; label: stri
     { view: "top", label: "Top", aria: "Top view", icon: "ph-grid-four" },
     { view: "table", label: "Table", aria: "Table with parts tray", icon: "ph-frame-corners" },
     { view: "receiver", label: "Lamp", aria: "Receiver's view of the lamp", icon: "ph-eye" },
+  ],
+  greenhouse: [
+    { view: "overview", label: "Overview", aria: "Overview of the greenhouse", icon: "ph-cube-focus" },
+    { view: "top", label: "Top", aria: "Top view of the floor plan", icon: "ph-grid-four" },
+    { view: "beds", label: "Beds", aria: "The two beds with their inlets and probe slots", icon: "ph-plant" },
   ],
   sound: [
     { view: "overview", label: "Overview", aria: "Overview of the patch desk", icon: "ph-cube-focus" },
@@ -2786,6 +2871,9 @@ function disposeWorkspace(): void {
   inspector = null;
   soundPanel?.dispose();
   soundPanel = null;
+  greenhousePanel?.dispose();
+  greenhousePanel = null;
+  queuedGreenhouse = null;
   queuedEpisode = null;
   transmissionActive = false;
   wantEpisode = false;
