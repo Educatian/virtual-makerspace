@@ -2710,8 +2710,23 @@ export class DesktopWorkbenchScene {
       if (spec.studio !== this.activeStudio || !isFlexibleKind(spec.kind)) continue;
       targets.push(...((component.userData.endpointHitTargets ?? []) as Mesh[]));
     }
-    const hit = this.raycaster.intersectObjects(targets, false)[0];
-    if (!hit) return null;
+    const hits = this.raycaster.intersectObjects(targets, false);
+    if (!hits.length) return null;
+    // Overlapping grab spheres (ends lying close together): take the end whose centre is
+    // nearest the pointer on screen, not merely the sphere in front.
+    let hit = hits[0];
+    if (hits.length > 1) {
+      let best = Infinity;
+      const centre = new Vector3();
+      for (const candidate of hits) {
+        candidate.object.getWorldPosition(centre).project(this.camera);
+        const distance = Math.hypot(centre.x - this.pointer.x, centre.y - this.pointer.y);
+        if (distance < best) {
+          best = distance;
+          hit = candidate;
+        }
+      }
+    }
     const component = hit.object.userData.componentRoot as Group | undefined;
     const index = hit.object.userData.endpointIndex as 0 | 1 | undefined;
     return component && (index === 0 || index === 1) ? { component, index } : null;
@@ -3390,7 +3405,10 @@ export class DesktopWorkbenchScene {
     const sb = this.sockets[b];
     if (!component || !sa || !sb) return null;
     component.updateMatrixWorld(true);
-    const grab = new Box3().setFromObject(component).getCenter(new Vector3());
+    // The soil probe is grabbed by its head (its bounding-box centre is between the prongs).
+    const grab = (component.userData.spec as ComponentSpec).kind === "ghprobe"
+      ? component.localToWorld(new Vector3(0, 0.16, 0))
+      : new Box3().setFromObject(component).getCenter(new Vector3());
     const from = this.projectWorld(grab);
     this.updatePointer(from.x, from.y);
     this.raycaster.setFromCamera(this.pointer, this.camera);

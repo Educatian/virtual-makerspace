@@ -111,6 +111,15 @@ async function plug(page, line, end, port) {
   for (let step = 1; step <= 12; step += 1) await page.mouse.move(from.x + ((to.x - from.x) * step) / 12, from.y + ((to.y - from.y) * step) / 12);
   await page.mouse.up();
 }
+/** The same drag without waiting for frames first (while the day runs, time matters). */
+async function plugNow(page, line, end, port) {
+  const from = await page.evaluate(({ line, end }) => window.__vmQa.plugPoint(line, end), { line, end });
+  const to = await page.evaluate((port) => window.__vmQa.jackPoint(port, true), port);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 6; step += 1) await page.mouse.move(from.x + ((to.x - from.x) * step) / 6, from.y + ((to.y - from.y) * step) / 6);
+  await page.mouse.up();
+}
 /** A real pointer drag of the soil probe into a bed's slot (pins `a`, `b`). */
 async function placeProbe(page, a, b) {
   await ready(page, "before probe");
@@ -265,21 +274,17 @@ try {
   const redone = await until(() => member.evaluate(() => document.querySelector("#gh-list")?.textContent ?? ""), (text) => /soil < 60 %, fan when air > 26/.test(text), 120_000);
   await check("Undo and Redo of the host's rule edit reach the member", !/fan when air > 26/.test(undone) && /fan when air > 26/.test(redone), "", "host");
 
-  // ── The day: start, ×4, locked rig ──
+  // ── The day: start (×1, a day in 4 minutes); the rig is locked while it runs ──
+  // (Software-rendered pages take seconds per frame, so the lock checks come first, without
+  // waiting for frames, while the day certainly still runs.)
   await openTab(member);
   await member.locator('#gh-predictions input[value="dry"]').check();
   await runControl(host, "#gh-run-toggle");
-  await until(() => gh(member), (s) => s.panel.run.status === "running", 60_000);
-  await runControl(member, '#gh-panel [data-speed="4"]');
-  const fast = await until(() => gh(host), (s) => s.panel.run.speed === 4 && s.panel.shown.tick > 0, 120_000);
-  await check("start (host) and speed ×4 (member): both clients run the room's day", fast.panel.run.status === "running" && fast.panel.run.speed === 4 && fast.panel.locked === true, JSON.stringify(fast.panel.run), "host + member");
-  // Back to ×1 (a day in 4 minutes) so the lock checks below happen while the day still runs.
-  await runControl(member, '#gh-panel [data-speed="1"]');
-  await until(() => gh(host), (s) => s.panel.run.speed === 1, 120_000);
+  const started = await until(() => gh(member), (s) => s.panel.run.status === "running", 60_000);
+  await check("start (host): both clients run the room's day; the rig is locked on both", started.panel.run.status === "running" && started.panel.locked === true && (await gh(host)).panel.locked === true, JSON.stringify(started.panel.run), "host");
   const linesBefore = lines(await gh(host));
-  await plug(member, "irrigation-hose-4", 1, 6);
-  await ready(member, "member after locked drag");
-  const lockedCopy = await status(member);
+  await plugNow(member, "irrigation-hose-4", 1, 6);
+  const lockedCopy = await until(() => status(member), (text) => /rig is locked/.test(text ?? ""), 60_000);
   await check("while the day runs, a hose drag is refused on the page and nothing changes", /rig is locked/.test(lockedCopy ?? "") && lines(await gh(host)) === linesBefore && lines(await gh(member)) === linesBefore, `status "${lockedCopy}"`, "member");
   await host.locator("#undo-edit").click();
   const undoRunning = await until(() => status(host), (text) => /running/.test(text ?? ""), 60_000);
@@ -347,7 +352,9 @@ try {
   await until(() => member.evaluate(() => document.querySelector("#gh-list")?.textContent ?? ""), (text) => /valve A 100 %, valve B 100 %/.test(text) && /soil < 50 %, fan when air > 30/.test(text), 120_000);
   const notesLocked = (await gh(member)).panel.notesUnlocked;
   await runControl(host, "#gh-run-toggle");
-  await runControl(host, '#gh-panel [data-speed="4"]').catch(() => undefined);
+  await runControl(member, '#gh-panel [data-speed="4"]');
+  const fast = await until(() => gh(host), (s) => s.panel.run.speed === 4 || s.panel.verdict !== null, 120_000);
+  await check("speed ×4 (member) reaches the host's day", fast.panel.run.speed === 4, JSON.stringify(fast.panel.run), "member");
   const failedDay = await until(() => gh(member), (s) => s.panel.verdict !== null, 600_000);
   await sleep(1500);
   const memberVerdict = await member.locator("#gh-verdict").textContent();

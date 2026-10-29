@@ -196,6 +196,8 @@ export class GreenhousePanel {
   private editNote: { part: string; text: string; tone: "valid" | "warning" | "neutral" } | null = null;
   private runNote: { text: string; tone: "valid" | "warning" | "neutral" } | null = null;
   private readonly pending = new Set<string>();
+  /** An edit of this learner's was just answered: the Selected card may be rebuilt under focus. */
+  private answered = false;
   private actionPending = false;
   /** An action whose answer did not arrive (timeout, closed connection): did the room apply it? */
   private unconfirmed: { action: GhAction; before: GhRun; label: string } | null = null;
@@ -374,7 +376,12 @@ export class GreenhousePanel {
     const panel = document.querySelector<HTMLElement>("#gh-part-panel");
     panel?.addEventListener("input", (event) => {
       const target = event.target as HTMLInputElement;
-      if (target.dataset.draft) this.drafts.set(target.dataset.draft, target.value);
+      if (!target.dataset.draft) return;
+      this.drafts.set(target.dataset.draft, target.value);
+      // The card is not rebuilt while the learner types; the draft can be discarded at once.
+      const part = target.dataset.draft.split(":")[0];
+      const discard = panel.querySelector<HTMLButtonElement>(`[data-revert="${part}"]`);
+      if (discard) discard.disabled = false;
     });
     panel?.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
@@ -745,6 +752,7 @@ export class GreenhousePanel {
   private revertDrafts(part: string): void {
     for (const key of [...this.drafts.keys()]) if (key.startsWith(`${part}:`)) this.drafts.delete(key);
     this.editNote = { part, text: "Draft discarded · showing the room's values", tone: "neutral" };
+    this.answered = true;
     this.render();
   }
 
@@ -764,6 +772,7 @@ export class GreenhousePanel {
     if (!workbench) return;
     if (this.pending.has(part)) {
       this.editNote = { part, text: "Still waiting for the room to confirm the previous values · your new draft is kept; apply it again once that is answered", tone: "neutral" };
+      this.answered = true;
       this.render();
       return;
     }
@@ -772,6 +781,7 @@ export class GreenhousePanel {
       const problem = this.validate(param, this.draftValue(part, param));
       if (problem) {
         this.editNote = { part, text: problem, tone: "warning" };
+        this.answered = true;
         this.render();
         return;
       }
@@ -783,6 +793,7 @@ export class GreenhousePanel {
     const submitted = new Map([...this.drafts].filter(([key]) => key.startsWith(`${part}:`)));
     this.pending.add(part);
     this.editNote = { part, text: "Sending to the room…", tone: "neutral" };
+    this.answered = true;
     this.render();
     const result = await this.host.submit([{ id: part, transform: { ...before, props } }], label, part);
     this.pending.delete(part);
@@ -794,6 +805,7 @@ export class GreenhousePanel {
     } else {
       this.editNote = { part, text: notAppliedCopy(result.reason, "Not applied", "Your draft is kept below"), tone: "warning" };
     }
+    this.answered = true;
     this.render();
   }
 
@@ -809,6 +821,7 @@ export class GreenhousePanel {
     const ends: [number | null, number | null] = [value(0), value(1)];
     if (ends[0] !== null && ends[0] === ends[1]) {
       this.editNote = { part: id, text: "Both ends cannot go into one port.", tone: "warning" };
+      this.answered = true;
       this.render();
       return;
     }
@@ -821,6 +834,7 @@ export class GreenhousePanel {
     const label = `${LINE_NAMES[id].name}: ${ends.map((end) => (end === null ? "free" : portLabel(end))).join(" ↔ ")}`;
     this.pending.add(id);
     this.editNote = { part: id, text: "Sending to the room…", tone: "neutral" };
+    this.answered = true;
     this.render();
     const result = await this.host.submit([{ id, transform }], label, id);
     this.pending.delete(id);
@@ -829,6 +843,7 @@ export class GreenhousePanel {
       : result.reason === "running"
         ? { part: id, text: "Not applied · the day is running; pause it to change the rig. Nothing changed.", tone: "warning" }
         : { part: id, text: notAppliedCopy(result.reason, "Not applied", ""), tone: "warning" };
+    this.answered = true;
     this.render();
   }
 
@@ -840,10 +855,12 @@ export class GreenhousePanel {
     if (!transform) return;
     this.pending.add(id);
     this.editNote = { part: id, text: "Sending to the room…", tone: "neutral" };
+    this.answered = true;
     this.render();
     const result = await this.host.submit([{ id, transform }], `Soil probe into bed ${bed}`, id);
     this.pending.delete(id);
     this.editNote = result.ok ? { part: id, text: `Soil probe into bed ${bed} · shared with the room`, tone: "valid" } : { part: id, text: result.reason === "running" ? "Not applied · the day is running; pause it to change the rig. Nothing changed." : notAppliedCopy(result.reason, "Not applied", ""), tone: "warning" };
+    this.answered = true;
     this.render();
   }
 
@@ -851,10 +868,12 @@ export class GreenhousePanel {
     if (this.pending.has(id)) return;
     this.pending.add(id);
     this.editNote = { part: id, text: "Sending to the room…", tone: "neutral" };
+    this.answered = true;
     this.render();
     const ok = await this.host.returnHome(id);
     this.pending.delete(id);
     this.editNote = ok ? { part: id, text: id === "soil-sensor" ? "Probe back in its holder for everyone" : `${partName(id)} unplugged and coiled in the aisle for everyone`, tone: "valid" } : { part: id, text: this.locked() ? "Not applied · the day is running; pause it to change the rig. Nothing changed." : "Not applied · see the status above. Nothing changed.", tone: "warning" };
+    this.answered = true;
     this.render();
   }
 
@@ -1110,8 +1129,13 @@ export class GreenhousePanel {
     const rig = this.rig;
     if (!panel || !rig || !this.projection) return;
     const active = document.activeElement as HTMLElement | null;
-    if (active && panel.contains(active) && active.matches("input, textarea, select")) return;
+    // While the learner is in a field of this card it is not rebuilt (typing and focus stay),
+    // except right after an edit of theirs was answered (the field then shows the room's value).
+    const answered = this.answered;
+    this.answered = false;
+    if (!answered && active && panel.contains(active) && active.matches("input, textarea, select")) return;
     const activeKey = active && panel.contains(active) ? active.dataset.draft ?? active.dataset.focusKey ?? null : null;
+    const caret = active instanceof HTMLInputElement ? active.selectionStart : null;
     const selected = this.host.selectedId();
     if (!selected || !(selected in FIXTURE_NAMES || selected in LINE_NAMES)) {
       if (title) title.textContent = "Selected";
@@ -1123,7 +1147,11 @@ export class GreenhousePanel {
     if (title) this.write(title, "title", LINE_NAMES[selected] ? `<span class="sd-swatch" style="background:${LINE_NAMES[selected].css}" aria-hidden="true"></span> ${escape(LINE_NAMES[selected].name)} <small>${escape(LINE_NAMES[selected].length)} ${LINE_NAMES[selected].hose ? "hose" : "power cable"}</small>` : escape(partName(selected)));
     const html = LINE_NAMES[selected] ? this.lineCard(selected) : this.fixtureCard(selected);
     if (!this.write(panel, "part", html)) return;
-    if (activeKey) panel.querySelector<HTMLElement>(`[data-draft="${activeKey}"], [data-focus-key="${activeKey}"]`)?.focus();
+    if (activeKey) {
+      const target = panel.querySelector<HTMLElement>(`[data-draft="${activeKey}"], [data-focus-key="${activeKey}"]`);
+      target?.focus();
+      if (target instanceof HTMLInputElement && caret !== null && target.type === "text") target.setSelectionRange(Math.min(caret, target.value.length), Math.min(caret, target.value.length));
+    }
   }
 
   private holderNote(id: string): string {
