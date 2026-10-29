@@ -170,7 +170,16 @@ try {
   await setValues(page, "valve-manifold", { valveA: 100, valveB: 100 });
   await setValues(page, "farm-controller", { pumpBelow: 50, fanAbove: 30 });
   await page.locator('#gh-predictions input[value="meets"]').check();
-  await runDay(page);
+  // The dock collapsed while the day runs: model time goes on (the HUD and 3D follow it).
+  await control(page, "#gh-run-toggle");
+  await page.locator("#dock-collapse").click();
+  const collapsedAt = await page.evaluate(() => ({ tick: window.__vmQa.greenhouse().panel.shown.tick, clock: document.querySelector("#metric-clock")?.textContent }));
+  await page.waitForFunction((tick) => window.__vmQa.greenhouse().panel.shown.tick >= tick + 4, collapsedAt.tick, { polling: 500 });
+  const collapsedLater = await page.evaluate(() => ({ tick: window.__vmQa.greenhouse().panel.shown.tick, clock: document.querySelector("#metric-clock")?.textContent, dockHidden: document.querySelector("#dock-reopen")?.offsetParent !== null }));
+  check("dock collapsed: the day keeps running and the HUD clock follows it", collapsedLater.tick >= collapsedAt.tick + 4 && collapsedLater.clock !== collapsedAt.clock && collapsedLater.dockHidden, JSON.stringify({ collapsedAt, collapsedLater }));
+  await page.locator("#dock-reopen").click();
+  await control(page, '#gh-panel [data-speed="4"]');
+  await page.waitForFunction(() => window.__vmQa.greenhouse().panel.verdict !== null, null, { timeout: 600_000, polling: 1000 });
   const failed = await state(page);
   check("failure: the default allocation fails the brief (bed B out of range too long)", failed.panel.verdict.met === false && failed.panel.verdict.criteria.find((c) => c.id === "G3")?.pass === false, JSON.stringify(failed.panel.verdict.criteria.map((c) => `${c.id}:${c.measured}`)));
   await page.locator('#gh-panel .gh-jump a[href="#gh-day-title"]').click();

@@ -3424,8 +3424,9 @@ export class DesktopWorkbenchScene {
   ghControlScreenPoint(control: string): { x: number; y: number } | null {
     for (const id of ["valve-manifold", "farm-controller"]) {
       let found: Object3D | null = null;
-      this.components.get(id)?.traverse((child) => { if (!found && child.userData.ghControl === control) found = child; });
-      if (found) return this.projectWorld((found as Object3D).getWorldPosition(new Vector3()));
+      this.components.get(id)?.traverse((child) => { if (!found && child.userData.ghControl === control && child instanceof Group) found = child; });
+      // The middle of the lever or dial face (its pivot can sit on the valve body's edge).
+      if (found) return this.projectWorld(new Box3().setFromObject(found as Object3D).getCenter(new Vector3()));
     }
     return null;
   }

@@ -597,6 +597,8 @@ export function createGhFixture(id: string): Group {
       handle.add(lever, grip);
       handle.position.set(p.x, PLINTH_TOP + 0.48, p.z);
       handle.userData.ghControl = key;
+      // The valve's ball body belongs to the same control (a click on the valve focuses its field).
+      body.userData.ghControl = key;
       // The handle's letter on the valve body (the port label on the plinth names the outlet).
       const letter = label(tag, 0.08, 0.08, { color: "#fef2f2", background: "#7f1d1d" });
       letter.position.set(p.x, PLINTH_TOP + 0.4, p.z + 0.077);
