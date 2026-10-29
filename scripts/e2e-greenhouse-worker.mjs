@@ -21,12 +21,13 @@
 //  - the day: start, speed ×4, the rig locked while running (drag refused, Undo refused
 //    "running"), a pause racing an Undo (both converge either way), paused convergence of
 //    model time and resources (exact), a late joiner (exact), a dropped connection and recovery
-//    (no free elapsed time, no rewind), step one hour, a reset race (one applies, the other is
-//    refused as stale), a failing day (DI reasons vs PF measured values only, the PF notes gate)
+//    (no free elapsed time, no rewind), step one hour, a reset race (no reset applies to a run its
+//    maker did not see: one is refused as stale, or the two apply in turn, each to the run it saw), a failing day (DI reasons vs PF measured values only, the PF notes gate)
 //    and a passing day with the worked allocation, explained;
 //  - export (version 3, build only), import refused while running, Reset bench and import back,
 //    a version-1 greenhouse file migrated to the default rig with a notice;
-//  - cameras (1/2/3) and selection cross-links (diagram → 3D, 3D valve handle → inspector field);
+//  - cameras (1/2/3) and selection cross-links (diagram → 3D, the controller's 3D PUMP BELOW dial →
+//    inspector field; the valve handles are clicked in scripts/qa-greenhouse-controls.mjs);
 //  - everyone leaves while the day runs: it pauses with its resources (no refill), and the
 //    returning host is offered its saved rig.
 import { chromium } from "playwright";

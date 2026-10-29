@@ -1,0 +1,39 @@
+{
+ "app": "faa7c09",
+ "base": "http://127.0.0.1:4173",
+ "room": "Q2R9",
+ "checks": [
+  {
+   "name": "the brief's rig is plumbed and wired (every hose fitting in place at the manifold)",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}"
+  },
+  {
+   "name": "clicking the valve A handle in 3D selects valve-manifold and focuses its field",
+   "ok": false,
+   "detail": "at (586, 540); focus ; selected irrigation-hose-3; under the pointer [{\"part\":\"irrigation-hose-3\",\"mesh\":\"Mesh\",\"distance\":9.356,\"control\":null,\"handle\":false,\"ring\":false,\"visible\":false,\"material\":\"fault_collar\"},{\"part\":\"irrigation-hose-3\",\"mesh\":\"Mesh\",\"distance\":9.374,\"control\":null,\"handle\":true,\"ring\":true,\"visible\":true,\"material\":\"\"},{\"part\":\"irrigation-hose-3\",\"mesh\":\"Mesh\",\"distance\":9.394,\"control\":null,\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"fitting_brass\"}]"
+  },
+  {
+   "name": "clicking the valve B handle in 3D selects valve-manifold and focuses its field",
+   "ok": false,
+   "detail": "at (620, 586); focus ; selected irrigation-hose-4; under the pointer [{\"part\":\"irrigation-hose-4\",\"mesh\":\"Mesh\",\"distance\":9.039,\"control\":null,\"handle\":true,\"ring\":true,\"visible\":true,\"material\":\"\"},{\"part\":\"irrigation-hose-4\",\"mesh\":\"Mesh\",\"distance\":9.052,\"control\":null,\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"fitting_brass\"},{\"part\":\"valve-manifold\",\"mesh\":\"Mesh\",\"distance\":9.168,\"control\":\"valveB\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"valve_lever_red\"}]"
+  },
+  {
+   "name": "clicking the PUMP BELOW dial in 3D selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "at (779, 604); focus gh-pumpBelow; selected farm-controller; under the pointer [{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":9.232,\"control\":\"pumpBelow\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"radiation_shield_white\"},{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":9.233,\"control\":\"pumpBelow\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"housing_black_abs\"},{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":9.345,\"control\":null,\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"housing_grey_abs\"}]"
+  },
+  {
+   "name": "clicking the FAN ABOVE dial in 3D selects farm-controller and focuses its field",
+   "ok": false,
+   "detail": "at (801, 606); focus ; selected power-cable-3; under the pointer [{\"part\":\"power-cable-3\",\"mesh\":\"Mesh\",\"distance\":8.97,\"control\":null,\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"power_cable_rubber\"},{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":9.261,\"control\":\"fanAbove\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"housing_black_abs\"},{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":9.266,\"control\":\"fanAbove\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"radiation_shield_white\"}]"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "issues": [],
+ "ok": false
+}

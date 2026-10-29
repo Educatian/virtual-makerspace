@@ -1,0 +1,115 @@
+{
+ "app": "faa7c09",
+ "base": "http://127.0.0.1:4173",
+ "room": "QEW5",
+ "checks": [
+  {
+   "name": "the brief's rig is plumbed and wired (every hose fitting in place at the manifold)",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}"
+  },
+  {
+   "name": "clicking the visible valve A handle in 3D selects valve-manifold and focuses its field",
+   "ok": true,
+   "detail": "clicked (586, 548), 8 px from its grip; the control is the first visible surface at 10 of 441 sampled pixels; focus gh-valveA; selected valve-manifold"
+  },
+  {
+   "name": "clicking the visible valve B handle in 3D selects valve-manifold and focuses its field",
+   "ok": true,
+   "detail": "clicked (620, 594), 8 px from its grip; the control is the first visible surface at 10 of 441 sampled pixels; focus gh-valveB; selected valve-manifold"
+  },
+  {
+   "name": "clicking the visible PUMP BELOW dial in 3D selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "clicked (779, 604), 0 px from its centre; the control is the first visible surface at 13 of 441 sampled pixels; focus gh-pumpBelow; selected farm-controller"
+  },
+  {
+   "name": "clicking the visible FAN ABOVE dial in 3D selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "clicked (797, 606), 4 px from its centre; the control is the first visible surface at 8 of 441 sampled pixels; focus gh-fanAbove; selected farm-controller"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "issues": [],
+ "valveAAtGrip": {
+  "part": "irrigation-hose-3",
+  "mesh": "Mesh",
+  "distance": 9.394,
+  "control": null,
+  "handle": false,
+  "ring": false,
+  "visible": true,
+  "material": "fitting_brass"
+ },
+ "valveAScan": {
+  "samples": 441,
+  "own": 10,
+  "nearest": {
+   "x": 586.2473844615779,
+   "y": 547.6925754382155,
+   "d": 8
+  }
+ },
+ "valveBAtGrip": {
+  "part": "irrigation-hose-4",
+  "mesh": "Mesh",
+  "distance": 9.052,
+  "control": null,
+  "handle": false,
+  "ring": false,
+  "visible": true,
+  "material": "fitting_brass"
+ },
+ "valveBScan": {
+  "samples": 441,
+  "own": 10,
+  "nearest": {
+   "x": 620.1851226206559,
+   "y": 594.2314247654796,
+   "d": 8
+  }
+ },
+ "pumpBelowAtGrip": {
+  "part": "farm-controller",
+  "mesh": "Mesh",
+  "distance": 9.232,
+  "control": "pumpBelow",
+  "handle": false,
+  "ring": false,
+  "visible": true,
+  "material": "radiation_shield_white"
+ },
+ "pumpBelowScan": {
+  "samples": 441,
+  "own": 13,
+  "nearest": {
+   "x": 779.4459303624594,
+   "y": 603.8477395153251,
+   "d": 0
+  }
+ },
+ "fanAboveAtGrip": {
+  "part": "power-cable-3",
+  "mesh": "Mesh",
+  "distance": 8.97,
+  "control": null,
+  "handle": false,
+  "ring": false,
+  "visible": true,
+  "material": "power_cable_rubber"
+ },
+ "fanAboveScan": {
+  "samples": 441,
+  "own": 8,
+  "nearest": {
+   "x": 796.7777405682987,
+   "y": 606.3643064802119,
+   "d": 4
+  }
+ },
+ "ok": true
+}

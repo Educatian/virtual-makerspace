@@ -1,0 +1,395 @@
+{
+ "source": {
+  "sine@55": {
+   "peak": 0.5,
+   "modelPeak": 0.5000000000000071,
+   "h1": 0.4999999998242173,
+   "expectedH1": 0.5,
+   "frequency": 54.99999640940184
+  },
+  "sine@220": {
+   "peak": 0.5,
+   "modelPeak": 0.5000000000000071,
+   "h1": 0.4999998824833079,
+   "expectedH1": 0.5,
+   "frequency": 219.99999172044699
+  },
+  "sine@440": {
+   "peak": 0.5,
+   "modelPeak": 0.5000000000000071,
+   "h1": 0.4999998788005276,
+   "expectedH1": 0.5,
+   "frequency": 439.9999840535144
+  },
+  "sine@1760": {
+   "peak": 0.5,
+   "modelPeak": 0.5000000000000071,
+   "h1": 0.4999998918364495,
+   "expectedH1": 0.5,
+   "frequency": 1760.0000488613916
+  },
+  "square@55": {
+   "peak": 0.49473264813423157,
+   "modelPeak": 0.4992324153458497,
+   "h1": 0.5399750260446028,
+   "expectedH1": 0.5399751567848531,
+   "frequency": 55.0002721354608
+  },
+  "square@220": {
+   "peak": 0.49451959133148193,
+   "modelPeak": 0.4999945211353659,
+   "h1": 0.539974957156369,
+   "expectedH1": 0.5399751567848531,
+   "frequency": 220.00066303248514
+  },
+  "square@440": {
+   "peak": 0.4954870939254761,
+   "modelPeak": 0.500046870043008,
+   "h1": 0.539974957776784,
+   "expectedH1": 0.5399751567848531,
+   "frequency": 440.00095026892006
+  },
+  "square@1760": {
+   "peak": 0.49816012382507324,
+   "modelPeak": 0.5007219999541055,
+   "h1": 0.5399749533337759,
+   "expectedH1": 0.5399751567848531,
+   "frequency": 1760.0045047452033
+  },
+  "sawtooth@55": {
+   "peak": 0.49369630217552185,
+   "modelPeak": 0.4983401860956462,
+   "h1": 0.270099173910499,
+   "expectedH1": 0.26998757839242654,
+   "frequency": 54.9983787186426
+  },
+  "sawtooth@220": {
+   "peak": 0.4902169704437256,
+   "modelPeak": 0.4961215875491213,
+   "h1": 0.2700993841198086,
+   "expectedH1": 0.26998757839242654,
+   "frequency": 219.99952895336537
+  },
+  "sawtooth@440": {
+   "peak": 0.48575639724731445,
+   "modelPeak": 0.49224865396288153,
+   "h1": 0.2700993531708564,
+   "expectedH1": 0.26998757839242654,
+   "frequency": 439.9966867454529
+  },
+  "sawtooth@1760": {
+   "peak": 0.460348516702652,
+   "modelPeak": 0.46934581492972133,
+   "h1": 0.27009936827711983,
+   "expectedH1": 0.26998757839242654,
+   "frequency": 1759.9683581065515
+  }
+ },
+ "filter": [
+  {
+   "fc": 80,
+   "f": 55,
+   "measuredDb": -0.8756973996016251,
+   "digitalDb": -0.8756834275822893,
+   "analogDb": -0.8756987150506488
+  },
+  {
+   "fc": 80,
+   "f": 220,
+   "measuredDb": -17.649613456125902,
+   "digitalDb": -17.649612492146993,
+   "analogDb": -17.64858852454379
+  },
+  {
+   "fc": 80,
+   "f": 660,
+   "measuredDb": -36.66974547128307,
+   "digitalDb": -36.669744077554405,
+   "analogDb": -36.65909533486862
+  },
+  {
+   "fc": 80,
+   "f": 1760,
+   "measuredDb": -53.77384279091399,
+   "digitalDb": -53.77384163971624,
+   "analogDb": -53.6969257721596
+  },
+  {
+   "fc": 80,
+   "f": 80,
+   "measuredDb": -3.010284677517462,
+   "digitalDb": -3.0102999566415614,
+   "analogDb": -3.0102999566398125
+  },
+  {
+   "fc": 300,
+   "f": 55,
+   "measuredDb": -0.004903946095236582,
+   "digitalDb": -0.004901050898177794,
+   "analogDb": -0.004903485022236132
+  },
+  {
+   "fc": 300,
+   "f": 220,
+   "measuredDb": -1.1029903233456835,
+   "digitalDb": -1.1029881112118787,
+   "analogDb": -1.1032196039909345
+  },
+  {
+   "fc": 300,
+   "f": 660,
+   "measuredDb": -13.886680394532668,
+   "digitalDb": -13.886678721394524,
+   "analogDb": -13.878452407015033
+  },
+  {
+   "fc": 300,
+   "f": 1760,
+   "measuredDb": -30.814102154240217,
+   "digitalDb": -30.81410090171614,
+   "analogDb": -30.73932119833083
+  },
+  {
+   "fc": 300,
+   "f": 300,
+   "measuredDb": -3.0103080513612928,
+   "digitalDb": -3.010299956639461,
+   "analogDb": -3.0102999566398125
+  },
+  {
+   "fc": 1000,
+   "f": 55,
+   "measuredDb": -0.00004050915984072679,
+   "digitalDb": -0.000039514601712022474,
+   "analogDb": -0.000039740477609577005
+  },
+  {
+   "fc": 1000,
+   "f": 220,
+   "measuredDb": -0.010108449959898808,
+   "digitalDb": -0.010106637257872994,
+   "analogDb": -0.010161711247627644
+  },
+  {
+   "fc": 1000,
+   "f": 660,
+   "measuredDb": -0.7523173172074739,
+   "digitalDb": -0.7523145287480414,
+   "analogDb": -0.7545474979043852
+  },
+  {
+   "fc": 1000,
+   "f": 1760,
+   "measuredDb": -10.298403261410359,
+   "digitalDb": -10.29840194744882,
+   "analogDb": -10.251061159830947
+  },
+  {
+   "fc": 1000,
+   "f": 1000,
+   "measuredDb": -3.010302339400726,
+   "digitalDb": -3.0102999566397863,
+   "analogDb": -3.0102999566398125
+  },
+  {
+   "fc": 4000,
+   "f": 55,
+   "measuredDb": -0.0000014753332998542948,
+   "digitalDb": -1.4147096588836955e-7,
+   "analogDb": -1.5523694803894435e-7
+  },
+  {
+   "fc": 4000,
+   "f": 220,
+   "measuredDb": -0.000038216779956766634,
+   "digitalDb": -0.000036225802666372095,
+   "analogDb": -0.000039740477609577005
+  },
+  {
+   "fc": 4000,
+   "f": 660,
+   "measuredDb": -0.0029421544030268183,
+   "digitalDb": -0.002939806632988782,
+   "analogDb": -0.0032178010433965686
+  },
+  {
+   "fc": 4000,
+   "f": 1760,
+   "measuredDb": -0.1484328761810721,
+   "digitalDb": -0.14843096907048586,
+   "analogDb": -0.15980135222384168
+  },
+  {
+   "fc": 8000,
+   "f": 55,
+   "measuredDb": -0.0000013513847043264438,
+   "digitalDb": -6.563260956214676e-9,
+   "analogDb": -9.702308869799165e-9
+  },
+  {
+   "fc": 8000,
+   "f": 220,
+   "measuredDb": -0.000003680060894816929,
+   "digitalDb": -0.0000016806298157545237,
+   "analogDb": -0.0000024837905034771775
+  },
+  {
+   "fc": 8000,
+   "f": 660,
+   "measuredDb": -0.00013875968541872592,
+   "digitalDb": -0.00013643043436814073,
+   "analogDb": -0.00020118242853221454
+  },
+  {
+   "fc": 8000,
+   "f": 1760,
+   "measuredDb": -0.007001429485736602,
+   "digitalDb": -0.0069995400673593805,
+   "analogDb": -0.010161711247627644
+  }
+ ],
+ "analogMaxDeltaDb": {
+  "upTo1kHz": 0.010650136414454892,
+  "all": 0.07691701875438639
+ },
+ "model": [
+  {
+   "label": "worked example",
+   "renderedPeakDb": -6.0905680657765435,
+   "modelPeakDb": -6.089733632774848,
+   "renderedH1Db": -7.863537236042876,
+   "modelH1Db": -7.8673655050763545,
+   "renderedH3Db": -30.189666045193864,
+   "modelH3Db": -30.185023402493243
+  },
+  {
+   "label": "no filtering",
+   "renderedPeakDb": -7.5427140199894005,
+   "modelPeakDb": -7.5685037512166256,
+   "renderedH1Db": -11.370149594728511,
+   "modelH1Db": -11.373760132658951,
+   "renderedH3Db": -20.962137081953912,
+   "modelH3Db": -20.966750313163793
+  },
+  {
+   "label": "drive first ×1.2",
+   "renderedPeakDb": -9.115896520907139,
+   "modelPeakDb": -9.115087139387828,
+   "renderedH1Db": -10.888890084497174,
+   "modelH1Db": -10.89271901168934,
+   "renderedH3Db": -33.21502392928918,
+   "modelH3Db": -33.21037690910623
+  },
+  {
+   "label": "square 330 Hz at 800 Hz",
+   "renderedPeakDb": -6.727588228443143,
+   "modelPeakDb": -6.730132381661532,
+   "renderedH1Db": -5.476114255847202,
+   "modelH1Db": -5.476480423305028,
+   "renderedH3Db": -20.14512042604637,
+   "modelH3Db": -20.139177015317614
+  },
+  {
+   "label": "sine 1 kHz at 250 Hz",
+   "renderedPeakDb": -20.605237822252192,
+   "modelPeakDb": -20.577506144374667,
+   "renderedH1Db": -20.60069711143939,
+   "modelH1Db": -20.577506052199453,
+   "renderedH3Db": -187.7327255807646,
+   "modelH3Db": -314.4519232927347
+  }
+ ],
+ "clipping": {
+  "fraction": 0.6683642761238946,
+  "expected": 0.6666666666666666,
+  "peak": 1,
+  "out": 0.25
+ },
+ "randomCeilingWorst": 0.14360648393630981,
+ "refusal": {
+  "hasApi": true,
+  "active": false,
+  "started": false,
+  "contexts": 0,
+  "status": "needs-gesture"
+ },
+ "live": {
+  "before": {
+   "speakerIn": 0.4999997317790985,
+   "output": 0.06249997019767761
+  },
+  "muted": {
+   "speakerIn": 0.4999997317790985,
+   "output": 0
+  },
+  "remote": {
+   "levels": {
+    "speakerIn": 1,
+    "output": 0
+   },
+   "muted": true,
+   "volume": 1,
+   "contexts": 1
+  },
+  "stopped": {
+   "state": "closed",
+   "status": "off",
+   "osc": {
+    "started": 2,
+    "stopped": 2
+   },
+   "levels": null
+  },
+  "delayedResume": {
+   "disconnect": {
+    "pendingState": {
+     "status": "off",
+     "active": true,
+     "contexts": 2
+    },
+    "stoppedSomething": true,
+    "result": {
+     "status": "off",
+     "statuses": [
+      "off"
+     ],
+     "state": "closed",
+     "levels": null,
+     "active": false
+    },
+    "started": 1,
+    "stopped": 1
+   },
+   "studio": {
+    "pendingState": {
+     "status": "off",
+     "active": true,
+     "contexts": 3
+    },
+    "stoppedSomething": true,
+    "result": {
+     "status": "off",
+     "statuses": [
+      "off"
+     ],
+     "state": "closed",
+     "levels": null,
+     "active": false
+    },
+    "started": 1,
+    "stopped": 1
+   },
+   "race": {
+    "status": "running",
+    "statuses": [
+     "off",
+     "running",
+     "running"
+    ],
+    "state": "running"
+   }
+  }
+ },
+ "checks": 101
+}
+sound dsp: 101 checks passed (offline buffers and live analysers in headless Chromium; no physical speaker was heard)

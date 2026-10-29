@@ -1,0 +1,18 @@
+app faa7c09d869cf780b0f3f9c1a26cc11721d6dcca
+npm-test exit=0 103s
+build exit=0 10s
+dsp exit=0 12s
+e2e-greenhouse exit=0 6213s
+e2e-sound exit=0 3566s
+worker-sync exit=0 3s
+cable-end exit=0 430s
+room-sync exit=0 977s
+snapino-history exit=0 847s
+ai-teammate-worker exit=0 329s
+bench-inspector exit=0 2679s (limit 90 min)
+rescue-signal exit=0 3500s (one bounded attempt)
+qa-greenhouse-controls attempt1 exit=1 910s (first script version: clicked each grip or dial centre; 3/6, see qa-greenhouse-controls-attempt1.txt)
+qa-greenhouse-controls exit=0 478s
+qa-greenhouse exit=0 3286s
+qa-sound exit=0 1865s
+ai-teammate-peer exit=0 476s

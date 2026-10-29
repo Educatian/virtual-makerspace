@@ -1,0 +1,64 @@
+  [ready] host entered: 3 s (+3 frames)
+  [ready] member entered: 8 s (+3 frames)
+PASS both hold the room's day: run 1, seed 11, not started, 06:00, tank 40 L — {"tick":0,"tank":40,"beds":{"A":11,"B":11},"battery":6,"air":21.08642659120388,"stress":{"A":0,"B":0,"heat":0}} | {"tick":0,"tank":40,"beds":{"A":11,"B":11},"battery":6,"air":21.08642659120388,"stress":{"A":0,"B":0,"heat":0}}
+PASS DI host sees the worked example; PF member does not; the greenhouse tab is the open dock tab
+PASS nothing is built at the start (no auto-build in either condition) — {"irrigation-hose":"unplugged","irrigation-hose-2":"unplugged","irrigation-hose-3":"unplugged","irrigation-hose-4":"unplugged","power-cable-1":"unplugged","power-cable-2":"unplugged","power-cable-3":"unplugged"}
+  [ready] before irrigation-hose:0→12: 15 s (+3 frames)
+  [ready] host after wrong-type: 16 s (+3 frames)
+PASS typed ports: a hose end dropped on PUMP 12 V IN stays out, for both, with the reason — status "PUMP 12 V IN takes a power plug (a hose fits water couplers only) · Hose 1 end A stays out"
+  [ready] before irrigation-hose:0→0: 17 s (+3 frames)
+  [ready] before irrigation-hose:1→6: 16 s (+3 frames)
+PASS wrong build: TANK OUT → BED A INLET is drawn as built (no pump, ✕), carries nothing; DI explains it, PF withholds the explanation until a finished day — edge {"status":"no-pump","flow":"wrong"}; PF notes "9 explanatory notes appear after your own first finished day in this session (the diagram already shows the rig as built)."
+  [ready] before irrigation-hose:1→1: 9 s (+3 frames)
+  [ready] before irrigation-hose-2:0→2: 10 s (+3 frames)
+  [ready] before irrigation-hose-2:1→3: 10 s (+3 frames)
+  [ready] before irrigation-hose-3:0→4: 10 s (+3 frames)
+  [ready] before irrigation-hose-3:1→6: 10 s (+3 frames)
+  [ready] before irrigation-hose-4:0→5: 10 s (+3 frames)
+  [ready] before irrigation-hose-4:1→7: 9 s (+3 frames)
+  [ready] before power-cable-1:0→8: 9 s (+3 frames)
+  [ready] before power-cable-1:1→9: 10 s (+3 frames)
+  [ready] before power-cable-2:0→10: 9 s (+3 frames)
+  [ready] before power-cable-2:1→12: 8 s (+3 frames)
+  [ready] before power-cable-3:0→11: 11 s (+3 frames)
+  [ready] before power-cable-3:1→13: 8 s (+3 frames)
+  [ready] before probe: 8 s (+3 frames)
+PASS pointer-built rig: both makers hold the same complete rig (supply, delivery, two branches, solar, two feeds, probe in bed A) — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"} probe A
+  [ready] before power-cable-3:1→12: 9 s (+3 frames)
+PASS occupied: a cable end dropped on PUMP 12 V IN (taken) stays out; the pump's cable is untouched — status "PUMP 12 V IN already holds a line (one per port) · Cable 3 end B stays out"
+PASS keyboard plumbing: choosing FAN 12 V IN for cable 3's free end in its card connects it for both — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"}
+PASS off-step valve value (33 %) is caught on the page: nothing sent, the room keeps 100 % — note "Valve A: use 5 % steps (the room refuses values between steps)."
+PASS host's valve A 30 % (typed, Enter) accepted and shown to the member
+PASS member's unapplied draft (valve B 45 %) survives the host's accepted 50 %; the room shows 50 % — field "45" drafts {"valve-manifold:valveB":"45"}
+PASS stale: one of two simultaneous rule edits is refused; that maker keeps their draft and the room's value — attempt 2: ["Set rules to pump below 55 %, fan above 30 °C · shared with the room","Not applied · a teammate changed it first, so their value is kept; nothing changed. Your draft is kept below."]
+PASS Undo and Redo of the host's rule edit reach the member
+PASS start (host): both clients run the room's day; the rig is locked on both — {"runId":1,"seed":11,"status":"running","speed":1,"tick":0}
+PASS while the day runs, a hose drag is refused on the page and nothing changes — status "The greenhouse day is running: the rig is locked · pause the day to change it"
+PASS while the day runs, Undo is refused by the room (running) and the rule stays — status "Undo "Set rules to pump below 60 %, fan above 26 °C" refused · the greenhouse day is running; pause it to change the rig · nothing changed"
+PASS pause vs Undo race: both clients hold the same paused day and the same rig — {"tick":64,"tank":11.2,"beds":{"A":9.939360184724059,"B":11.046358152047741},"battery":0.9484993601942568,"air":28.42647624984401,"stress":{"A":0,"B":0,"heat":0}} | {"tick":64,"tank":11.2,"beds":{"A":9.939360184724059,"B":11.046358152047741},"battery":0.9484993601942568,"air":28.42647624984401,"stress":{"A":0,"B":0,"heat":0}}
+PASS paused day: water and energy ledgers balance (|residual| < 1e-9 L / Wh); records = model time — {"water":-1.4210854715202004e-14,"energy":-2.842170943040401e-14}
+  [ready] late entered: 13 s (+3 frames)
+PASS late joiner (paused day): the same model time and resources, exactly — {"tick":64,"tank":11.2,"beds":{"A":9.939360184724059,"B":11.046358152047741},"battery":0.9484993601942568,"air":28.42647624984401,"stress":{"A":0,"B":0,"heat":0}}
+PASS interrupted connection: the member's Step while offline is not applied (nothing changed); the member does not move on alone; after reconnecting it holds the room's day exactly, including the host's hour — note "Not applied · reconnecting to the room; nothing changed."; before 64, while away 64, after 68 (host 68)
+PASS step one hour: +4 steps for both — 68 → 72
+PASS reset race: no reset is applied to a run its maker did not see (one stale refusal, or two resets in turn); tank 40 L, 06:00 for both — ["Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room","Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room"]; run 1 → 3
+PASS speed ×4 (member) reaches the host's day — {"runId":3,"seed":11,"status":"running","speed":4,"tick":27}
+PASS default allocation on the brief's day fails (bed B out of range too long); both see the same measured values — ["G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed","G2:bed A stressed 0 h","G3:bed B stressed 9.5 h","G4:air above 35 °C for 1.5 h","G5:16.0 L left"]
+PASS after the day: DI host sees why each failed criterion failed; PF member sees measured values only
+PASS PF member: explanatory notes withheld before their own first finished day, unlocked after it
+PASS member's attempt 1 holds this day's result (a private record) — {"attempt":1,"result":3}
+PASS worked allocation on the brief's day: all five criteria met, for both — ["G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed","G2:bed A stressed 0 h","G3:bed B stressed 1 h","G4:air above 35 °C for 0 h","G5:11.2 L left"]
+PASS member: attempt 2 met and explained (the goal counts only with an explanation) — Attempt 2 · brief met · explained
+PASS export: a version-3 greenhouse project, build only (no run, tank, model time, names, notes) — ["format","version","solver","studio","savedAt","parts"]
+PASS import while the day runs is refused by the room (running); nothing changed — Loaded a project refused · the greenhouse day is running; pause it to change the rig · nothing changed
+PASS Reset bench (paused): every line unplugged and the probe in its holder, for both; the day's resources are untouched (no refill) — tank 16 → 16
+PASS import of the export restores the rig and values for both (one room edit); the tank is not refilled
+PASS a version-1 greenhouse file: a notice, then the default rig for both — This is an earlier greenhouse file (version 1). Its layout does not fit the typed water and power ports, so it loads as 
+PASS camera keys 1/2/3 (overview, top, beds) frame three different views — [0.20000000000000018,0.75,0.28500000000000014] | [0.20000000000000018,0.45,0.28500000000000014] | [-1.375,0.7000000000000001,-0.5]
+PASS selecting the fan on the diagram selects it in 3D and opens its card
+PASS clicking the controller's PUMP BELOW dial in 3D selects the controller and focuses its field — focus gh-pumpBelow; under the pointer [{"part":"farm-controller","mesh":"Mesh","distance":10.383,"control":"pumpBelow","handle":false,"ring":false,"visible":true,"material":"housing_black_abs"},{"part":"farm-controller","mesh":"Mesh","distance":10.492,"control":null,"handle":false,"ring":false,"visible":true,"material":"housing_grey_abs"}]
+  [ready] host entered: 7 s (+4 frames)
+PASS everyone left mid-day: the day paused where it was (same run, model time not before the leave, no refill) — left at 44 (16.00 L); back at 47 (11.20 L), paused
+PASS the bench reset as in every studio; the returning host is offered and restores its saved rig — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"}
+PASS no page errors
+e2e greenhouse: 40/40 checks passed (room GGNY; artifacts <scratch>/final-faa/e2e-greenhouse)

@@ -1,0 +1,13 @@
+  [ready] entered: 5 s (+3 frames)
+PASS the brief's rig is plumbed and wired (every hose fitting in place at the manifold) — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"}
+  [ready] overview: 17 s (+3 frames)
+  valve A handle: first visible surface at its grip (586, 540): irrigation-hose-3 fitting_brass
+PASS clicking the visible valve A handle in 3D selects valve-manifold and focuses its field — clicked (586, 548), 8 px from its grip; the control is the first visible surface at 10 of 441 sampled pixels; focus gh-valveA; selected valve-manifold
+  valve B handle: first visible surface at its grip (620, 586): irrigation-hose-4 fitting_brass
+PASS clicking the visible valve B handle in 3D selects valve-manifold and focuses its field — clicked (620, 594), 8 px from its grip; the control is the first visible surface at 10 of 441 sampled pixels; focus gh-valveB; selected valve-manifold
+  PUMP BELOW dial: first visible surface at its centre (779, 604): farm-controller (pumpBelow) radiation_shield_white
+PASS clicking the visible PUMP BELOW dial in 3D selects farm-controller and focuses its field — clicked (779, 604), 0 px from its centre; the control is the first visible surface at 13 of 441 sampled pixels; focus gh-pumpBelow; selected farm-controller
+  FAN ABOVE dial: first visible surface at its centre (801, 606): power-cable-3 power_cable_rubber
+PASS clicking the visible FAN ABOVE dial in 3D selects farm-controller and focuses its field — clicked (797, 606), 4 px from its centre; the control is the first visible surface at 8 of 441 sampled pixels; focus gh-fanAbove; selected farm-controller
+PASS no page errors
+qa greenhouse controls: 6/6 checks passed (room QEW5)

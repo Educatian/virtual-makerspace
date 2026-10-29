@@ -6,8 +6,8 @@ episode at a time**. Each episode is reviewed before the next one starts.
 | # | Episode | Studio | Status |
 |---|---|---|---|
 | 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Merged into the `desktop` release branch with PRs #2–#4 (`db85d85`); production deployment and live checks are recorded outside this document. |
-| 2 | Sound Flow Studio | Sound Flow Studio (new) | **Implemented on `feat/sound-flow-studio`** (PR #5 against `desktop`, final app `63a3421`). Review findings fixed; awaiting the final gate. Not merged or deployed. |
-| 3 | Resource-Limited Greenhouse | Greenhouse | **In progress on `feat/resource-limited-greenhouse`**. The model and criteria below are fixed before the code. |
+| 2 | Sound Flow Studio | Sound Flow Studio (new) | Accepted at the parent gate as a development gate (PR #5 head `8e87371`, app `63a3421`). Not merged or deployed. |
+| 3 | Resource-Limited Greenhouse | Greenhouse | **Implemented on `feat/resource-limited-greenhouse`** (stacked on PR #5, final app `faa7c09`). Awaiting its independent gate. Not merged or deployed. The model and criteria below were fixed before the code. |
 | 4 | Smart Sorting Center | new | Planned. The acceptance contract is below; not started. |
 | 5 | Structural Test Yard | new | Planned. The acceptance contract is below; not started. |
 
@@ -554,7 +554,7 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
   - **Your attempt:** predict (five choices and why), build, run, explain, revise (*New attempt* resets the day for everyone after confirmation), earlier attempts.
 - **HUD** over the viewport: model time, run status, tank, probed soil, air and battery, from the model.
 - **Collapsing the dock** never stops the day: model time comes from the room's clock.
-- **Cross-link:** selecting a part in 3D, in the parts rail, on the diagram or in the connection list selects it everywhere; clicking a valve handle or controller dial in 3D focuses that field.
+- **Cross-link:** selecting a part in 3D, in the parts rail, on the diagram or in the connection list selects it everywhere; clicking a visible part of a valve (its lever or ball) or of a controller dial in 3D focuses that field. When a hose fitting or cable is in front, the click selects that line instead.
 
 ### Collaboration, files and persistence
 
@@ -573,6 +573,29 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 | `npm run test:project` (in `npm test`) | `scripts/project-state-check.mjs`, greenhouse part: version 3 round trip with a half-plugged hose, 21 refused files (wrong connector, probe across beds, shared port, off-step and hostile values, a run in the file, wrong version), version-1 migration, recovery emptiness. |
 | `node scripts/e2e-greenhouse-worker.mjs` | Two real browsers (separate processes) and a late joiner over wrangler dev (Durable Object + WebSocket), with real pointer and keyboard input; see the list at the top of the script. |
 | `node scripts/qa-greenhouse.mjs` | Render evidence (peer mode): see [`docs/images/episodes/greenhouse/`](images/episodes/greenhouse/README.md). |
+| `node scripts/qa-greenhouse-controls.mjs` | Real pointer clicks on the 3D valve levers and controller dials of the plumbed rig in the overview (peer mode): what is in front of each grip or dial centre, how much of each control is visible around it, and a click on a visible pixel that must select the part and focus its field. |
+
+### Results of the last developer-environment run
+
+**Final app `faa7c09`.** The run used headless Chromium with SwiftShader, wrangler dev and the local access proxy, on 2 CPU cores. It is not GitHub CI. Every room was a fresh random QA room; 7K3M was never used. Every command, its exit code, its duration and every non-passing attempt are in [the test records](qa/greenhouse/README.md), per app (`app-faa7c09/`, `app-fe4fdf8/`).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, circuit 17,742, project 306, sync 858, tools 36, rescue signal 17,751, episode sync 55, diagram 66,886, sound model 89,528, sound engine 47, **greenhouse model 2,835,644**) | `faa7c09` | All passed |
+| `npx vite build` | `faa7c09` | OK |
+| `npm run test:sound:dsp` | `faa7c09` | 101/101 |
+| **`e2e-greenhouse-worker.mjs`** (two makers plus a late joiner, Worker) | `faa7c09` | **40/40** |
+| **`qa-greenhouse-controls.mjs`** (3D valve levers and dials, plumbed rig) | `faa7c09` | **6/6** on attempt 2. Attempt 1 (clicking each grip or dial centre) failed 3/6: a hose fitting or cable was in front of three of the four points. |
+| **`qa-greenhouse.mjs`** (renders) | `faa7c09` | **12/12**, no issues: fill 0.914 at 1440 and 0.919 at 1280; phone *Start the day* reached by keyboard (44 px), no control under 44 px; PF without the worked example ([renders](images/episodes/greenhouse/README.md)) |
+| `e2e-sound-worker.mjs` (Episode 2) | `faa7c09` | 29/29 |
+| `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync`, `e2e-snapino-history` | `faa7c09` | 18/18, 12/12, 13/13, 25/25 |
+| `e2e-ai-teammate-worker` | `faa7c09` | 10/10 |
+| `e2e-bench-inspector` | `faa7c09` | 30/30, one attempt |
+| `e2e-rescue-signal` (Episode 1) | `faa7c09` | 60/60, one bounded attempt |
+| `qa-sound.mjs` (Episode 2 renders) | `faa7c09` | 7/7 |
+| `e2e-ai-teammate` (peer) | `faa7c09` | 37/37 |
+
+**On `fe4fdf8` (the previous candidate), the two-client run failed one check**, 39/40: clicking the valve B handle in 3D did not focus its field. That run recorded only the focus, not what was picked. The diagnosis afterwards found hose 4's fitting and its larger grab sphere around the valve grip. `faa7c09` lets a visible control win over a grab sphere; its two-client run clicks the controller's PUMP BELOW dial instead of the valve handle, and the valve handles are covered by `qa-greenhouse-controls.mjs` above.
 
 ### Limits (honest)
 
@@ -581,6 +604,7 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 - **Model time is the room's clock.** A client whose clock estimate is off shows the same steps a little earlier or later; paused states are identical everywhere.
 - **The verdict's G1 is judged on the build as it is when the day ends**; a rig changed while paused mid-day still counts as one run.
 - **Same-device peer rooms** (no server) do not pause the day when everyone leaves.
+- **The 3D valve levers and dials are small targets.** In the overview of the brief's plumbed rig at 1440×900, the hose fittings cover the valve grips and power cable 3 crosses the FAN ABOVE dial; each control is the first visible surface at only 8–13 of 441 sampled pixels around it. A click there works (measured), but the dock's 44 px fields and the keyboard are the reliable way to set values.
 - **The PF notes gate is personal**: it opens on this learner's own first finished day in this browser session.
 - **Desktop only.** The WebXR path does not include the studio.
 - **Software-rendered evidence.** Captures and counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured; 390×844 is a viewport check, not phone testing.
