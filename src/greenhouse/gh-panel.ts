@@ -382,12 +382,15 @@ export class GreenhousePanel {
       if (button.dataset.step) this.stepDraft(button.dataset.step, Number(button.dataset.delta));
       if (button.dataset.revert) this.revertDrafts(button.dataset.revert);
       if (button.dataset.home) void this.returnHome(button.dataset.home);
+      if (button.dataset.probe) void this.placeProbe(button.dataset.probe as "A" | "B");
       if (button.dataset.select) this.host.select(button.dataset.select);
     });
     panel?.addEventListener("submit", (event) => {
       event.preventDefault();
       const form = (event.target as HTMLElement).closest<HTMLFormElement>("form[data-part]");
       if (form) void this.applyValues(form.dataset.part!);
+      const ports = (event.target as HTMLElement).closest<HTMLFormElement>("form[data-ports]");
+      if (ports) void this.connectLine(ports);
     });
     // The jump bar scrolls within the dock (no page navigation).
     on("#gh-panel .gh-jump", "click", (event) => {
@@ -794,6 +797,56 @@ export class GreenhousePanel {
     this.render();
   }
 
+  /** Keyboard plumbing: the chosen ports for a line's two ends, as one room edit. */
+  private async connectLine(form: HTMLFormElement): Promise<void> {
+    const id = form.dataset.ports!;
+    const workbench = this.host.workbench();
+    if (!workbench || this.pending.has(id)) return;
+    const value = (end: 0 | 1): number | null => {
+      const raw = form.querySelector<HTMLSelectElement>(`select[data-end="${end}"]`)?.value ?? "";
+      return raw === "" ? null : Number(raw);
+    };
+    const ends: [number | null, number | null] = [value(0), value(1)];
+    if (ends[0] !== null && ends[0] === ends[1]) {
+      this.editNote = { part: id, text: "Both ends cannot go into one port.", tone: "warning" };
+      this.render();
+      return;
+    }
+    const transform = ends[0] === null && ends[1] === null
+      ? workbench.homeTransform(id)
+      : ends[0] !== null && ends[1] !== null
+        ? workbench.placementTransform(id, [ends[0], ends[1]])
+        : workbench.partialLineTransform(id, ends);
+    if (!transform) return;
+    const label = `${LINE_NAMES[id].name}: ${ends.map((end) => (end === null ? "free" : portLabel(end))).join(" ↔ ")}`;
+    this.pending.add(id);
+    this.editNote = { part: id, text: "Sending to the room…", tone: "neutral" };
+    this.render();
+    const result = await this.host.submit([{ id, transform }], label, id);
+    this.pending.delete(id);
+    this.editNote = result.ok
+      ? { part: id, text: `${label} · shared with the room`, tone: "valid" }
+      : result.reason === "running"
+        ? { part: id, text: "Not applied · the day is running; pause it to change the rig. Nothing changed.", tone: "warning" }
+        : { part: id, text: notAppliedCopy(result.reason, "Not applied", ""), tone: "warning" };
+    this.render();
+  }
+
+  private async placeProbe(bed: "A" | "B"): Promise<void> {
+    const workbench = this.host.workbench();
+    const id = "soil-sensor";
+    if (!workbench || this.pending.has(id)) return;
+    const transform = workbench.placementTransform(id, GH_PROBE_SLOTS[bed]);
+    if (!transform) return;
+    this.pending.add(id);
+    this.editNote = { part: id, text: "Sending to the room…", tone: "neutral" };
+    this.render();
+    const result = await this.host.submit([{ id, transform }], `Soil probe into bed ${bed}`, id);
+    this.pending.delete(id);
+    this.editNote = result.ok ? { part: id, text: `Soil probe into bed ${bed} · shared with the room`, tone: "valid" } : { part: id, text: result.reason === "running" ? "Not applied · the day is running; pause it to change the rig. Nothing changed." : notAppliedCopy(result.reason, "Not applied", ""), tone: "warning" };
+    this.render();
+  }
+
   private async returnHome(id: string): Promise<void> {
     if (this.pending.has(id)) return;
     this.pending.add(id);
@@ -1057,7 +1110,7 @@ export class GreenhousePanel {
     const rig = this.rig;
     if (!panel || !rig || !this.projection) return;
     const active = document.activeElement as HTMLElement | null;
-    if (active && panel.contains(active) && active.matches("input, textarea")) return;
+    if (active && panel.contains(active) && active.matches("input, textarea, select")) return;
     const activeKey = active && panel.contains(active) ? active.dataset.draft ?? active.dataset.focusKey ?? null : null;
     const selected = this.host.selectedId();
     if (!selected || !(selected in FIXTURE_NAMES || selected in LINE_NAMES)) {
@@ -1100,9 +1153,22 @@ export class GreenhousePanel {
     }
     const now = flow.state === "flow" ? (names.hose ? `${flow.litres.toFixed(1)} L this step` : `${flow.watts.toFixed(1)} W this step`) : flow.state === "starved" ? "starved this step" : flow.state === "idle" ? "idle this step" : "carries nothing";
     const seated = line.ends.some((end) => end !== null);
+    const dis = this.pending.has(id) || this.locked() || this.host.holderOf(id) ? "disabled" : "";
+    // Keyboard alternative to dragging: choose each end's port (compatible ports only; a port
+    // another line holds is listed but not offered).
+    const type = names.hose ? "water" : "power";
+    const select = (end: 0 | 1): string => {
+      const options = GH_PORTS.filter((port) => port.type === type).map((port) => {
+        const holder = rig.lines.find((other) => other.id !== id && other.ends.includes(port.index));
+        return `<option value="${port.index}" ${line.ends[end] === port.index ? "selected" : ""} ${holder ? "disabled" : ""}>${escape(port.label)}${holder ? ` (holds ${escape(LINE_NAMES[holder.id].name)})` : ""}</option>`;
+      }).join("");
+      return `<div class="si-field"><label for="gh-end-${end}">End ${end === 0 ? "A" : "B"}</label><select id="gh-end-${end}" data-end="${end}" data-focus-key="end-${end}" ${dis}><option value="" ${line.ends[end] === null ? "selected" : ""}>free (not plugged in)</option>${options}</select></div>`;
+    };
     return `<p>${escape(`${endWords(0)} ↔ ${endWords(1)}`)}</p><p class="si-level">${escape(LINE_STATUS_WORDS[line.status])} · ${escape(now)}.</p>${this.holderNote(id)}${this.lockNote()}
-      <p class="si-fine">Drag either end in 3D into a port. Plugging is shared with everyone.</p>
-      <button type="button" class="secondary-button compact" data-home="${id}" data-focus-key="home" ${!seated || this.pending.has(id) || this.locked() || this.host.holderOf(id) ? "disabled" : ""}>Unplug and coil in the aisle</button>${note}`;
+      <p class="si-fine">Drag either end in 3D into a port, or choose the ports here. Plugging is shared with everyone.</p>
+      <form class="si-form gh-ports-form" data-ports="${id}">${select(0)}${select(1)}
+        <div class="si-actions"><button type="submit" class="primary-button compact" data-focus-key="connect" ${dis}>${this.pending.has(id) ? "Sending…" : "Connect in the room"}</button>
+        <button type="button" class="secondary-button compact" data-home="${id}" data-focus-key="home" ${!seated || dis ? "disabled" : ""}>Unplug and coil in the aisle</button></div></form>${note}`;
   }
 
   private fixtureCard(id: string): string {
@@ -1161,7 +1227,10 @@ export class GreenhousePanel {
       form = `<form class="si-form" data-part="${id}">${params.map(field).join("")}
         <div class="si-actions"><button type="submit" class="primary-button compact" data-focus-key="apply-${id}" ${dis}>${busy ? "Sending…" : "Apply to the room"}</button><button type="button" class="bare-button" data-revert="${id}" data-focus-key="revert-${id}" ${[...this.drafts.keys()].some((key) => key.startsWith(`${id}:`)) ? "" : "disabled"}>Discard draft</button></div></form>`;
     }
-    const probeButton = id === "soil-sensor" ? `<p class="si-fine">Drag the probe in 3D into a bed's slot (between the two green markers).</p><button type="button" class="secondary-button compact" data-home="soil-sensor" data-focus-key="home" ${!rig.probe || this.pending.has(id) || this.locked() || this.host.holderOf(id) ? "disabled" : ""}>Back to its holder</button>` : "";
+    const probeDis = this.pending.has(id) || this.locked() || this.host.holderOf(id) ? "disabled" : "";
+    const probeButton = id === "soil-sensor" ? `<p class="si-fine">Drag the probe in 3D into a bed's slot, or choose the bed here.</p>
+      <div class="si-actions gh-probe-actions">${(["A", "B"] as const).map((bed) => `<button type="button" class="secondary-button compact" data-probe="${bed}" data-focus-key="probe-${bed}" ${rig.probe === bed || probeDis ? "disabled" : ""}>Into bed ${bed}</button>`).join("")}
+      <button type="button" class="secondary-button compact" data-home="soil-sensor" data-focus-key="home" ${!rig.probe || probeDis ? "disabled" : ""}>Back to its holder</button></div>` : "";
     return `<p>${escape(reference.role)}</p><p class="si-level">${escape(live)}</p>${this.holderNote(id)}${editable || id === "soil-sensor" ? this.lockNote() : ""}${form}${probeButton}${note}`;
   }
 

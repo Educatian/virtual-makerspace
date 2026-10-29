@@ -251,18 +251,22 @@ export function renderGhDiagramSvg(input: GhDiagramInput): string {
     const state = `is-${flow.state}`;
     const label = flow.state === "flow"
       ? (line.type === "water" ? litres(flow.litres) : `${flow.watts.toFixed(flow.watts < 10 ? 1 : 0)} W`)
-      : flow.state === "starved" ? "starved" : flow.state === "idle" ? `${SHORT[line.status]} · idle` : SHORT[line.status];
+      : flow.state === "starved" ? "starved" : SHORT[line.status];
     const aria = `${names.name}: ${a === null ? "free" : portLabel(a)} to ${b === null ? "free" : portLabel(b)}, ${LINE_STATUS_WORDS[line.status]}${flow.state === "flow" ? `, ${label} this step` : ""}`;
     if (a !== null && b !== null) {
       const from = line.from ?? a;
       const to = line.to ?? b;
       const mid = pointOn(from, to, 0.5);
-      // A short, vertical run: the label sits beside it rather than across the nodes.
+      // A short, vertical run: the label sits beside it rather than across the nodes (to the
+      // left inside the water column's middle, to the right elsewhere).
       const vertical = Math.abs(PORT_ANCHORS[from].x - PORT_ANCHORS[to].x) < 30;
+      const leftward = vertical && mid.x > 200 && mid.x < 300;
+      const short = Math.hypot(PORT_ANCHORS[from].x - PORT_ANCHORS[to].x, PORT_ANCHORS[from].y - PORT_ANCHORS[to].y) < 60 && !vertical;
+      const tag = short ? names.name.replace("Cable ", "C").replace("Hose ", "H") : names.name;
       parts.push(`<g class="gd-edge ${kind} ${state}${isSelected ? " is-selected" : ""}" data-line="${line.id}" data-status="${line.status}" data-flow="${flow.state}" tabindex="0" role="button" aria-label="${escape(aria)}">
         ${isSelected ? `<path class="gd-edge-halo" d="${curve(from, to)}" fill="none"/>` : ""}
         <path class="gd-edge-line" d="${curve(from, to)}" fill="none" ${flow.state === "flow" ? 'marker-end="url(#gd-arrow)"' : ""}/>
-        <text class="gd-edge-label${flow.state === "wrong" ? " is-fault" : ""}" x="${(mid.x + (vertical ? 7 : 0)).toFixed(1)}" y="${(mid.y + (vertical ? 4 : -5)).toFixed(1)}" text-anchor="${vertical ? "start" : "middle"}">${escape(`${names.name} · ${label}`)}</text>
+        <text class="gd-edge-label${flow.state === "wrong" ? " is-fault" : ""}" x="${(mid.x + (vertical ? (leftward ? -7 : 7) : 0)).toFixed(1)}" y="${(mid.y + (vertical ? 4 : -5)).toFixed(1)}" text-anchor="${vertical ? (leftward ? "end" : "start") : "middle"}">${escape(`${tag} · ${label}`)}</text>
       </g>`);
     } else {
       const end = (a ?? b) as number;

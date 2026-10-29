@@ -2390,8 +2390,10 @@ export class DesktopWorkbenchScene {
       for (const [id, component] of this.components) {
         const spec = component.userData.spec as ComponentSpec;
         // Circuit Bench parts use the procedural bench models (bench-models.ts): exact scale,
-        // polarity cues and value-driven bands that the baked GLB parts cannot show.
-        if (isFlexibleKind(spec.kind) || spec.studio === "circuit" || spec.studio === "sound") continue;
+        // polarity cues and value-driven bands that the baked GLB parts cannot show. The Sound
+        // desk and the greenhouse rig (src/greenhouse/gh-rig.ts) are procedural too: their
+        // parts carry ports, live displays and model-driven motion the baked parts do not have.
+        if (isFlexibleKind(spec.kind) || spec.studio === "circuit" || spec.studio === "sound" || spec.studio === "greenhouse") continue;
         const source = parts.scene.getObjectByName(`part_${spec.model ?? id}`);
         if (!source) continue;
         const detailed = source.clone(true);

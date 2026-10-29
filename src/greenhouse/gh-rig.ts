@@ -116,7 +116,7 @@ const mat = {
   timberEnd: () => once("timberEnd", () => new MeshStandardMaterial({ name: "bed_timber_endgrain", color: 0x7b5232, metalness: 0, roughness: 0.86 })),
   concrete: () => once("concrete", () => new MeshStandardMaterial({ name: "floor_concrete_paver", color: 0x7d7a74, metalness: 0, roughness: 0.92 })),
   plinth: () => once("plinth", () => new MeshStandardMaterial({ name: "plinth_powdercoat", color: 0x2b3640, metalness: 0.35, roughness: 0.55 })),
-  hdpe: () => once("hdpe", () => new MeshPhysicalMaterial({ name: "tank_hdpe_translucent", color: 0xdfe8ea, metalness: 0, roughness: 0.6, transparent: true, opacity: 0.55, transmission: 0.25 })),
+  hdpe: () => once("hdpe", () => new MeshStandardMaterial({ name: "tank_hdpe_translucent", color: 0xdfe8ea, metalness: 0, roughness: 0.6, transparent: true, opacity: 0.55 })),
   water: () => once("water", () => new MeshPhysicalMaterial({ name: "tank_water", color: 0x3d8fbf, metalness: 0, roughness: 0.15, transparent: true, opacity: 0.78, clearcoat: 0.6 })),
   steel: () => once("steel", () => new MeshStandardMaterial({ name: "fitting_steel", color: 0xa8b0b7, metalness: 0.95, roughness: 0.3 })),
   brass: () => once("brass", () => new MeshStandardMaterial({ name: "fitting_brass", color: 0xc79a3c, metalness: 0.95, roughness: 0.32 })),
@@ -126,7 +126,7 @@ const mat = {
   bore: () => once("bore", () => new MeshStandardMaterial({ name: "port_bore", color: 0x090a0c, metalness: 0.2, roughness: 0.85, side: DoubleSide })),
   pumpRed: () => once("pumpRed", () => new MeshStandardMaterial({ name: "pump_motor_paint", color: 0x9b2a24, metalness: 0.45, roughness: 0.42 })),
   cell: () => once("cell", () => new MeshPhysicalMaterial({ name: "solar_cell_glass", color: 0x14294a, metalness: 0.3, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.08 })),
-  glazing: () => once("glazing", () => new MeshPhysicalMaterial({ name: "glazing_polycarbonate", color: 0xdcefe8, transparent: true, opacity: 0.16, roughness: 0.1, transmission: 0.35, clearcoat: 0.5, depthWrite: false })),
+  glazing: () => once("glazing", () => new MeshPhysicalMaterial({ name: "glazing_polycarbonate", color: 0xdcefe8, transparent: true, opacity: 0.16, roughness: 0.1, clearcoat: 0.5, depthWrite: false })),
   stem: () => once("stem", () => new MeshStandardMaterial({ name: "plant_stem", color: 0x3c7d34, metalness: 0, roughness: 0.7 })),
   white: () => once("white", () => new MeshStandardMaterial({ name: "radiation_shield_white", color: 0xeef1f2, metalness: 0, roughness: 0.55 })),
   fault: () => once("fault", () => new MeshStandardMaterial({ name: "fault_collar", color: 0xdc2626, emissive: 0x7f1d1d, emissiveIntensity: 0.35, metalness: 0, roughness: 0.5 })),
@@ -198,7 +198,14 @@ function readout(width: number, height: number): Readout {
       context.fillStyle = tone === "off" ? "#0b1410" : "#0d1d17";
       context.fillRect(0, 0, w, h);
       context.fillStyle = tone === "warn" ? "#fbbf24" : tone === "off" ? "#335546" : "#8ff0b8";
-      context.font = `600 ${Math.round(h / (lines.length + 0.6))}px ui-monospace, Menlo, monospace`;
+      // The largest monospace size at which every line fits the display's width.
+      let size = Math.round(h / (lines.length + 0.6));
+      context.font = `600 ${size}px ui-monospace, Menlo, monospace`;
+      const widest = Math.max(...lines.map((line) => context.measureText(line).width));
+      if (widest > w * 0.88) {
+        size = Math.max(8, Math.floor((size * w * 0.88) / widest));
+        context.font = `600 ${size}px ui-monospace, Menlo, monospace`;
+      }
       context.textBaseline = "middle";
       lines.forEach((line, index) => context.fillText(line, w * 0.06, (h / lines.length) * (index + 0.5)));
       texture.needsUpdate = true;
@@ -590,8 +597,10 @@ export function createGhFixture(id: string): Group {
       handle.add(lever, grip);
       handle.position.set(p.x, PLINTH_TOP + 0.48, p.z);
       handle.userData.ghControl = key;
-      const dial = flatLabel(`VALVE ${tag} · 0–100 %`, 0.5, 0.075, p.x, PLINTH_TOP + 0.003, p.z + (key === "valveA" ? -0.24 : 0.26), { color: "#fecaca" });
-      group.add(body, handle, dial);
+      // The handle's letter on the valve body (the port label on the plinth names the outlet).
+      const letter = label(tag, 0.08, 0.08, { color: "#fef2f2", background: "#7f1d1d" });
+      letter.position.set(p.x, PLINTH_TOP + 0.4, p.z + 0.077);
+      group.add(body, handle, letter);
       handles[key] = handle;
     }
     visuals.handles = handles;
@@ -665,7 +674,8 @@ export function createGhFixture(id: string): Group {
     for (let i = -1; i <= 1; i += 1) grid.push(new BoxGeometry(1.13, 0.002, 0.006).translate(0, 0.017, i * 0.25));
     panel.add(frame, cells, new Mesh(mergeGeometries(grid)!, mat.aluminium()));
     panel.position.set(0, 1.1, -0.15);
-    panel.rotation.x = -0.6;
+    // Cells face the room (and the default camera); the high edge is on the back legs.
+    panel.rotation.x = 0.6;
     const legs: BufferGeometry[] = [];
     for (const x of [-0.5, 0.5]) {
       legs.push(new BoxGeometry(0.05, 1.1, 0.05).translate(x, GH_FLOOR_Y + 0.55, -0.4));
@@ -798,8 +808,8 @@ export function buildGhLine(group: Group, spec: LineSpec): void {
   const half = LINE_HOME_SPAN / 2;
   group.userData.endpointPositions = [new Vector3(-half, 0, 0), new Vector3(half, 0, 0)];
   const material = hose
-    ? new MeshPhysicalMaterial({ name: "hose_pvc_reinforced", color: spec.color, roughness: 0.55, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.4 })
-    : new MeshPhysicalMaterial({ name: "power_cable_rubber", color: spec.color, roughness: 0.62, metalness: 0, clearcoat: 0.1 });
+    ? new MeshStandardMaterial({ name: "hose_pvc_reinforced", color: spec.color, roughness: 0.42, metalness: 0 })
+    : new MeshStandardMaterial({ name: "power_cable_rubber", color: spec.color, roughness: 0.62, metalness: 0 });
   const radius = hose ? 0.055 : 0.03;
   const body = new Mesh(new TubeGeometry(new CatmullRomCurve3([new Vector3(-half, 0, 0), new Vector3(half, 0, 0)]), 8, radius, 10, false), material);
   body.userData.flexibleWireBody = true;

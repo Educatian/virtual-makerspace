@@ -541,6 +541,50 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 - The greenhouse has no thermal mass, the pump has fixed flow, hoses are lossless, and valves split flow linearly.
 - Power is accounted per 15-minute step.
 
+### On screen
+
+- **The greenhouse** fills the space between the parts rail and the dock: a glasshouse frame with glazing over two raised timber beds (four plants each, soil that darkens when wet and puddles when waterlogged, leaves that pale and droop when dry and curl in heat), the 40 L tank with its water level and a dial gauge, the equipment plinth (pump, valve manifold with two ball-valve handles, farm controller with its display, dials, channel LEDs and the CH1/CH2/SOLAR IN sockets), the vent fan at the gable, the solar panel on its stand, the climate and light sensors, four green hoses and three black power cables coiled in the aisle, and the soil probe in its holder. Water ports are blue couplers, power ports keyed black sockets, probe slots two brass pins in a bed. A plugged end stands in its port; a free end lies on the floor or plinth; a carried end hangs under the pointer.
+- **Everything that moves follows the model:** the pump rotor and its LED, the fan, water marks in hoses that carried water in the shown step, the tank level and gauge, soil colour, plants, the controller's display and channel LEDs (red when a load was starved), the sensors' displays and the probe's reading. Wrong hoses and cables wear red fault collars at their ports.
+- **Camera views:** Overview `1`, Top `2`, Beds `3`, Fit selected `F`, as buttons and keys.
+- **One contextual dock tab, *Greenhouse*** (the rest stay: Chat, Voice, Activity, Notes), with a jump bar (Day · Flow · Selected · Attempt):
+  - the brief and its five criteria, the teaching-numbers note and (DI) the worked example;
+  - **The day:** the model clock (`HH:MM`, step k of 96, a progress line), *Start the day* / *Pause* / *Resume*, *Step 1 h*, ×1 / ×4, *Reset day…* (the brief's seed 11 or a practice seed), the outcome of the last run control, the live resource graph (tank with the 8 L reserve, soil θ of both beds with the 30–90 % band, greenhouse and outside air with 35 °C, battery, a strip of the steps the pump and fan ran or were starved), a text summary and an hourly table, and the verdict when the day ends;
+  - **Live resource flow:** the diagram (power column: solar → controller → fan, sensors; water column: tank → pump → manifold → beds; edges with litres or watts in the shown step, idle dashes, wrong or loose dots with ✕), fault notes and the text connection list;
+  - **Selected:** Overview / Ports / Behaviour & limits for any fixture, hose, cable or the probe; valve and rule fields with steppers (drafts until *Apply to the room* or Enter), *Unplug and coil in the aisle*, *Back to its holder*;
+  - **Your attempt:** predict (five choices and why), build, run, explain, revise (*New attempt* resets the day for everyone after confirmation), earlier attempts.
+- **HUD** over the viewport: model time, run status, tank, probed soil, air and battery, from the model.
+- **Collapsing the dock** never stops the day: model time comes from the room's clock.
+- **Cross-link:** selecting a part in 3D, in the parts rail, on the diagram or in the connection list selects it everywhere; clicking a valve handle or controller dial in 3D focuses that field.
+
+### Collaboration, files and persistence
+
+- **Room authority.** Plugging and unplugging are line-end moves with claims; valve and rule values are atomic edits with the revision the sender saw. The server refuses moved fixtures, wrong connector types, both ends in one port, a second line in a port (`occupied`), the probe outside a slot pair, out-of-range or off-step values (never clamped), and every rig change while the day runs (`running`). Wrong plumbing a learner makes on purpose (OUT→OUT, IN→IN, tank to bed, loops, solar to a load) is allowed and drawn.
+- **Run actions** are ordered and answered by the room like edits and carry the run id the sender saw; an action for another run is refused (`stale`), so a reset decided on an old view never wipes a newer day. If an answer is lost (timeout, closed connection), the copy is uncertain, and the next run state says whether it applied.
+- **Late join and reconnect** receive the run state and the server time with the rig, and show the same model time and resources. Peer rooms (no server) start the brief's day in the first tab and share stamped run states.
+- **Undo/Redo** covers value edits, line moves, imports and reset, with the existing stale/held rules; while the day runs the room refuses them (`running`).
+- **Project files.** Greenhouse projects are **version 3**: valve and rule values, each line's two ports (one end may be out) and the probe's slot; never the run, resources or model time. Version-1 greenhouse files (the earlier placeholder) migrate to the default rig with a notice. Predictions, explanations, attempts, names and chat are never exported.
+- **Local only (this browser tab, sessionStorage):** predictions, explanations, attempts and the PF notes gate. The room's activity record gets one `test` trace per finished day (attempt, seed and criterion codes) and one `reflect` trace per saved explanation (no text); run controls are `edit` traces.
+
+### Tests (developer environment)
+
+| Command | What it checks |
+|---|---|
+| `npm run test:greenhouse` (in `npm test`) | `scripts/greenhouse-model-check.mjs`: the model against an independent oracle written in the test (weather for 200 seeds, rig derivation on 30,000 random builds, 2,000 whole days step by step), both ledgers every step, the brief and the named failures, the grid search for the success region, 60 random pause schedules equal to an uninterrupted day (and a JSON round trip), run actions and refusals including stale run ids, the server rules (typed ports, bounds, poses, slots), and RoomCore: occupied ports, never-stored lines, the running lock for edits and live moves, pause settling at the room's tick, a late joiner, a stale resume and a stale reset, the room emptying mid-run. |
+| `npm run test:project` (in `npm test`) | `scripts/project-state-check.mjs`, greenhouse part: version 3 round trip with a half-plugged hose, 21 refused files (wrong connector, probe across beds, shared port, off-step and hostile values, a run in the file, wrong version), version-1 migration, recovery emptiness. |
+| `node scripts/e2e-greenhouse-worker.mjs` | Two real browsers (separate processes) and a late joiner over wrangler dev (Durable Object + WebSocket), with real pointer and keyboard input; see the list at the top of the script. |
+| `node scripts/qa-greenhouse.mjs` | Render evidence (peer mode): see [`docs/images/episodes/greenhouse/`](images/episodes/greenhouse/README.md). |
+
+### Limits (honest)
+
+- **A teaching water-balance and climate abstraction.** Weather, uptake and plant response are not validated crop, weather or botanical models; there is no growth or yield.
+- **No thermal mass, fixed-flow pump, lossless hoses, linear valves**, power accounted per 15-minute step, ideal sensors.
+- **Model time is the room's clock.** A client whose clock estimate is off shows the same steps a little earlier or later; paused states are identical everywhere.
+- **The verdict's G1 is judged on the build as it is when the day ends**; a rig changed while paused mid-day still counts as one run.
+- **Same-device peer rooms** (no server) do not pause the day when everyone leaves.
+- **The PF notes gate is personal**: it opens on this learner's own first finished day in this browser session.
+- **Desktop only.** The WebXR path does not include the studio.
+- **Software-rendered evidence.** Captures and counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured; 390×844 is a viewport check, not phone testing.
+
 ---
 
 ## Acceptance contracts for the next episodes

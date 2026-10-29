@@ -2664,3 +2664,6 @@ textarea:focus-visible {
 .gh-reset-error[hidden] { display: none; }
 .environment-heading strong#metric-clock { color: #e8eef7; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .gh-dayline span { transition: none; } }
+.gh-part-panel select { min-height: 44px; padding: 0 8px; color: var(--text); background: rgba(0, 0, 0, 0.3); border: 1px solid #3c4d68; border-radius: 8px; font: inherit; font-size: 0.74rem; }
+.gh-part-panel select:focus-visible { outline: 2px solid #8eb8ff; outline-offset: 2px; }
+.gh-ports-form .si-actions, .gh-probe-actions { flex-wrap: wrap; }
