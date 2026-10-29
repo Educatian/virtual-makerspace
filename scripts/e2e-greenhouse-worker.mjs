@@ -310,19 +310,24 @@ try {
   await late.close();
   delete pages.late;
 
-  // ── Dropped connection and recovery while the day runs ──
-  await runControl(host, "#gh-run-toggle");
-  await until(() => gh(member), (s) => s.panel.run.status === "running", 60_000);
+  // ── Interrupted connection and recovery ──
+  // The member's network goes away (browser offline, then the socket drops) and stays away
+  // until it returns, as on a real interruption. Meanwhile the host moves the day on one hour.
+  // (The day is paused here: software-rendered pages are too slow to pause a running day at a
+  // chosen time; the running case of the same refusal is the "running" lock above.)
   const beforeDrop = await gh(member);
+  await memberContext.setOffline(true);
   await member.evaluate(() => window.__vmQa.dropConnection());
   const wentOffline = await until(() => member.evaluate(() => window.__vmQa.episode().online), (online) => online === false, 30_000);
-  await runControl(member, "#gh-run-toggle");
+  await runControl(member, "#gh-step");
   const offlineNote = await until(() => runNote(member), (text) => Boolean(text) && !/Sending/.test(text), 60_000);
-  await sleep(6000);
-  await runControl(host, "#gh-run-toggle");
-  const hostPaused = await until(() => gh(host), (s) => s.panel.run.status === "paused", 120_000);
-  const memberBack = await until(() => gh(member), (s) => s.panel.run.status === "paused" && shownKey(s) === shownKey(hostPaused), 180_000);
-  await check("member's connection dropped mid-run: its run control was not applied; after reconnecting it holds the room's paused day exactly (no rewind, no free time)", shownKey(memberBack) === shownKey(hostPaused) && memberBack.panel.shown.tick >= beforeDrop.panel.shown.tick && wentOffline === false && /Not applied/.test(offlineNote ?? ""), `note "${offlineNote}"; before ${beforeDrop.panel.shown.tick} after ${memberBack.panel.shown.tick}`, "member");
+  await runControl(host, "#gh-step");
+  const hostStepped = await until(() => gh(host), (s) => s.panel.shown.tick === beforeDrop.panel.shown.tick + 4, 120_000);
+  const memberWhileAway = await gh(member);
+  await memberContext.setOffline(false);
+  const memberBack = await until(() => gh(member), (s) => shownKey(s) === shownKey(hostStepped), 180_000);
+  await check("interrupted connection: the member's Step while offline is not applied (nothing changed); the member does not move on alone; after reconnecting it holds the room's day exactly, including the host's hour", wentOffline === false && /Not applied/.test(offlineNote ?? "") && memberWhileAway.panel.shown.tick === beforeDrop.panel.shown.tick && shownKey(memberBack) === shownKey(hostStepped) && memberBack.panel.shown.tick === beforeDrop.panel.shown.tick + 4,
+    `note "${offlineNote}"; before ${beforeDrop.panel.shown.tick}, while away ${memberWhileAway.panel.shown.tick}, after ${memberBack.panel.shown.tick} (host ${hostStepped.panel.shown.tick})`, "member");
 
   // ── Step one hour ──
   const beforeStep = (await gh(host)).panel.shown.tick;
@@ -399,9 +404,15 @@ try {
     JSON.stringify(Object.keys(exported)), "host");
   await resetDay(host);
   await until(() => gh(host), (s) => s.panel.shown.tick === 0, 60_000);
+  // ×1 (the last day ran at ×4): the import below must land while this day still runs.
+  await runControl(host, '#gh-panel [data-speed="1"]');
+  await until(() => gh(host), (s) => s.panel.run.speed === 1, 60_000);
   await runControl(host, "#gh-run-toggle");
   await until(() => gh(host), (s) => s.panel.run.status === "running", 60_000);
-  await host.locator("#project-file-input").setInputFiles(exportPath);
+  // A file that differs from the room's rig (valve A 35 %), so the import is a real change.
+  const variantPath = `${artifacts}/export-variant.json`;
+  writeFileSync(variantPath, JSON.stringify({ ...exported, parts: exported.parts.map((part) => (part.id === "valve-manifold" ? { ...part, props: { ...part.props, valveA: 35 } } : part)) }));
+  await host.locator("#project-file-input").setInputFiles(variantPath);
   await host.locator("#confirm-ok").click();
   const importRunning = await until(() => status(host), (text) => /running/.test(text ?? ""), 60_000);
   await check("import while the day runs is refused by the room (running); nothing changed", /day is running/.test(importRunning ?? ""), importRunning, "host");
