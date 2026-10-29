@@ -452,10 +452,10 @@ try {
   await check("selecting the fan on the diagram selects it in 3D and opens its card", (await host.evaluate(() => window.__vmQa.selected())) === "vent-fan" && /cooling/i.test(await host.locator("#gh-part-panel").textContent() ?? ""), "", "host");
   await host.locator("body").press("1");
   await sleep(800);
-  const handle = await host.evaluate(() => window.__vmQa.ghControlPoint("valveB"));
-  await host.mouse.click(handle.x, handle.y);
-  const focused = await until(() => host.evaluate(() => document.activeElement?.id ?? ""), (id) => id === "gh-valveB", 30_000);
-  await check("clicking the valve B handle in 3D selects the manifold and focuses its valve B field", focused === "gh-valveB" && (await host.evaluate(() => window.__vmQa.selected())) === "valve-manifold", `focus ${focused}`, "host");
+  const dial = await host.evaluate(() => window.__vmQa.ghControlPoint("pumpBelow"));
+  await host.mouse.click(dial.x, dial.y);
+  const focused = await until(() => host.evaluate(() => document.activeElement?.id ?? ""), (id) => id === "gh-pumpBelow", 30_000);
+  await check("clicking the controller's PUMP BELOW dial in 3D selects the controller and focuses its field", focused === "gh-pumpBelow" && (await host.evaluate(() => window.__vmQa.selected())) === "farm-controller", `focus ${focused}; under the pointer ${JSON.stringify(await host.evaluate(({ x, y }) => window.__vmQa.debugPick(x, y)?.slice(0, 2) ?? null, dial))}`, "host");
 
   // ── Everyone leaves while the day runs: it pauses with its resources; recovery offered ──
   await runControl(host, "#gh-run-toggle");

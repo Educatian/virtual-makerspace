@@ -501,7 +501,7 @@ export function createGreenhouseRig(): Group {
   group.add(fanBox, conduit);
   group.add(flatLabel("FAN 12 V", 0.34, 0.08, PORT_POINTS[13][0], GH_FLOOR_Y + 0.425, PORT_POINTS[13][2] + 0.11, { color: "#fde68a" }));
   // Port labels on the floor/plinth next to each water port.
-  const portText: Array<[number, string, number, number]> = [[0, "TANK OUT", 0, 0.22], [1, "PUMP IN", 0, 0.24], [2, "PUMP OUT", 0, 0.24], [3, "MANIFOLD IN", 0, 0.24], [4, "VALVE A OUT", 0, -0.2], [5, "VALVE B OUT", 0, 0.22], [6, "INLET A", 0, -0.12], [7, "INLET B", 0, -0.12]];
+  const portText: Array<[number, string, number, number]> = [[0, "TANK OUT", 0, 0.22], [1, "PUMP IN", 0, 0.24], [2, "PUMP OUT", 0, 0.24], [3, "MANIFOLD IN", 0, 0.24], [4, "VALVE A OUT", 0, -0.2], [5, "VALVE B OUT", -0.42, 0.12], [6, "INLET A", 0, -0.12], [7, "INLET B", 0, -0.12]];
   for (const [index, text, dx, dz] of portText) {
     const [x, y, z] = PORT_POINTS[index];
     const base = index === 6 || index === 7 ? BEDS.rimTop + 0.004 : index === 0 ? GH_FLOOR_Y + 0.002 : PLINTH_TOP + 0.003;
@@ -592,8 +592,11 @@ export function createGhFixture(id: string): Group {
     for (const [key, p, tag] of [["valveA", a, "A"], ["valveB", b, "B"]] as const) {
       const body = new Mesh(new SphereGeometry(0.075, 18, 12).translate(p.x, PLINTH_TOP + 0.4, p.z), mat.brass());
       const handle = new Group();
-      const lever = new Mesh(new BoxGeometry(0.3, 0.025, 0.05).translate(0.15, 0, 0), new MeshStandardMaterial({ name: "valve_lever_red", color: 0xc0392b, roughness: 0.5 }));
-      const grip = new Mesh(new CylinderGeometry(0.03, 0.03, 0.08, 10).rotateZ(Math.PI / 2).translate(0.3, 0, 0), mat.black());
+      // The lever points to the front (towards the room) when open and turns a quarter towards
+      // +x as it closes, clear of the hose fitting standing in the outlet above the valve.
+      const lever = new Mesh(new BoxGeometry(0.05, 0.025, 0.34).translate(0, 0, 0.17), new MeshStandardMaterial({ name: "valve_lever_red", color: 0xc0392b, roughness: 0.5 }));
+      const grip = new Mesh(new CylinderGeometry(0.032, 0.032, 0.09, 10).rotateX(Math.PI / 2).translate(0, 0, 0.34), mat.black());
+      grip.name = "valve_grip";
       handle.add(lever, grip);
       handle.position.set(p.x, PLINTH_TOP + 0.48, p.z);
       handle.userData.ghControl = key;
@@ -756,8 +759,8 @@ export function showGhFixtureValues(component: Group, props: GhProps | undefined
   if (!visuals) return;
   if (visuals.handles && props?.valveA !== undefined && props.valveB !== undefined) {
     // A ball valve: lever along the pipe when open (0°), across when closed (90°).
-    visuals.handles.valveA.rotation.y = -(1 - props.valveA / 100) * (Math.PI / 2);
-    visuals.handles.valveB.rotation.y = -(1 - props.valveB / 100) * (Math.PI / 2);
+    visuals.handles.valveA.rotation.y = (1 - props.valveA / 100) * (Math.PI / 2);
+    visuals.handles.valveB.rotation.y = (1 - props.valveB / 100) * (Math.PI / 2);
   }
   if (visuals.dials && props?.pumpBelow !== undefined && props.fanAbove !== undefined) {
     const t = (value: number, bound: { min: number; max: number }) => (value - bound.min) / (bound.max - bound.min);
@@ -843,7 +846,7 @@ export function buildGhLine(group: Group, spec: LineSpec): void {
     indicator.userData.noShadow = true;
     group.add(indicator);
     indicators.push(indicator);
-    const hit = new Mesh(new SphereGeometry(0.2, 14, 10), new MeshBasicMaterial({ transparent: true, opacity: 0.001, depthWrite: false }));
+    const hit = new Mesh(new SphereGeometry(0.15, 14, 10), new MeshBasicMaterial({ transparent: true, opacity: 0.001, depthWrite: false }));
     hit.userData.endpointIndex = index;
     hit.userData.endpointHandle = true;
     hit.userData.noShadow = true;

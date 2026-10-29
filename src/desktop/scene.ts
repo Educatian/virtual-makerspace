@@ -2235,6 +2235,17 @@ export class DesktopWorkbenchScene {
 
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0 || this.transform.axis) return;
+    // Greenhouse: a valve lever or controller dial in front of everything else under the pointer
+    // wins over a hose end's (invisible, larger) grab sphere around the fitting next to it.
+    const visibleControl = this.activeStudio === "greenhouse" ? this.pickVisibleGhControl(event.clientX, event.clientY) : null;
+    if (visibleControl) {
+      const fixture = this.components.get(visibleControl.id);
+      if (fixture) {
+        this.select(fixture);
+        this.events.onKnobPick?.(visibleControl.id, visibleControl.control);
+        return;
+      }
+    }
     const endpointHit = this.pickEndpoint(event.clientX, event.clientY);
     const component = endpointHit?.component ?? this.pickComponent(event.clientX, event.clientY);
     if (!component) {
@@ -2938,6 +2949,45 @@ export class DesktopWorkbenchScene {
     return `${GH_PORTS[port].label} already holds a line (one per port) · ${end}`;
   }
 
+  /**
+   * The greenhouse control (valve lever or body, controller dial) that is the first visible
+   * surface under the pointer, if any (hose and cable grab spheres and rings are not surfaces).
+   */
+  private pickVisibleGhControl(clientX: number, clientY: number): { id: string; control: string } | null {
+    this.updatePointer(clientX, clientY);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const targets: Object3D[] = [];
+    for (const [id, component] of this.components) {
+      const kind = (component.userData.spec as ComponentSpec).kind;
+      if (id === "valve-manifold" || id === "farm-controller" || kind === "ghhose" || kind === "ghcable") targets.push(component);
+    }
+    const hits = this.raycaster.intersectObjects(targets, true).filter((hit) => hit.object.visible && !hit.object.userData.endpointHandle && hit.object.userData.endpointIndex === undefined);
+    const first = hits[0];
+    if (!first) return null;
+    const control = ghControlOf(first.object as unknown as { userData: Record<string, unknown>; parent: unknown });
+    if (!control) return null;
+    const root = first.object.userData.componentRoot as Group | undefined;
+    const id = (root?.userData.componentId as string | undefined) ?? null;
+    return id ? { id, control } : null;
+  }
+
+  /** QA: what lies under a screen point in the greenhouse (part, mesh name, distance, control), front first. */
+  qaPickReport(clientX: number, clientY: number): Array<{ part: string | null; mesh: string; distance: number; control: string | null; handle: boolean; ring: boolean; visible: boolean; material: string }> {
+    this.updatePointer(clientX, clientY);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const targets = [...this.components.values()].filter((component) => (component.userData.spec as ComponentSpec).studio === this.activeStudio);
+    return this.raycaster.intersectObjects(targets, true).slice(0, 8).map((hit) => ({
+      part: ((hit.object.userData.componentRoot as Group | undefined)?.userData.componentId as string | undefined) ?? null,
+      mesh: hit.object.name || hit.object.type,
+      distance: Math.round(hit.distance * 1000) / 1000,
+      control: ghControlOf(hit.object as unknown as { userData: Record<string, unknown>; parent: unknown }),
+      handle: Boolean(hit.object.userData.endpointHandle),
+      ring: hit.object.userData.endpointIndex !== undefined,
+      visible: hit.object.visible,
+      material: ((hit.object as Mesh).material as { name?: string } | undefined)?.name ?? "",
+    }));
+  }
+
   /** Which greenhouse fixture control (valve handle, controller dial) is under the pointer, if any. */
   private pickGhControl(clientX: number, clientY: number): string | null {
     this.updatePointer(clientX, clientY);
@@ -3425,8 +3475,11 @@ export class DesktopWorkbenchScene {
     for (const id of ["valve-manifold", "farm-controller"]) {
       let found: Object3D | null = null;
       this.components.get(id)?.traverse((child) => { if (!found && child.userData.ghControl === control && child instanceof Group) found = child; });
-      // The middle of the lever or dial face (its pivot can sit on the valve body's edge).
-      if (found) return this.projectWorld(new Box3().setFromObject(found as Object3D).getCenter(new Vector3()));
+      // A valve lever's grip, or the middle of a dial (a pivot can sit under a hose fitting).
+      if (found) {
+        const grip = (found as Object3D).getObjectByName("valve_grip");
+        return this.projectWorld(grip ? grip.getWorldPosition(new Vector3()) : new Box3().setFromObject(found as Object3D).getCenter(new Vector3()));
+      }
     }
     return null;
   }

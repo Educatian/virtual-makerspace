@@ -960,6 +960,7 @@ function enterWorkspace(): void {
       partPoint: (id: string) => workbench?.componentScreenPoint(id) ?? null,
       ghControlPoint: (control: string) => workbench?.ghControlScreenPoint(control) ?? null,
       partDragPoints: (id: string, a: number, b: number) => workbench?.partDragPoints(id, a, b) ?? null,
+      debugPick: (x: number, y: number) => workbench?.qaPickReport(x, y) ?? null,
       /** The part selected in 3D (cross-link checks). */
       selected: () => workbench?.selectedId ?? null,
       /** Seat a part locally (no room traffic) for close-up captures. */
