@@ -57,4 +57,7 @@ export function stepModel(snapshot: GhSnapshot, rig: GhRig, weather: GhWeather):
 export function simulate(snapshot: GhSnapshot, rig: GhRig, seed: number, toTick: number): { snapshot: GhSnapshot; records: GhRecord[] };
 export function plantState(theta: number, air: number): PlantState;
 export function balance(snapshot: GhSnapshot): { water: number; energy: number };
-export function evaluateBrief(snapshot: GhSnapshot, rig: GhRig): { finished: boolean; met: boolean; criteria: GhCriterion[] };
+/** G1 as judged on a build (recorded by the room when a day ends). */
+export interface GhEndBuild { complete: boolean; missing: string }
+export function endBuildOf(rig: GhRig): GhEndBuild;
+export function evaluateBrief(snapshot: GhSnapshot, rig: GhRig, endBuild?: GhEndBuild | null): { finished: boolean; met: boolean; criteria: GhCriterion[] };

@@ -118,7 +118,11 @@ server.on("connection", (socket, request) => {
       for (const message of released) peer.send(JSON.stringify(message));
       peer.send(JSON.stringify({ kind: "goodbye", participantId: participant.id }));
     }
-    if (entry.peers.size === 0) rooms.delete(room);
+    // Everyone left: as the Durable Object does, the bench resets but the room keeps its episode
+    // and its greenhouse day (a running day pauses where it is, with its resources), so a rejoin
+    // gets that day back. This development relay keeps rooms in memory only: restarting the
+    // process forgets them (the Durable Object persists them).
+    if (entry.peers.size === 0) entry.core.reset();
   });
 });
 

@@ -9,6 +9,7 @@
 //   01 overview 1440×900 (nothing built) · 02 overview 1280×720 · 03 top (key 2) · 04 beds (key 3)
 //   05 wrong build (tank straight to a bed, OUT→OUT, a loose end) with the flow card
 //   06 built, mid-day (paused at 13:00) with the day card · 07 close-up pump and manifold ports
+//   07b close-up of the valve handwheels and the controller knobs
 //   08 close-up beds with the probe · 09 failure: the default allocation's day (bed B dries)
 //   10 recovery: the worked allocation's day (all five met) · 11 the selected manifold's card
 //   12 phone 390×844 top · 13 phone dock reached by wheel and keyboard · 14 PF panel (no worked example)
@@ -158,6 +159,7 @@ try {
   await shot(page, "06b-day-card", { element: "#gh-day-card" });
   for (const [name, position, target] of [
     ["07-closeup-pump-manifold", [-0.4, 2.7, 4.7], [-0.4, 0.6, 1.95]],
+    ["07b-closeup-controls", [1.25, 2.6, 4.7], [1.25, 0.9, 2.0]],
     ["08-closeup-beds-probe", [-1.6, 2.9, 2.5], [-1.5, 0.55, -0.45]],
   ]) {
     await page.evaluate(({ position, target }) => window.__vmQa.view(position, target), { position, target });

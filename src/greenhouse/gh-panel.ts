@@ -25,12 +25,14 @@ import { GH_BOUNDS, GH_PORTS, GH_PROBE_SLOTS, type GhProps } from "../../cloudfl
 import {
   clockAt,
   deriveRig,
+  endBuildOf,
   evaluateBrief,
   GH_MODEL,
   GH_WORKED_EXAMPLE,
   simulate,
   initialSnapshot,
   type GhCriterion,
+  type GhEndBuild,
   type GhRig,
   type GhSnapshot,
 } from "../../cloudflare/greenhouse-model.js";
@@ -47,8 +49,11 @@ export interface GhPanelHost {
   roomCode(): string;
   /** The room's clock (ms). */
   serverTime(): number;
-  /** One run action through the room: accepted, or why not. */
-  action(action: GhAction): Promise<{ ok: boolean; reason: string | null }>;
+  /**
+   * One run action through the room: accepted, or why not. `opId`: the action's id when its
+   * outcome is unknown (no answer), so a later run state can be matched to THIS action.
+   */
+  action(action: GhAction): Promise<{ ok: boolean; reason: string | null; opId?: string | null }>;
   selectedId(): string | null;
   select(id: string): void;
   holderOf(id: string): string | null;
@@ -136,16 +141,37 @@ interface Attempt {
   n: number;
   prediction: Prediction | null;
   why: string;
-  /** Finished days with a run id above this one count for this attempt (null: any). */
+  /**
+   * The attempt's boundary: only days with a run id above this one can count for it. Null until
+   * this tab first sees the room's run: then it is bound so that a day that had already finished
+   * when this learner arrived never counts (see `bindAttempt`).
+   */
   afterRun: number | null;
   result: { at: number; runId: number; seed: number; met: boolean; criteria: GhCriterion[]; summary: string } | null;
+  /** The explanation being written (a draft; editing it never changes the saved one). */
   explanation: string;
+  /** The saved explanation: what "explained" means. Replaced only by saving again. */
+  saved: { text: string; at: number } | null;
+  /** Whether a saved explanation exists (kept equal to `saved !== null`). */
   explained: boolean;
+  /**
+   * The prediction (and why) as it stood when this attempt's day began — taken once, before any
+   * outcome, and never rewritten: later choices cannot change what this day is compared with.
+   * Null until the day begins; `prediction` inside is null if none was made by then.
+   */
+  predicted: { prediction: Prediction | null; why: string; at: number; tick: number; runId: number } | null;
 }
 interface Session {
   attempts: Attempt[];
   /** Explanatory notes unlocked (PF): this learner's own first finished day in this browser session. */
   firstFinishedAt: number | null;
+  /**
+   * Run ids this learner was present for before they ended (this tab showed them before 06:00 the
+   * next morning). Only such a day can be one of this learner's attempts; a day that finished
+   * before they arrived, or while they were away the whole time, is the room's result, shown but
+   * not credited. Kept for this tab session (studio switches and reconnects keep it).
+   */
+  liveRuns: number[];
 }
 
 type InspectTab = "overview" | "ports" | "behavior";
@@ -163,7 +189,12 @@ const RUN_REFUSALS: Record<string, string> = {
   stale: "a teammate changed the day first (it was reset); look at the new day before acting",
 };
 
-interface Projection { runId: number; anchorTick: number; anchorAt: number; status: string; rigKey: string; snapshot: GhSnapshot; records: CompactRecord[] }
+/**
+ * The run brought to the room's current tick. `endBuild`: the build the day ended with (G1) — the
+ * room's record once it settled the end, or the rig this tab held when its projection reached the
+ * end (the rig is locked until then, so it is the rig the day ran on).
+ */
+interface Projection { runId: number; anchorTick: number; anchorAt: number; status: string; rigKey: string; snapshot: GhSnapshot; records: CompactRecord[]; endBuild: GhEndBuild | null }
 
 /** The DI worked example's rig: the brief's build with the worked values. */
 function workedRig(): GhRig {
@@ -199,8 +230,8 @@ export class GreenhousePanel {
   /** An edit of this learner's was just answered: the Selected card may be rebuilt under focus. */
   private answered = false;
   private actionPending = false;
-  /** An action whose answer did not arrive (timeout, closed connection): did the room apply it? */
-  private unconfirmed: { action: GhAction; before: GhRun; label: string } | null = null;
+  /** A run control whose answer did not arrive: confirmed only by a run state naming its op id. */
+  private unconfirmed: { action: GhAction; opId: string; label: string } | null = null;
   private renderQueued = false;
   private timer = 0;
   private disposed = false;
@@ -287,6 +318,7 @@ export class GreenhousePanel {
           </div>
           <label class="ss-why" for="gh-why">Why? <small>(your own notes)</small></label>
           <textarea id="gh-why" rows="2" maxlength="400" placeholder="Because bed B drinks more and…"></textarea>
+          <p class="ss-fine" id="gh-predict-lock" hidden></p>
         </fieldset>
         <div class="ss-step"><p class="ss-step-title">2 · Build and allocate: hoses, power cables, the probe, valves and rules (in 3D or under Selected). <span id="gh-build-summary"></span></p></div>
         <div class="ss-step"><p class="ss-step-title">3 · Run the day and inspect it (above). The verdict appears when the day ends.</p><p class="ss-fine" id="gh-run-summary"></p></div>
@@ -294,6 +326,7 @@ export class GreenhousePanel {
           <label class="ss-step-title" for="gh-explain">4 · Explain what happened, and why.</label>
           <textarea id="gh-explain" rows="3" maxlength="800" placeholder="Bed B dried out at 14:00 because…"></textarea>
           <button class="secondary-button compact" id="gh-explain-save" type="button" disabled>Save explanation</button>
+          <p class="ss-fine" id="gh-explain-status" role="status"></p>
         </div>
         <div class="ss-step">
           <p class="ss-step-title">5 · Revise: change the rig, then start a new attempt (it resets the day for everyone).</p>
@@ -329,15 +362,18 @@ export class GreenhousePanel {
     });
     on("#gh-reset", "click", () => void this.resetDay());
     on("#gh-predictions", "change", (event) => {
-      this.current().prediction = (event.target as HTMLInputElement).value as Prediction;
+      // Once the attempt's day has begun its prediction is fixed (a new attempt predicts again).
+      if (!this.current().predicted) this.current().prediction = (event.target as HTMLInputElement).value as Prediction;
       this.saveSession();
       this.renderLoop();
     });
     on("#gh-why", "input", (event) => {
+      if (this.current().predicted) return;
       this.current().why = (event.target as HTMLTextAreaElement).value.slice(0, 400);
       this.saveSession();
     });
     on("#gh-explain", "input", (event) => {
+      // Only the draft changes; the saved explanation stays until it is saved again.
       this.current().explanation = (event.target as HTMLTextAreaElement).value.slice(0, 800);
       this.saveSession();
       this.renderLoop();
@@ -421,16 +457,40 @@ export class GreenhousePanel {
   // ── State in ─────────────────────────────────────────────────────────────────────
 
   /** The room's run state arrived (accepted action, join, reconnect). */
-  setRun(run: GhRun): void {
+  setRun(run: GhRun, cause: { opId: string; type: string } | null = null): void {
     const unconfirmed = this.unconfirmed;
-    if (unconfirmed && appliedBy(unconfirmed.action, unconfirmed.before, run)) {
+    if (unconfirmed && cause?.opId === unconfirmed.opId) {
+      // The room's state names this very action: it was applied.
       this.unconfirmed = null;
       this.runNote = { text: `${unconfirmed.label} · for everyone in the room (the room's answer arrived after the wait)`, tone: "valid" };
+    } else if (unconfirmed) {
+      // Another change (a teammate's action, a join or reconnect): never taken as this action's
+      // answer, even if it looks the same. Say only what the room now shows.
+      const by = cause ? `someone else's ${RUN_ACTION_WORDS[cause.type] ?? "run control"}` : "the room's current state arrived";
+      this.runNote = { text: `Your run control (${unconfirmed.label.split(":")[0]}) is not confirmed: the room's answer did not arrive. Meanwhile ${by}; the room now shows ${describeRun(run, currentTick(run, this.host.serverTime()))}.`, tone: "warning" };
     }
     this.run = run;
     this.projection = null;
     this.ensureTimer();
     this.tick(true);
+  }
+
+  /**
+   * Binds an unbound attempt to the first run this tab shows: a day already over at that moment
+   * (an earlier team's, or one that ended while this learner was away) is not this attempt's.
+   */
+  private bindAttempt(run: GhRun, finished: boolean): void {
+    const attempt = this.current();
+    if (attempt.afterRun !== null) return;
+    attempt.afterRun = finished ? run.runId : run.runId - 1;
+    this.saveSession();
+  }
+
+  /** This learner is present for `run` before its end: its finished day can be their attempt's. */
+  private noteLive(run: GhRun): void {
+    if (this.session.liveRuns.includes(run.runId)) return;
+    this.session.liveRuns = [...this.session.liveRuns, run.runId].slice(-40);
+    this.saveSession();
   }
 
   /** The rig as built changed (here or remotely). */
@@ -480,8 +540,12 @@ export class GreenhousePanel {
     }
     const target = currentTick(run, this.host.serverTime());
     let projection = this.projection;
-    if (!projection || projection.runId !== run.runId || projection.anchorTick !== run.tick || projection.anchorAt !== run.anchorAt || projection.status !== run.status || projection.rigKey !== this.rigKey) {
-      projection = { runId: run.runId, anchorTick: run.tick, anchorAt: run.anchorAt, status: run.status, rigKey: this.rigKey, snapshot: run.snapshot, records: run.records.slice() };
+    const sameAnchor = projection !== null && projection.runId === run.runId && projection.anchorTick === run.tick && projection.anchorAt === run.anchorAt && projection.status === run.status;
+    // A finished day is never recomputed with a rig changed after its end (the end unlocks the rig;
+    // the room settles the day with the rig it ran on before it accepts such a change).
+    const finishedHere = sameAnchor && projection!.snapshot.tick >= GH_MODEL.steps;
+    if (!projection || !sameAnchor || (projection.rigKey !== this.rigKey && !finishedHere)) {
+      projection = { runId: run.runId, anchorTick: run.tick, anchorAt: run.anchorAt, status: run.status, rigKey: this.rigKey, snapshot: run.snapshot, records: run.records.slice(), endBuild: run.endBuild ?? null };
       this.projection = projection;
       force = true;
     }
@@ -492,6 +556,13 @@ export class GreenhousePanel {
       for (const record of advanced.records) projection.records.push(compactRecord(record));
       force = true;
     }
+    if (projection.snapshot.tick >= GH_MODEL.steps && !projection.endBuild) projection.endBuild = run.endBuild ?? endBuildOf(rig);
+    // Participation: the first run this tab shows binds the attempt; a run shown before its end
+    // is one this learner was present for.
+    const over = projection.snapshot.tick >= GH_MODEL.steps;
+    this.bindAttempt(run, over);
+    if (!over) this.noteLive(run);
+    if (!over) this.lockPrediction(run, projection.snapshot.tick);
     if (target >= GH_MODEL.steps) window.clearInterval(this.timer);
     if (!force && projection.snapshot.tick === this.shownTick) return;
     this.shownTick = projection.snapshot.tick;
@@ -592,7 +663,7 @@ export class GreenhousePanel {
       const reason = result.reason ?? "";
       this.runNote = { text: RUN_REFUSALS[reason] ? `Not applied · ${RUN_REFUSALS[reason]}; nothing changed.` : notAppliedCopy(reason, "Not applied", ""), tone: "warning" };
       // Uncertain: if the room's next day state shows it applied, say so then.
-      if (!RUN_REFUSALS[reason] && reason !== "offline" && before) this.unconfirmed = { action, before, label };
+      if (!RUN_REFUSALS[reason] && reason !== "offline" && before && result.opId) this.unconfirmed = { action, opId: result.opId, label };
     }
     this.renderDay();
     return result.ok;
@@ -665,10 +736,14 @@ export class GreenhousePanel {
     const rig = this.rig;
     if (!run || !projection || !rig || projection.snapshot.tick < GH_MODEL.steps) return;
     const attempt = this.current();
-    if (attempt.result || (attempt.afterRun !== null && run.runId <= attempt.afterRun)) return;
-    const brief = evaluateBrief(projection.snapshot, rig);
+    // Only a day this learner was present for, inside this attempt's boundary, is theirs; any
+    // other finished day stays the room's shared result (shown in The day, not credited here).
+    if (attempt.result || attempt.afterRun === null || run.runId <= attempt.afterRun || !this.session.liveRuns.includes(run.runId)) return;
+    const brief = evaluateBrief(projection.snapshot, rig, projection.endBuild);
     const briefDay = run.seed === GH_MODEL.briefSeed;
+    this.lockPrediction(run, projection.snapshot.tick);
     attempt.result = { at: Date.now(), runId: run.runId, seed: run.seed, met: brief.met && briefDay, criteria: brief.criteria, summary: this.rigSummary() };
+    attempt.saved = null;
     attempt.explained = false;
     if (this.session.firstFinishedAt === null) this.session.firstFinishedAt = Date.now();
     this.saveSession();
@@ -678,9 +753,23 @@ export class GreenhousePanel {
     this.renderWorked();
   }
 
+  /**
+   * Fixes the current attempt's prediction when its day begins (this learner's eligible run has
+   * started, stepped or ended): the choice and notes as they are now, or none if none was made.
+   */
+  private lockPrediction(run: GhRun, tick: number): void {
+    const attempt = this.current();
+    if (attempt.predicted || attempt.afterRun === null || run.runId <= attempt.afterRun || !this.session.liveRuns.includes(run.runId)) return;
+    if (run.status === "idle" && tick === 0) return;
+    attempt.predicted = { prediction: attempt.prediction, why: attempt.why, at: Date.now(), tick, runId: run.runId };
+    this.saveSession();
+  }
+
   private saveExplanation(): void {
     const attempt = this.current();
-    if (!attempt.result || attempt.explanation.trim().length < 8) return;
+    const text = attempt.explanation.trim();
+    if (!attempt.result || text.length < 8 || text === attempt.saved?.text) return;
+    attempt.saved = { text, at: Date.now() };
     attempt.explained = true;
     this.saveSession();
     this.host.trace("reflect", `Greenhouse explanation saved · attempt ${attempt.n}${attempt.result.met ? " · brief met" : ""}`);
@@ -698,7 +787,7 @@ export class GreenhousePanel {
     }
     // The room's new run arrived before the reset resolved: days from this run on count.
     const after = this.run ? this.run.runId - 1 : null;
-    this.session.attempts.push({ n: this.session.attempts.length + 1, prediction: null, why: "", afterRun: after, result: null, explanation: "", explained: false });
+    this.session.attempts.push({ n: this.session.attempts.length + 1, prediction: null, why: "", afterRun: after, result: null, explanation: "", saved: null, explained: false, predicted: null });
     this.session.attempts = this.session.attempts.slice(-20);
     this.saveSession();
     this.queueRender();
@@ -896,6 +985,47 @@ export class GreenhousePanel {
     this.renderLoop();
   }
 
+  /**
+   * The connection list changes every step (flows) while a learner may be on one of its buttons:
+   * rows are patched in place (each button element is kept), so keyboard focus and a screen
+   * reader's position stay put; only if the rows themselves changed is the list rebuilt, and then
+   * focus returns to the button for the same part.
+   */
+  private patchList(list: HTMLElement, html: string): void {
+    if (this.written.get("list") === html && list.innerHTML !== "") return;
+    this.written.set("list", html);
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const next = template.content.querySelector("ul");
+    const current = list.querySelector("ul");
+    const keys = (ul: Element | null): string => [...(ul?.children ?? [])].map((li) => li.querySelector("button")?.getAttribute("data-select") ?? "").join("|");
+    if (!next || !current || keys(next) !== keys(current)) {
+      const focused = document.activeElement instanceof HTMLElement && list.contains(document.activeElement) ? document.activeElement.getAttribute("data-select") : null;
+      list.innerHTML = html;
+      if (focused) list.querySelector<HTMLElement>(`[data-select="${focused}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    [...current.children].forEach((row, index) => {
+      const fresh = next.children[index];
+      if (row.className !== fresh.className) row.className = fresh.className;
+      const button = row.querySelector("button");
+      const freshButton = fresh.querySelector("button");
+      if (!button || !freshButton) {
+        row.innerHTML = fresh.innerHTML;
+        return;
+      }
+      if (button.innerHTML !== freshButton.innerHTML) button.innerHTML = freshButton.innerHTML;
+      const after = (node: ChildNode | null): string => {
+        let text = "";
+        for (let sibling = node; sibling; sibling = sibling.nextSibling) text += sibling.nodeType === Node.TEXT_NODE ? sibling.textContent : (sibling as Element).outerHTML;
+        return text;
+      };
+      if (after(button.nextSibling) === after(freshButton.nextSibling)) return;
+      while (button.nextSibling) button.nextSibling.remove();
+      for (let sibling = freshButton.nextSibling; sibling; sibling = sibling.nextSibling) row.append(sibling.cloneNode(true));
+    });
+  }
+
   private write(element: HTMLElement, key: string, html: string): boolean {
     if (this.written.get(key) === html && element.innerHTML !== "") return false;
     this.written.set(key, html);
@@ -1079,7 +1209,7 @@ export class GreenhousePanel {
       this.write(verdict, "verdict", `<p class="ss-fine">The verdict appears when the day ends (06:00 the next morning). Until then, the graph and diagram show what is happening.</p>`);
       return;
     }
-    const brief = evaluateBrief(projection.snapshot, rig);
+    const brief = evaluateBrief(projection.snapshot, rig, projection.endBuild);
     const briefDay = this.run?.seed === GH_MODEL.briefSeed;
     const di = this.host.condition() === "DI";
     const passed = brief.criteria.filter((criterion) => criterion.pass).length;
@@ -1103,7 +1233,7 @@ export class GreenhousePanel {
     if (this.write(diagram, "diagram", renderGhDiagramSvg({ rig, snapshot: projection.snapshot, record, selected })) && focusKey) {
       diagram.querySelector<SVGElement>(`[data-select="${focusKey}"], [data-line="${focusKey}"]`)?.focus();
     }
-    this.write(list, "list", renderGhConnectionList(rig, record));
+    this.patchList(list, renderGhConnectionList(rig, record));
     const showNotes = this.host.condition() === "DI" || this.session.firstFinishedAt !== null;
     const { shown, withheld } = faultNotes(rig, showNotes);
     this.write(notes, "notes", `${shown.map((note) => `<p><i class="ph ph-warning-circle" aria-hidden="true"></i> ${escape(note)}</p>`).join("")}${withheld ? `<p class="sd-withheld">${withheld} explanatory note${withheld === 1 ? "" : "s"} appear${withheld === 1 ? "s" : ""} after your own first finished day in this session (the diagram already shows the rig as built).</p>` : ""}${!shown.length && !withheld ? `<p class="sd-ok"><i class="ph ph-check-circle" aria-hidden="true"></i> Built as the brief needs (G1). Whether the day goes well depends on the allocation.</p>` : ""}`);
@@ -1279,20 +1409,46 @@ export class GreenhousePanel {
     pill.textContent = `Attempt ${attempt.n} · ${state}`;
     pill.dataset.tone = result?.met ? "valid" : result ? "warning" : "neutral";
     if (label) label.textContent = `Attempt ${attempt.n}`;
-    const reached = [Boolean(attempt.prediction), true, Boolean(result), attempt.explained, false];
+    const locked = attempt.predicted;
+    const reached = [Boolean(locked ? locked.prediction : attempt.prediction), true, Boolean(result), attempt.explained, false];
     this.write(steps, "steps", ["Predict", "Build", "Run", "Explain", "Revise"].map((name, index) => `<li data-done="${reached[index]}"><span aria-hidden="true">${index + 1}</span>${name}${reached[index] && index !== 1 ? '<span class="sr-only"> (done)</span>' : ""}</li>`).join(""));
     document.querySelectorAll<HTMLInputElement>("#gh-predictions input").forEach((input) => {
-      input.checked = input.value === attempt.prediction;
+      input.checked = input.value === (locked ? locked.prediction : attempt.prediction);
+      input.disabled = Boolean(locked);
     });
-    if (why && document.activeElement !== why && why.value !== attempt.why) why.value = attempt.why;
+    const shownWhy = locked ? locked.why : attempt.why;
+    if (why) {
+      why.disabled = Boolean(locked);
+      if (document.activeElement !== why && why.value !== shownWhy) why.value = shownWhy;
+    }
+    const lockNote = document.querySelector<HTMLElement>("#gh-predict-lock");
+    if (lockNote) {
+      lockNote.hidden = !locked;
+      lockNote.textContent = locked ? `Fixed when this attempt's day began (${clockAt(locked.tick)}): ${locked.prediction ? "this is the prediction its result is compared with" : "no prediction had been made"}. A new attempt predicts again.` : "";
+    }
     if (explain && document.activeElement !== explain && explain.value !== attempt.explanation) explain.value = attempt.explanation;
-    if (save) save.disabled = !result || attempt.explanation.trim().length < 8 || attempt.explained;
+    const draft = attempt.explanation.trim();
+    if (save) save.disabled = !result || draft.length < 8 || draft === attempt.saved?.text;
+    const explainStatus = document.querySelector<HTMLElement>("#gh-explain-status");
+    if (explainStatus) {
+      explainStatus.textContent = !result
+        ? ""
+        : !attempt.saved
+          ? "Not saved yet: the attempt counts as explained once you save an explanation (8 characters or more)."
+          : draft === attempt.saved.text
+            ? "Saved."
+            : `Edited since you saved it: the saved explanation ("${attempt.saved.text.slice(0, 60)}${attempt.saved.text.length > 60 ? "…" : ""}") stays until you save again.`;
+    }
     if (build) build.textContent = this.rig ? `Now: ${this.rigSummary()}.` : "";
     if (runSummary) {
-      const predicted = PREDICTIONS.find(([value]) => value === attempt.prediction)?.[1] ?? "no prediction recorded";
+      const lockedLabel = locked?.prediction ? PREDICTIONS.find(([value]) => value === locked.prediction)?.[1] : null;
+      const predicted = lockedLabel ? `${lockedLabel} (before the day began)` : "no prediction was made before the day began";
+      const shownOver = (this.projection?.snapshot.tick ?? 0) >= GH_MODEL.steps;
       runSummary.textContent = result
         ? `Day ${result.seed === GH_MODEL.briefSeed ? "(brief's day)" : `(practice seed ${result.seed})`} finished: ${result.criteria.map((criterion) => `${criterion.id} ${criterion.pass ? "✓" : "✕"}`).join(" ")}. You predicted: ${predicted}. Built: ${result.summary}.`
-        : "No finished day for this attempt yet.";
+        : shownOver
+          ? "The day shown above finished without you (before you arrived): its result is the room's, not one of your attempts. Start a new attempt to run your own day."
+          : "No finished day for this attempt yet.";
     }
     if (history) {
       const earlier = this.session.attempts.slice(0, -1);
@@ -1315,12 +1471,23 @@ export class GreenhousePanel {
       const raw = sessionStorage.getItem(this.storageKey());
       if (raw) {
         const parsed = JSON.parse(raw) as Session;
-        if (Array.isArray(parsed.attempts) && parsed.attempts.length) return { attempts: parsed.attempts.slice(-20), firstFinishedAt: typeof parsed.firstFinishedAt === "number" ? parsed.firstFinishedAt : null };
+        if (Array.isArray(parsed.attempts) && parsed.attempts.length) {
+          const liveRuns = Array.isArray(parsed.liveRuns) ? parsed.liveRuns.filter((id) => Number.isSafeInteger(id)).slice(-40) : [];
+          // Sessions from before saved explanations and fixed predictions: a saved one was the text
+          // marked explained; a missing prediction snapshot stays missing (never invented).
+          const attempts = parsed.attempts.slice(-20).map((attempt) => ({
+            ...attempt,
+            saved: attempt.saved ?? (attempt.explained && attempt.explanation?.trim() ? { text: attempt.explanation.trim(), at: attempt.result?.at ?? 0 } : null),
+            predicted: attempt.predicted ?? null,
+          }));
+          for (const attempt of attempts) attempt.explained = attempt.saved !== null;
+          return { attempts, firstFinishedAt: typeof parsed.firstFinishedAt === "number" ? parsed.firstFinishedAt : null, liveRuns };
+        }
       }
     } catch {
       // A per-learner convenience; a fresh session works without it.
     }
-    return { attempts: [{ n: 1, prediction: null, why: "", afterRun: null, result: null, explanation: "", explained: false }], firstFinishedAt: null };
+    return { attempts: [{ n: 1, prediction: null, why: "", afterRun: null, result: null, explanation: "", saved: null, explained: false, predicted: null }], firstFinishedAt: null, liveRuns: [] };
   }
 
   private saveSession(): void {
@@ -1338,13 +1505,15 @@ export class GreenhousePanel {
     rig: { complete: boolean; faults: string[]; lines: Record<string, string>; probe: string | null } | null;
     verdict: { met: boolean; criteria: Array<{ id: string; pass: boolean; measured: string }> } | null;
     attempt: number; resultRun: number | null; explained: boolean; notesUnlocked: boolean; locked: boolean; drafts: Record<string, string>; runNote: string | null; editNote: string | null;
+    afterRun: number | null; liveRuns: number[]; unconfirmed: string | null;
+    savedExplanation: string | null; draftExplanation: string; predicted: { prediction: string | null; why: string; tick: number; runId: number } | null; prediction: string | null;
   } {
     const projection = this.projection;
     const rig = this.rig;
     const snapshot = projection?.snapshot;
     const record = this.lastRecord();
     const attempt = this.current();
-    const finished = snapshot && rig && snapshot.tick >= GH_MODEL.steps ? evaluateBrief(snapshot, rig) : null;
+    const finished = snapshot && rig && snapshot.tick >= GH_MODEL.steps ? evaluateBrief(snapshot, rig, projection?.endBuild ?? null) : null;
     return {
       run: this.run ? { runId: this.run.runId, seed: this.run.seed, status: this.run.status, speed: this.run.speed, tick: this.run.tick } : null,
       shown: snapshot ? {
@@ -1372,19 +1541,24 @@ export class GreenhousePanel {
       drafts: Object.fromEntries(this.drafts),
       runNote: this.runNote?.text ?? null,
       editNote: this.editNote?.text ?? null,
+      afterRun: attempt.afterRun,
+      liveRuns: [...this.session.liveRuns],
+      unconfirmed: this.unconfirmed?.opId ?? null,
+      savedExplanation: attempt.saved?.text ?? null,
+      draftExplanation: attempt.explanation,
+      predicted: attempt.predicted ? { prediction: attempt.predicted.prediction, why: attempt.predicted.why, tick: attempt.predicted.tick, runId: attempt.predicted.runId } : null,
+      prediction: attempt.prediction,
     };
   }
 }
 
-/** Whether `after` (a later run state) shows `action`, taken on `before`, as applied by the room. */
-function appliedBy(action: GhAction, before: GhRun, after: GhRun): boolean {
-  if (action.type === "reset") return after.runId > before.runId;
-  if (after.runId !== before.runId) return false;
-  if (action.type === "start" || action.type === "resume") return before.status !== "running" && after.status !== before.status && after.status !== "idle";
-  if (action.type === "pause") return before.status === "running" && after.status === "paused";
-  if (action.type === "step") return after.tick > before.tick;
-  if (action.type === "speed") return after.speed === action.speed && before.speed !== action.speed;
-  return false;
+const RUN_ACTION_WORDS: Record<string, string> = { start: "start", pause: "pause", resume: "resume", step: "step", speed: "speed change", reset: "reset" };
+
+/** The room's run in words (what an uncertain outcome can honestly report). */
+function describeRun(run: GhRun, tick: number): string {
+  const day = run.seed === GH_MODEL.briefSeed ? "the brief's day (seed 11)" : `practice day seed ${run.seed}`;
+  const status = tick >= GH_MODEL.steps ? "over" : run.status === "idle" ? "not started" : run.status;
+  return `${day}, run ${run.runId}, ${status} at ${clockAt(tick)}`;
 }
 
 function initialAir(seed: number): number {

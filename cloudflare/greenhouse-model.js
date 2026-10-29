@@ -383,11 +383,24 @@ export function balance(snapshot) {
  * The brief's five criteria for a run that reached `snapshot` with the current rig. `finished`:
  * the day is over (the record verdicts are final only then).
  */
-export function evaluateBrief(snapshot, rig) {
+/**
+ * G1 as judged on a build: what the room records when a day ends (`endBuild` of the run), so a rig
+ * changed after the end cannot change that day's verdict.
+ */
+export function endBuildOf(rig) {
+  return { complete: rig.complete, missing: rig.complete ? "" : rigSummaryMissing(rig) };
+}
+
+/**
+ * The brief's five criteria for a day's snapshot. G1 is judged on `endBuild` (the build the day
+ * ended with, recorded by the room) when given, else on `rig`.
+ */
+export function evaluateBrief(snapshot, rig, endBuild = null) {
   const finished = snapshot.tick >= GH_MODEL.steps;
   const hours = (steps) => steps * GH_MODEL.dtHours;
+  const build = endBuild ?? endBuildOf(rig);
   const criteria = [
-    { id: "G1", pass: rig.complete, measured: rig.complete ? "tank → pump → both beds; pump and fan on channels; solar in; probe in a bed" : rigSummaryMissing(rig) },
+    { id: "G1", pass: build.complete, measured: build.complete ? "tank → pump → both beds; pump and fan on channels; solar in; probe in a bed" : build.missing },
     { id: "G2", pass: snapshot.stress.A <= GH_MODEL.stressAllowance, measured: `bed A stressed ${hours(snapshot.stress.A)} h` },
     { id: "G3", pass: snapshot.stress.B <= GH_MODEL.stressAllowance, measured: `bed B stressed ${hours(snapshot.stress.B)} h` },
     { id: "G4", pass: snapshot.stress.heat <= GH_MODEL.heatAllowance, measured: `air above ${GH_MODEL.heatAbove} °C for ${hours(snapshot.stress.heat)} h` },

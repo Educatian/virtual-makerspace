@@ -470,6 +470,7 @@ ok(sanitizeEdit({ kind: "edit", opId: "x", changes: [{ componentId: "irrigation-
   // Run: start, then every rig change is refused while running.
   out = core.handle(alice, { kind: "greenhouse", opId: "g1", action: { type: "start" } });
   ok(out.sender.some((m) => m.kind === "greenhouse-result" && m.ok) && out.others.some((m) => m.kind === "greenhouse-state" && m.run.status === "running"), "start is accepted and broadcast with the run state");
+  ok(out.others.some((m) => m.kind === "greenhouse-state" && m.cause?.opId === "g1" && m.cause.type === "start") && out.sender.some((m) => m.kind === "greenhouse-state" && m.cause?.opId === "g1"), "the accepted action's run state names its op id and type (a sender whose answer is lost can tell it from a teammate's)");
   now += runs.STEP_MS * 3;
   out = edit(bob, "e3", [{ componentId: "valve-manifold", expectRev: 0, transform: { ...pose("valve-manifold"), props: { valveA: 30, valveB: 50 } } }]);
   ok(out.sender[0].ok === false && out.sender[0].reason === "running", "a valve edit while the day runs is refused (running)");

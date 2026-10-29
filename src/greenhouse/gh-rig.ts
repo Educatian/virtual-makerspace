@@ -22,6 +22,7 @@ import {
   Color,
   CylinderGeometry,
   DoubleSide,
+  ExtrudeGeometry,
   Group,
   InstancedMesh,
   LatheGeometry,
@@ -37,6 +38,7 @@ import {
   RingGeometry,
   SphereGeometry,
   SRGBColorSpace,
+  Shape,
   TorusGeometry,
   TubeGeometry,
   Vector2,
@@ -64,8 +66,8 @@ const PORT_POINTS: Array<[number, number, number]> = [
   [-1.95, 0.84, 1.98], // pump in
   [-0.85, 0.84, 1.98], // pump out
   [-0.35, 0.84, 1.98], // manifold in
-  [0.55, 0.84, 1.7], // valve A out
-  [0.95, 0.84, 2.22], // valve B out
+  [0.38, 0.84, 1.62], // valve A out (behind the valve handwheels, so no fitting stands in front of them)
+  [1.1, 0.84, 1.62], // valve B out
   [BEDS.A.x + 0.55, 0.74, 0.4], // bed A inlet (drip header on the front rail)
   [BEDS.B.x + 0.55, 0.74, 0.4], // bed B inlet
   [3.3, 0.6, 1.24], // solar out (junction box on the stand)
@@ -501,7 +503,7 @@ export function createGreenhouseRig(): Group {
   group.add(fanBox, conduit);
   group.add(flatLabel("FAN 12 V", 0.34, 0.08, PORT_POINTS[13][0], GH_FLOOR_Y + 0.425, PORT_POINTS[13][2] + 0.11, { color: "#fde68a" }));
   // Port labels on the floor/plinth next to each water port.
-  const portText: Array<[number, string, number, number]> = [[0, "TANK OUT", 0, 0.22], [1, "PUMP IN", 0, 0.24], [2, "PUMP OUT", 0, 0.24], [3, "MANIFOLD IN", 0, 0.24], [4, "VALVE A OUT", 0, -0.2], [5, "VALVE B OUT", -0.42, 0.12], [6, "INLET A", 0, -0.12], [7, "INLET B", 0, -0.12]];
+  const portText: Array<[number, string, number, number]> = [[0, "TANK OUT", 0, 0.22], [1, "PUMP IN", 0, 0.24], [2, "PUMP OUT", 0, 0.24], [3, "MANIFOLD IN", 0, 0.24], [4, "VALVE A OUT", 0, 0.17], [5, "VALVE B OUT", 0, 0.17], [6, "INLET A", 0, -0.12], [7, "INLET B", 0, -0.12]];
   for (const [index, text, dx, dz] of portText) {
     const [x, y, z] = PORT_POINTS[index];
     const base = index === 6 || index === 7 ? BEDS.rimTop + 0.004 : index === 0 ? GH_FLOOR_Y + 0.002 : PLINTH_TOP + 0.003;
@@ -537,6 +539,83 @@ function ledLens(color: number): { mesh: Mesh; material: MeshStandardMaterial } 
   mesh.userData.noShadow = true;
   return { mesh, material };
 }
+
+/**
+ * The 3D controls a learner sets (both valves, both controller dials) are one design: a round
+ * knob (a valve handwheel, or a controller knob) on a printed position plate, the whole face
+ * tilted towards the room so it faces the overview camera. The plate belongs to the control, so
+ * the target is the whole plate (diameter 2·plateR), not a thin lever; the knob turns with the
+ * value (pointer from 7 o'clock at the minimum to 5 o'clock at the maximum, 270°). Nothing that
+ * can be plugged stands in front of them (see the port and socket positions).
+ * Returns the control group (tagged with `ghControl`) and the knob that turns.
+ */
+const CONTROL_SWEEP = 4.8;
+function knobControl(key: string, options: { side: number; knobR: number; caption: string; min: string; max: string; wheel?: boolean; tilt: number }): { group: Group; knob: Group } {
+  const group = new Group();
+  group.userData.ghControl = key;
+  const face = new Group();
+  face.rotation.x = -options.tilt;
+  group.add(face);
+  const plateTexture = canvasTexture(512, 512, (context, w, h) => {
+    const c = w / 2;
+    context.fillStyle = "#1b222a";
+    context.fillRect(0, 0, w, h);
+    context.strokeStyle = "#475569";
+    context.lineWidth = 8;
+    context.strokeRect(10, 10, w - 20, h - 20);
+    context.strokeStyle = "#e2e8f0";
+    context.lineWidth = 6;
+    // Ticks along the 270° sweep (canvas angles: 0 at 3 o'clock, clockwise).
+    const from = Math.PI / 2 + (Math.PI * 2 - CONTROL_SWEEP) / 2;
+    for (let i = 0; i <= 10; i += 1) {
+      const angle = from + (CONTROL_SWEEP * i) / 10;
+      const inner = i % 5 === 0 ? c * 0.7 : c * 0.78;
+      context.beginPath();
+      context.moveTo(c + Math.cos(angle) * inner, c + Math.sin(angle) * inner);
+      context.lineTo(c + Math.cos(angle) * c * 0.88, c + Math.sin(angle) * c * 0.88);
+      context.stroke();
+    }
+    context.fillStyle = "#f8fafc";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font = `700 ${Math.round(h * 0.08)}px ${FONT}`;
+    context.fillText(options.caption, c, h * 0.1);
+    context.font = `700 ${Math.round(h * 0.075)}px ${FONT}`;
+    context.fillText(options.min, c - c * 0.62, h * 0.9);
+    context.fillText(options.max, c + c * 0.62, h * 0.9);
+  });
+  const plateMaterial = new MeshStandardMaterial({ name: "control_plate", map: plateTexture, roughness: 0.55, metalness: 0.1 });
+  // A square position plate: its whole face is the target (a 44 px square needs its side).
+  const back = new Mesh(new RoundedBoxGeometry(options.side, options.side, 0.03, 2, 0.02), mat.black());
+  const plate = new Mesh(new PlaneGeometry(options.side * 0.97, options.side * 0.97).translate(0, 0, 0.0155), plateMaterial);
+  plate.name = "control_plate";
+  face.add(back, plate);
+  const knob = new Group();
+  knob.position.z = 0.016;
+  face.add(knob);
+  if (options.wheel) {
+    // A valve handwheel: a red rim and a solid dished face (the whole wheel is the grip).
+    const red = new MeshStandardMaterial({ name: "valve_handwheel_red", color: 0xc0392b, roughness: 0.45, metalness: 0.1 });
+    const disc = new Mesh(new CylinderGeometry(options.knobR * 0.94, options.knobR * 0.94, 0.03, 40).rotateX(Math.PI / 2).translate(0, 0, 0.03), red);
+    const rim = new Mesh(new TorusGeometry(options.knobR, 0.028, 10, 40).translate(0, 0, 0.045), red);
+    const hub = new Mesh(new CylinderGeometry(0.05, 0.05, 0.06, 18).rotateX(Math.PI / 2).translate(0, 0, 0.06), mat.steel());
+    knob.add(disc, rim, hub);
+  } else {
+    const body = new Mesh(new CylinderGeometry(options.knobR * 0.92, options.knobR, 0.08, 36).rotateX(Math.PI / 2).translate(0, 0, 0.04), mat.black());
+    const cap = new Mesh(new CylinderGeometry(options.knobR * 0.78, options.knobR * 0.78, 0.012, 36).rotateX(Math.PI / 2).translate(0, 0, 0.085), mat.grey());
+    knob.add(body, cap);
+  }
+  const pointer = new Mesh(new BoxGeometry(0.03, options.knobR * 0.8, 0.012).translate(0, options.knobR * 0.5, options.wheel ? 0.075 : 0.095), mat.white());
+  knob.add(pointer);
+  // The control's declared target: the knob's centre (QA aims real pointer input here).
+  const target = new Object3D();
+  target.name = "control_target";
+  target.position.z = 0.05;
+  face.add(target);
+  return { group, knob };
+}
+/** The knob angle for a value's position in its range (0 → 7 o'clock, 1 → 5 o'clock). */
+const knobAngle = (t: number): number => CONTROL_SWEEP / 2 - CONTROL_SWEEP * t;
 
 /** A fixture's group, built at its local origin (the component is placed at its fixture pose). */
 export function createGhFixture(id: string): Group {
@@ -575,74 +654,76 @@ export function createGhFixture(id: string): Group {
     visuals.rotor = rotor;
     visuals.led = led.material;
   } else if (id === "valve-manifold") {
-    // A two-outlet manifold: inlet riser, a brass bar, two ball valves with lever handles and dials.
+    // A two-outlet manifold: inlet riser, a brass bar, two ball valves feeding the outlets behind,
+    // and each valve's extension spindle up to a handwheel on a position plate at the front of the
+    // plinth (where no hose stands in front of it), facing the room.
     const inlet = local(3);
     const a = local(4);
     const b = local(5);
-    const bar = new Mesh(new CylinderGeometry(0.06, 0.06, 1.0, 20).rotateZ(Math.PI / 2).translate(0.1, PLINTH_TOP + 0.18, 0), mat.brass());
+    const left = inlet.x - 0.05;
+    const right = b.x + 0.1;
+    const bar = new Mesh(new CylinderGeometry(0.06, 0.06, right - left, 20).rotateZ(Math.PI / 2).translate((left + right) / 2, PLINTH_TOP + 0.18, 0), mat.brass());
     const risers: BufferGeometry[] = [];
     for (const p of [inlet, a, b]) {
       risers.push(new CylinderGeometry(0.045, 0.045, p.y - 0.2 - PLINTH_TOP, 14).translate(p.x, PLINTH_TOP + (p.y - 0.2 - PLINTH_TOP) / 2, p.z));
       if (Math.abs(p.z) > 0.05) risers.push(new CylinderGeometry(0.04, 0.04, Math.abs(p.z), 12).rotateX(Math.PI / 2).translate(p.x, PLINTH_TOP + 0.18, p.z / 2));
     }
-    risers.push(new CylinderGeometry(0.045, 0.045, 0.2, 14).rotateZ(Math.PI / 2).translate(inlet.x + 0.1, PLINTH_TOP + 0.18, 0));
-    const feet = new Mesh(new BoxGeometry(1.1, 0.05, 0.22).translate(0.1, PLINTH_TOP + 0.025, 0), mat.black());
+    const feet = new Mesh(new BoxGeometry(right - left + 0.1, 0.05, 0.22).translate((left + right) / 2, PLINTH_TOP + 0.025, 0), mat.black());
     group.add(bar, new Mesh(mergeGeometries(risers)!, mat.brass()), feet);
     const handles = {} as { valveA: Group; valveB: Group };
+    const TILT = 0.8;
     for (const [key, p, tag] of [["valveA", a, "A"], ["valveB", b, "B"]] as const) {
-      const body = new Mesh(new SphereGeometry(0.075, 18, 12).translate(p.x, PLINTH_TOP + 0.4, p.z), mat.brass());
-      const handle = new Group();
-      // The lever points to the front (towards the room) when open and turns a quarter towards
-      // +x as it closes, clear of the hose fitting standing in the outlet above the valve.
-      const lever = new Mesh(new BoxGeometry(0.05, 0.025, 0.34).translate(0, 0, 0.17), new MeshStandardMaterial({ name: "valve_lever_red", color: 0xc0392b, roughness: 0.5 }));
-      const grip = new Mesh(new CylinderGeometry(0.032, 0.032, 0.09, 10).rotateX(Math.PI / 2).translate(0, 0, 0.34), mat.black());
-      grip.name = "valve_grip";
-      handle.add(lever, grip);
-      handle.position.set(p.x, PLINTH_TOP + 0.48, p.z);
-      handle.userData.ghControl = key;
-      // The valve's ball body belongs to the same control (a click on the valve focuses its field).
-      body.userData.ghControl = key;
-      // The handle's letter on the valve body (the port label on the plinth names the outlet).
-      const letter = label(tag, 0.08, 0.08, { color: "#fef2f2", background: "#7f1d1d" });
-      letter.position.set(p.x, PLINTH_TOP + 0.4, p.z + 0.077);
-      group.add(body, handle, letter);
-      handles[key] = handle;
+      // The ball valve on the bar (its outlet runs back to the port), and its spindle.
+      const body = new Mesh(new SphereGeometry(0.09, 18, 12).translate(p.x, PLINTH_TOP + 0.18, 0), mat.brass());
+      const wheelAt = new Vector3(p.x, 1.1, 0.33);
+      const spindle = new Mesh(new TubeGeometry(new CatmullRomCurve3([new Vector3(p.x, PLINTH_TOP + 0.24, 0), new Vector3(p.x, 0.86, 0.12), new Vector3(p.x, wheelAt.y - 0.05, wheelAt.z - 0.07)]), 12, 0.025, 8, false), mat.steel());
+      const control = knobControl(key, { side: 0.6, knobR: 0.19, caption: `VALVE ${tag}`, min: "SHUT", max: "OPEN", wheel: true, tilt: TILT });
+      control.group.position.copy(wheelAt);
+      group.add(body, spindle, control.group);
+      handles[key] = control.knob;
     }
     visuals.handles = handles;
   } else if (id === "farm-controller") {
-    // The farm controller: an IP65 enclosure with a display, two threshold dials and channel LEDs.
+    // The farm controller: an IP65 enclosure (display and channel LEDs on its front, the CH1/CH2/
+    // SOLAR IN sockets on the terminal strip in front) with a sloped dial console on top, so its
+    // two threshold knobs face the room above the plugs and cables.
     const box = new Mesh(new RoundedBoxGeometry(1.5, 0.62, 0.42, 3, 0.04).translate(0, PLINTH_TOP + 0.31, -0.05), mat.white());
     const lid = new Mesh(new RoundedBoxGeometry(1.42, 0.54, 0.02, 2, 0.01).translate(0, PLINTH_TOP + 0.32, 0.17), mat.grey());
     const display = readout(0.92, 0.2);
-    display.mesh.position.set(-0.18, PLINTH_TOP + 0.46, 0.185);
+    display.mesh.position.set(-0.18, PLINTH_TOP + 0.44, 0.185);
     group.add(box, lid, display.mesh);
+    // The console: a wedge across the top, its face tilted towards the room.
+    const top = PLINTH_TOP + 0.62;
+    const rise = 0.4;
+    const shape = new Shape();
+    shape.moveTo(-0.16, top);
+    shape.lineTo(0.26, top);
+    shape.lineTo(0.26, top + rise);
+    shape.closePath();
+    const wedge = new Mesh(new ExtrudeGeometry(shape, { depth: 1.5, bevelEnabled: false }).rotateY(Math.PI / 2).translate(-0.75, 0, 0), mat.white());
+    group.add(wedge);
+    const slope = Math.atan2(rise, 0.42);
     const dials = {} as { pumpBelow: Group; fanAbove: Group };
-    for (const [key, x, text] of [["pumpBelow", 0.42, "PUMP BELOW"], ["fanAbove", 0.62, "FAN ABOVE"]] as const) {
-      const dial = new Group();
-      const body = new Mesh(new CylinderGeometry(0.075, 0.08, 0.06, 24).rotateX(Math.PI / 2), mat.black());
-      const pointer = new Mesh(new BoxGeometry(0.012, 0.06, 0.012).translate(0, 0.035, 0.032), mat.white());
-      dial.add(body, pointer);
-      dial.position.set(x, PLINTH_TOP + 0.47, 0.215);
-      dial.userData.ghControl = key;
-      group.add(dial);
-      const caption = label(text, 0.26, 0.05, { color: "#0f172a" });
-      caption.position.set(x, PLINTH_TOP + 0.36, 0.185);
-      group.add(caption);
-      dials[key] = dial;
+    for (const [key, x, caption, min, max] of [["pumpBelow", -0.37, "PUMP BELOW", "10 %", "90 %"], ["fanAbove", 0.37, "FAN ABOVE", "20 °C", "40 °C"]] as const) {
+      const control = knobControl(key, { side: 0.56, knobR: 0.14, caption, min, max, tilt: Math.PI / 2 - slope });
+      // On the slope's middle, standing just proud of it.
+      control.group.position.set(x, top + rise / 2 + 0.02, -0.05 + 0.02);
+      group.add(control.group);
+      dials[key] = control.knob;
     }
     const leds: Record<string, MeshStandardMaterial> = {};
     for (const [key, x, color] of [["ch1", -0.4, 0x22c55e], ["ch2", -0.2, 0x22c55e], ["solar", 0.0, 0xfacc15], ["battery", 0.2, 0x38bdf8]] as const) {
       const lens = ledLens(color);
       lens.mesh.rotation.x = Math.PI / 2;
-      lens.mesh.position.set(x, PLINTH_TOP + 0.2, 0.19);
+      lens.mesh.position.set(x + 0.42, PLINTH_TOP + 0.2, 0.19);
       group.add(lens.mesh);
       leds[key] = lens.material;
       const caption = label(key.toUpperCase(), 0.17, 0.045, { color: "#0f172a" });
-      caption.position.set(x, PLINTH_TOP + 0.14, 0.185);
+      caption.position.set(x + 0.42, PLINTH_TOP + 0.14, 0.185);
       group.add(caption);
     }
     const title = label("FARM CONTROLLER · 12 Wh", 0.9, 0.06, { color: "#0f172a" });
-    title.position.set(-0.18, PLINTH_TOP + 0.58, 0.185);
+    title.position.set(-0.18, PLINTH_TOP + 0.56, 0.185);
     group.add(title);
     visuals.display = display;
     visuals.dials = dials;
@@ -758,14 +839,14 @@ export function showGhFixtureValues(component: Group, props: GhProps | undefined
   const visuals = component.userData.ghVisuals as FixtureVisuals | undefined;
   if (!visuals) return;
   if (visuals.handles && props?.valveA !== undefined && props.valveB !== undefined) {
-    // A ball valve: lever along the pipe when open (0°), across when closed (90°).
-    visuals.handles.valveA.rotation.y = (1 - props.valveA / 100) * (Math.PI / 2);
-    visuals.handles.valveB.rotation.y = (1 - props.valveB / 100) * (Math.PI / 2);
+    // A handwheel's pointer on its plate: SHUT (0 %) at 7 o'clock to OPEN (100 %) at 5 o'clock.
+    visuals.handles.valveA.rotation.z = knobAngle(props.valveA / 100);
+    visuals.handles.valveB.rotation.z = knobAngle(props.valveB / 100);
   }
   if (visuals.dials && props?.pumpBelow !== undefined && props.fanAbove !== undefined) {
     const t = (value: number, bound: { min: number; max: number }) => (value - bound.min) / (bound.max - bound.min);
-    visuals.dials.pumpBelow.rotation.z = -(-2.4 + 4.8 * t(props.pumpBelow, GH_BOUNDS.pumpBelow));
-    visuals.dials.fanAbove.rotation.z = -(-2.4 + 4.8 * t(props.fanAbove, GH_BOUNDS.fanAbove));
+    visuals.dials.pumpBelow.rotation.z = knobAngle(t(props.pumpBelow, GH_BOUNDS.pumpBelow));
+    visuals.dials.fanAbove.rotation.z = knobAngle(t(props.fanAbove, GH_BOUNDS.fanAbove));
   }
 }
 

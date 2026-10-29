@@ -25,7 +25,8 @@
     "test:tools": "node --experimental-strip-types scripts/tools-check.mjs && node --experimental-strip-types scripts/flow-plan-check.mjs",
     "test:episode": "node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs",
     "test:diagram": "node --experimental-strip-types scripts/snapino-diagram-check.mjs",
-    "test:greenhouse": "node --experimental-strip-types scripts/greenhouse-model-check.mjs",
+    "test:greenhouse": "node --experimental-strip-types scripts/greenhouse-model-check.mjs && node --experimental-strip-types scripts/greenhouse-end-check.mjs && node --experimental-strip-types scripts/greenhouse-time-check.mjs && node scripts/greenhouse-relay-check.mjs && node --experimental-strip-types scripts/greenhouse-peer-check.mjs",
+    "test:greenhouse:panel": "node scripts/greenhouse-panel-check.mjs",
     "test:sound": "node --experimental-strip-types scripts/sound-model-check.mjs && node --experimental-strip-types scripts/sound-engine-check.mjs",
     "test:sound:dsp": "node scripts/sound-dsp-check.mjs",
     "test:e2e:rescue": "node --experimental-strip-types scripts/e2e-rescue-signal.mjs"

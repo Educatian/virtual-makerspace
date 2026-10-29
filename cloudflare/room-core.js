@@ -37,7 +37,7 @@ import {
 import { isSoundCable, nextCableSockets, soundJackConflict } from "./sound-rules.js";
 import { greenhousePortConflict, isGreenhouseId, isGreenhouseLine } from "./greenhouse-rules.js";
 import { deriveRig } from "./greenhouse-model.js";
-import { initialRun, onGreenhouseRoomEmpty, reduceGreenhouseRun, rigLocked } from "./greenhouse-run.js";
+import { initialRun, onGreenhouseRoomEmpty, reduceGreenhouseRun, rigLocked, settleEndedDay } from "./greenhouse-run.js";
 
 const resourceParts = (resourceId) => {
   const match = /^(.*)::endpoint-([01])$/.exec(resourceId);
@@ -70,6 +70,22 @@ export class RoomCore {
 
   greenhouseMessage() {
     return { kind: "greenhouse-state", run: this.greenhouse, serverNow: this.now() };
+  }
+
+  /**
+   * A greenhouse day whose clock reached its end is settled and ended now, with the rig it ran on,
+   * before anything else is handled: the end unlocks the rig, and an unsettled anchor would let
+   * the next rig change rewrite the finished day (resources, records, verdict) under the same run
+   * id. Everyone gets the ended run, before any change that follows it; it is persisted.
+   */
+  settleEndedGreenhouse(out) {
+    const ended = settleEndedDay(this.greenhouse, this.now(), this.greenhouseRig());
+    if (!ended) return;
+    this.greenhouse = ended;
+    out.persist.greenhouse = ended;
+    const update = this.greenhouseMessage();
+    out.sender.push(update);
+    out.others.push(update);
   }
 
   /** While a greenhouse day is running, its rig cannot change (pause first). */
@@ -154,6 +170,7 @@ export class RoomCore {
    */
   handle(participant, message, { maxClaims = 16 } = {}) {
     const out = { sender: [], others: [], persist: {} };
+    this.settleEndedGreenhouse(out);
     switch (message.kind) {
       case "claim": {
         const conflict = this.conflict(message.componentId, participant.id);
@@ -285,7 +302,9 @@ export class RoomCore {
         }
         this.greenhouse = result.run;
         out.persist.greenhouse = this.greenhouse;
-        const update = this.greenhouseMessage();
+        // The run state says which accepted action made it (its sender's op id and type), so a
+        // sender whose answer was lost can tell its own action from a teammate's.
+        const update = { ...this.greenhouseMessage(), cause: { opId: message.opId, type: message.action.type } };
         out.sender.push(update);
         out.sender.push({ kind: "greenhouse-result", opId: message.opId, ok: true });
         out.others.push(update);

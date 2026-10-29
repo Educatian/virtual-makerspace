@@ -750,8 +750,8 @@ function enterWorkspace(): void {
       if (!online) soundPanel?.stopAudio("Connection to the room lost · audio stopped; press Start audio after reconnecting");
     },
     // The room's greenhouse day (model time and resources): never this tab's own clock.
-    onGreenhouse: (run) => {
-      if (greenhousePanel) greenhousePanel.setRun(run);
+    onGreenhouse: (run, cause) => {
+      if (greenhousePanel) greenhousePanel.setRun(run, cause);
       else queuedGreenhouse = run;
     },
   }, authProfile.id);
@@ -780,7 +780,9 @@ function enterWorkspace(): void {
     onStatus: showSceneStatus,
     onTransform: (componentId, transform) => room?.sendTransform(componentId, transform),
     onClaim: (componentId) => {
-      // The room refuses rig changes while the greenhouse day runs: say so before any drag.
+      // A day that reached its end is settled (peer tabs; the room does it itself) before a drag
+      // can change the rig. The room refuses rig changes while the day runs: say so first.
+      if (activeStudio === "greenhouse") room?.settleEndedGreenhouse();
       if (activeStudio === "greenhouse" && greenhousePanel?.rigLocked()) {
         showSceneStatus("The greenhouse day is running: the rig is locked · pause the day to change it", "warning");
         return false;
@@ -905,6 +907,7 @@ function enterWorkspace(): void {
       receiverView: () => workbench?.viewForReceiver(),
       /** Drop the realtime socket like a network failure (server rooms; reconnects by itself). */
       dropConnection: () => room?.dropConnectionForQa() ?? false,
+      holdPeer: (hold: boolean) => room?.holdPeerMessagesForQa(hold) ?? 0,
       /** On-screen rectangle of a part's glowing surfaces (screenshot crops for pixel checks). */
       partScreenRect: (id: string) => workbench?.partScreenRect(id) ?? null,
       /** Send one raw episode action as this participant (tests of stale/duplicate requests). */
@@ -959,6 +962,7 @@ function enterWorkspace(): void {
       /** Greenhouse screen points for real pointer input: a component, a fixture control. */
       partPoint: (id: string) => workbench?.componentScreenPoint(id) ?? null,
       ghControlPoint: (control: string) => workbench?.ghControlScreenPoint(control) ?? null,
+      ghControlTarget: (control: string) => workbench?.ghControlScreenTarget(control) ?? null,
       partDragPoints: (id: string, a: number, b: number) => workbench?.partDragPoints(id, a, b) ?? null,
       debugPick: (x: number, y: number) => workbench?.qaPickReport(x, y) ?? null,
       /** The part selected in 3D (cross-link checks). */
@@ -2729,7 +2733,7 @@ function createGreenhousePanel(): void {
       if (!room) return { ok: false, reason: "offline" };
       const result = await room.greenhouseAction(action);
       if (result.ok) room.recordTrace("edit", collaborationPhase, activeStudio, { detail: `Greenhouse day (run control): ${action.type}${action.type === "speed" ? ` ×${action.speed}` : action.type === "reset" && action.seed ? ` (seed ${action.seed})` : ""}` });
-      return result.ok ? { ok: true, reason: null } : { ok: false, reason: result.reason };
+      return result.ok ? { ok: true, reason: null } : { ok: false, reason: result.reason, opId: result.opId ?? null };
     },
     selectedId: () => (selectedComponent?.studio === "greenhouse" ? selectedComponent.id : null),
     select: (id) => workbench?.selectById(id),

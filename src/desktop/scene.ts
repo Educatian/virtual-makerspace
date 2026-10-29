@@ -840,7 +840,7 @@ export class DesktopWorkbenchScene {
   wireEnds(id: string): [[number, number, number], [number, number, number]] | null {
     const component = this.components.get(id);
     const spec = component?.userData.spec as ComponentSpec | undefined;
-    if (!component || spec?.kind !== "wire") return null;
+    if (!component || !spec || !isFlexibleKind(spec.kind)) return null;
     const [a, b] = this.getEndpointWorldPositions(component);
     return [[a.x, a.y, a.z], [b.x, b.y, b.z]];
   }
@@ -3470,16 +3470,38 @@ export class DesktopWorkbenchScene {
     return { from, to: this.projectWorld(target) };
   }
 
-  /** QA (real pointer input): where a greenhouse fixture control (valve handle, dial) is on screen. */
+  /** QA (real pointer input): a greenhouse fixture control's declared target centre on screen (client px). */
   ghControlScreenPoint(control: string): { x: number; y: number } | null {
+    return this.ghControlScreenTarget(control)?.centre ?? null;
+  }
+
+  /**
+   * QA: a greenhouse control's declared target on screen — the centre of its knob (the object
+   * named "control_target") and its plate's projected outline (24 rim points), in client px.
+   */
+  ghControlScreenTarget(control: string): { centre: { x: number; y: number }; rim: Array<{ x: number; y: number }> } | null {
     for (const id of ["valve-manifold", "farm-controller"]) {
       let found: Object3D | null = null;
       this.components.get(id)?.traverse((child) => { if (!found && child.userData.ghControl === control && child instanceof Group) found = child; });
-      // A valve lever's grip, or the middle of a dial (a pivot can sit under a hose fitting).
-      if (found) {
-        const grip = (found as Object3D).getObjectByName("valve_grip");
-        return this.projectWorld(grip ? grip.getWorldPosition(new Vector3()) : new Box3().setFromObject(found as Object3D).getCenter(new Vector3()));
+      if (!found) continue;
+      const group = found as Object3D;
+      group.updateMatrixWorld(true);
+      const target = group.getObjectByName("control_target");
+      const plate = group.getObjectByName("control_plate") as Mesh | undefined;
+      if (!target || !plate) return null;
+      const centre = this.projectWorld(target.getWorldPosition(new Vector3()));
+      plate.geometry.computeBoundingBox();
+      const box = plate.geometry.boundingBox!;
+      const rim: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i < 24; i += 1) {
+        // Around the plate's edge: 6 points per side.
+        const side = Math.floor(i / 6);
+        const f = (i % 6) / 6;
+        const x = side === 0 ? box.min.x + f * (box.max.x - box.min.x) : side === 1 ? box.max.x : side === 2 ? box.max.x - f * (box.max.x - box.min.x) : box.min.x;
+        const y = side === 0 ? box.min.y : side === 1 ? box.min.y + f * (box.max.y - box.min.y) : side === 2 ? box.max.y : box.max.y - f * (box.max.y - box.min.y);
+        rim.push(this.projectWorld(plate.localToWorld(new Vector3(x, y, 0.0155))));
       }
+      return { centre, rim };
     }
     return null;
   }
