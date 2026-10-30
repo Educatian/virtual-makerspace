@@ -961,7 +961,7 @@ export class GreenhousePanel {
     this.render();
     const ok = await this.host.returnHome(id);
     this.pending.delete(id);
-    this.editNote = ok ? { part: id, text: id === "soil-sensor" ? "Probe back in its holder for everyone" : `${partName(id)} unplugged and coiled in the aisle for everyone`, tone: "valid" } : { part: id, text: this.locked() ? "Not applied · the day is running; pause it to change the rig. Nothing changed." : "Not applied · see the status above. Nothing changed.", tone: "warning" };
+    this.editNote = ok ? { part: id, text: id === "soil-sensor" ? "Probe back in its holder for everyone" : `${partName(id)} unplugged and coiled on the floor for everyone`, tone: "valid" } : { part: id, text: this.locked() ? "Not applied · the day is running; pause it to change the rig. Nothing changed." : "Not applied · see the status above. Nothing changed.", tone: "warning" };
     this.answered = true;
     this.render();
   }
@@ -1326,7 +1326,7 @@ export class GreenhousePanel {
       <p class="si-fine">Drag either end in 3D into a port, or choose the ports here. Plugging is shared with everyone.</p>
       <form class="si-form gh-ports-form" data-ports="${id}">${select(0)}${select(1)}
         <div class="si-actions"><button type="submit" class="primary-button compact" data-focus-key="connect" ${dis}>${this.pending.has(id) ? "Sending…" : "Connect in the room"}</button>
-        <button type="button" class="secondary-button compact" data-home="${id}" data-focus-key="home" ${!seated || dis ? "disabled" : ""}>Unplug and coil in the aisle</button></div></form>${note}`;
+        <button type="button" class="secondary-button compact" data-home="${id}" data-focus-key="home" ${!seated || dis ? "disabled" : ""}>Unplug and coil it on the floor</button></div></form>${note}`;
   }
 
   private fixtureCard(id: string): string {

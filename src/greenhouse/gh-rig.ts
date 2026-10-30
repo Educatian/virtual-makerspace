@@ -95,9 +95,11 @@ export const LINE_SPECS: LineSpec[] = [
   { id: "irrigation-hose-2", kind: "ghhose", name: "Hose 2 · 0.65 m", color: 0x2f8f4e, css: "#3fa35f", rest: 1.3, home: [-1.25, GH_REST_Y, 0.72] },
   { id: "irrigation-hose-3", kind: "ghhose", name: "Hose 3 · 1.8 m", color: 0x2f8f4e, css: "#3fa35f", rest: 3.6, home: [-3.15, GH_REST_Y, 1.22] },
   { id: "irrigation-hose-4", kind: "ghhose", name: "Hose 4 · 1.5 m", color: 0x2f8f4e, css: "#3fa35f", rest: 3.0, home: [-1.25, GH_REST_Y, 1.22] },
-  { id: "power-cable-1", kind: "ghcable", name: "Cable 1 · 1.4 m", color: 0x1b1d22, css: "#e2b93b", rest: 2.8, home: [1.35, GH_REST_Y, 0.78] },
-  { id: "power-cable-2", kind: "ghcable", name: "Cable 2 · 2.1 m", color: 0x1b1d22, css: "#e2b93b", rest: 4.2, home: [2.55, GH_REST_Y, 1.02] },
-  { id: "power-cable-3", kind: "ghcable", name: "Cable 3 · 1.7 m", color: 0x1b1d22, css: "#e2b93b", rest: 3.4, home: [1.35, GH_REST_Y, 1.26] },
+  // The power cables lie coiled on the floor in front of the plinth, below its sockets, where
+  // nothing stands in front of them (behind the plinth, the controller's knob console would hide them).
+  { id: "power-cable-1", kind: "ghcable", name: "Cable 1 · 1.4 m", color: 0x1b1d22, css: "#e2b93b", rest: 2.8, home: [-0.2, GH_REST_Y, 2.8] },
+  { id: "power-cable-2", kind: "ghcable", name: "Cable 2 · 2.1 m", color: 0x1b1d22, css: "#e2b93b", rest: 4.2, home: [1.45, GH_REST_Y, 2.8] },
+  { id: "power-cable-3", kind: "ghcable", name: "Cable 3 · 1.7 m", color: 0x1b1d22, css: "#e2b93b", rest: 3.4, home: [3.1, GH_REST_Y, 2.8] },
 ];
 /** Where an unplugged line end lies when released (end separation at home: compact, slack curls). */
 export const LINE_HOME_SPAN = 1.5;

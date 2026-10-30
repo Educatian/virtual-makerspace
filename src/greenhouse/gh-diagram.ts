@@ -39,7 +39,7 @@ export const isWrongLine = (line: GhLine): boolean => WRONG.has(line.status);
 
 /** What a line does, in words (also the inspector's status line). */
 export const LINE_STATUS_WORDS: Record<GhLineStatus, string> = {
-  unplugged: "not plugged in (coiled in the aisle)",
+  unplugged: "not plugged in (coiled on the floor)",
   loose: "one end loose: carries nothing",
   "wrong-type": "wrong connector type: carries nothing",
   "out-out": "OUT to OUT: carries nothing",
@@ -345,7 +345,7 @@ export function renderGhConnectionList(rig: GhRig, record: CompactRecord | null)
   const rows = rig.lines.map((line) => {
     const names = LINE_NAMES[line.id];
     const flow = flows.get(line.id)!;
-    const ends = line.ends.every((end) => end === null) ? "in the aisle" : `${line.ends[0] === null ? "free" : portLabel(line.ends[0])} ↔ ${line.ends[1] === null ? "free" : portLabel(line.ends[1])}`;
+    const ends = line.ends.every((end) => end === null) ? "coiled on the floor" : `${line.ends[0] === null ? "free" : portLabel(line.ends[0])} ↔ ${line.ends[1] === null ? "free" : portLabel(line.ends[1])}`;
     const now = flow.state === "flow" ? (names.hose ? ` · ${litres(flow.litres)} this step` : ` · ${flow.watts.toFixed(1)} W this step`) : flow.state === "starved" ? " · starved this step" : "";
     const wrong = flow.state === "wrong" || flow.state === "loose";
     return `<li${wrong ? ' class="gd-open"' : ""}><button type="button" class="sd-link" data-select="${line.id}"><span class="sd-swatch" style="background:${names.css}" aria-hidden="true"></span>${escape(names.name)}</button> ${escape(ends)} · ${escape(LINE_STATUS_WORDS[line.status])}${escape(now)}</li>`;
