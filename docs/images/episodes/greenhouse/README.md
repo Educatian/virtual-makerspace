@@ -1,14 +1,14 @@
 # Episode 3 · Resource-Limited Greenhouse — renders
 
-**App code:** `b8d099a`, the app of the correction round after the first gate, built with `npx vite build` in a worktree exactly at that commit, with its own `dist/`. `record.json` names it. The renders of the first submission, `faa7c09`, are in [`app-faa7c09/`](app-faa7c09/README.md). Same-camera before/after pairs are [below](#before-and-after-the-same-cameras).
+**App code:** `abd2f51`, the app of the second correction round (review of `d06712c`), built with `npx vite build` in a worktree exactly at that commit, with its own `dist/`. `record.json` names it. Earlier sets: [`app-b8d099a/`](app-b8d099a/README.md) (first correction round) and [`app-faa7c09/`](app-faa7c09/README.md) (first submission). The same-camera before/after pairs are [below](#before-and-after-the-same-cameras); they compare `faa7c09` with `b8d099a`, and `abd2f51` changes no 3D, rig or scene file.
+
+**What changed in these renders.** Only the verdict's last line, in `09b` and `10b`: "G1 is judged on the build recorded when the day ended; G2–G5 on the day's record." (It said "the build as it is now".) Every shot's draw calls and triangles equal `b8d099a`'s.
 
 **Where:** a developer environment (headless Chromium with SwiftShader software WebGL, 2 CPU cores). These are not GitHub CI runs.
 
 **Rooms:** fresh random local same-device (peer) rooms (`Q…` codes). The production room 7K3M was never used.
 
-**Script:** `node scripts/qa-greenhouse.mjs http://127.0.0.1:4173 <dir> <sha>`, run against a static server over `dist/`.
-- **Attempt 1 failed.** The script chose a prediction after its own mid-day steps had begun attempt 1's day. That day now fixes the attempt's prediction, so the choice was disabled and the script timed out after 4 checks ([log](../../../qa/greenhouse/app-b8d099a/qa-greenhouse-attempt1.txt)).
-- **Attempt 2 passed.** The script now starts a new attempt there; this changes the test script only. It ran 2,066 s with no issues and 12/12 checks ([`record.json`](record.json), [log](../../../qa/greenhouse/app-b8d099a/qa-greenhouse.txt)).
+**Script:** `node scripts/qa-greenhouse.mjs http://127.0.0.1:4176 <dir> abd2f51`, run against a static server over `dist/`. One run: 2,227 s, no issues, 12/12 checks ([`record.json`](record.json), [log](../../../qa/greenhouse/app-abd2f51/qa-greenhouse.txt)).
 
 The images are JPEG (quality 84) conversions of the PNG captures. The renderer counters are the draw calls and triangles of the frame shown, **not** frame rates. Nothing here was measured on a GPU, phone or Quest. 390×844 is a viewport check in desktop Chromium, not testing on a phone.
 
@@ -29,7 +29,7 @@ The images are JPEG (quality 84) conversions of the PNG captures. The renderer c
 | Phone: every visible control in the Greenhouse tab at least 44 px tall | yes (none smaller) |
 | PF: no worked example | hidden |
 
-The 3D controls are measured in [their own run](../../../qa/greenhouse/README.md#the-3d-controls-on-b8d099a-measured): 44 px squares, real clicks at fixed points, poses, the running lock, at 1440 and 1280.
+The 3D controls were measured on `b8d099a` in [their own run](../../../qa/greenhouse/README.md#the-3d-controls-on-b8d099a-measured) (44 px squares, real clicks at fixed points, poses, the running lock, at 1440 and 1280). `abd2f51` does not change those files; that run was not repeated on it.
 
 ## Shots
 
@@ -109,7 +109,7 @@ The default allocation (both valves 100 %, pump below 50 %, fan above 30 °C) on
 
 `scripts/qa-greenhouse-compare.mjs` captured the same three cameras with the brief's rig fully plumbed and wired, on both apps:
 - **before:** `faa7c09`, from its own worktree and `dist/`;
-- **after:** `b8d099a`.
+- **after:** `b8d099a` (`abd2f51` changes no 3D, rig or scene file; not recaptured).
 
 Records: [`compare/before-faa7c09-record.json`](compare/before-faa7c09-record.json) and [`compare/after-b8d099a-record.json`](compare/after-b8d099a-record.json).
 
@@ -121,6 +121,6 @@ Records: [`compare/before-faa7c09-record.json`](compare/before-faa7c09-record.js
 
 ## Earlier capture runs
 
-- The `faa7c09` renders are kept in [`app-faa7c09/`](app-faa7c09/README.md).
+- The `b8d099a` renders are kept in [`app-b8d099a/`](app-b8d099a/README.md), the `faa7c09` renders in [`app-faa7c09/`](app-faa7c09/README.md).
 - `b9dde3c` was not rendered with this script.
 - Development captures on earlier commits are not evidence of either app.

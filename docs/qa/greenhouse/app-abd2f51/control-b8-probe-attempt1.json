@@ -1,0 +1,238 @@
+{
+ "base": "http://vm.test:8800",
+ "room": "HZEY",
+ "iterations": [
+  {
+   "i": 1,
+   "opId": "e959790c",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 29149,
+    "roomOut": 23033,
+    "memberWire": 23033,
+    "memberJs": 23018,
+    "ackWire": 29160,
+    "ackJs": 29148,
+    "memberReady": 34773,
+    "hostSampled": 40464,
+    "hostConverged": 40472
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 2,
+   "opId": "703c5a30",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 27618,
+    "roomOut": 21745,
+    "memberWire": 21745,
+    "memberJs": 21743,
+    "ackWire": 27624,
+    "ackJs": 27615,
+    "memberReady": 33215,
+    "hostSampled": 38924,
+    "hostConverged": 38931
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 3,
+   "opId": "0ea40db3",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 52870,
+    "roomOut": 46806,
+    "memberWire": 46806,
+    "memberJs": 46801,
+    "ackWire": 52888,
+    "ackJs": 52868,
+    "memberReady": 58318,
+    "hostSampled": 64232,
+    "hostConverged": 64242
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 4,
+   "opId": "e69daeff",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 27888,
+    "roomOut": 22384,
+    "memberWire": 22384,
+    "memberJs": 22381,
+    "ackWire": 27903,
+    "ackJs": 27888,
+    "memberReady": 33142,
+    "hostSampled": 38614,
+    "hostConverged": 38622
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 5,
+   "opId": "db4a317a",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 27247,
+    "roomOut": 21486,
+    "memberWire": 21486,
+    "memberJs": 21482,
+    "ackWire": 27258,
+    "ackJs": 27252,
+    "memberReady": 33412,
+    "hostSampled": 39370,
+    "hostConverged": 50039
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 6,
+   "opId": "b4ec3b18",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 16468,
+    "roomOut": 10889,
+    "memberWire": 10889,
+    "memberJs": 10883,
+    "ackWire": 16475,
+    "ackJs": 16468,
+    "memberReady": 21701,
+    "hostSampled": 26958,
+    "hostConverged": 26961
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 7,
+   "opId": "047312b2",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 40589,
+    "roomOut": 34631,
+    "memberWire": 34631,
+    "memberJs": 34625,
+    "ackWire": 40594,
+    "ackJs": 40589,
+    "memberReady": 46767,
+    "hostSampled": 52602,
+    "hostConverged": 52617
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 8,
+   "opId": "56f811c6",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 51369,
+    "roomOut": 45516,
+    "memberWire": 45516,
+    "memberJs": 45513,
+    "ackWire": 51378,
+    "ackJs": 51374,
+    "memberReady": 57066,
+    "hostSampled": 63234,
+    "hostConverged": 63241
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · same program, now stopped for everyone",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  }
+ ],
+ "summary": {
+  "iterations": 8,
+  "hostNotYetConvergedWhenMemberReady": 0,
+  "hostConvergedWithinBound": 8,
+  "editTimeoutsFired": 0,
+  "maxAckJsMs": 52868,
+  "maxAckWireToJsMs": 0
+ }
+}

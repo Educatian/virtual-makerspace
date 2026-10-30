@@ -1,6 +1,6 @@
 {
- "app": "b8d099aeb680e9c610b41873532400d62751313e",
- "base": "http://127.0.0.1:4173 (static server over dist/)",
+ "app": "abd2f51",
+ "base": "http://127.0.0.1:4176 (static server over dist/ of a worktree at abd2f51)",
  "shots": [
   {
    "name": "01-overview",

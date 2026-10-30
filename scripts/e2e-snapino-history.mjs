@@ -131,8 +131,10 @@ sequence: {
 
   // P/S: the lamp demo wiring (P) and the uploaded blink program (S).
   await press(host, "Load Snapino lamp");
-  const seated = await converge((state) => Object.values(state.parts).some((part) => part.sockets), (state) => Object.values(state.parts).some((part) => part.sockets));
-  if (!check("the lamp wiring P reaches both peers", seated.memberOk && seated.hostOk, seated.timing)) break sequence;
+  // The whole lamp wiring (one edit; the lamp itself seated), the same on both peers.
+  const lampSeated = (state) => Boolean(state.parts["sno-l1"]?.sockets);
+  const seated = await converge(lampSeated, lampSeated);
+  if (!check("the lamp wiring P reaches both peers", seated.memberOk && seated.hostOk && partsKey(seated.member) === partsKey(seated.host), `${seated.timing} · ${partsKey(seated.member)}`)) break sequence;
   const P = seated.member;
   await press(host, "Run blocks");
   const ran = await converge((state) => state.running, (state) => state.running);

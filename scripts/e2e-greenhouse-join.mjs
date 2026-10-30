@@ -7,8 +7,8 @@
 //   3. C joins; A answers with run 1 at tick 4.
 //   4. B's update is delivered: all three tabs must end at tick 8 (b8d099a: A 8, B 8, C 4 — A
 //      had restamped its copy for C above B's step, so C refused the step).
-// Then a held reset (run 2) against a copy of the old run handed to a fourth joining tab D: all
-// four end on the reset.
+// Then (C closed) a held reset (run 2) against a copy of the old run handed to a joining tab D:
+// A, B and D all end on the reset.
 // The tie-break between equal Lamport counters is the participant id, so each tab's ids get a
 // prefix (A "z", B "a", C "m", D "n") to make the counterexample's order deterministic.
 //
@@ -82,20 +82,24 @@ try {
     const end = await waitAll([a, b, c], (r) => r.tick === 8, 10_000);
     check("4. B's held step is delivered: A, B and C all end at tick 8", end.every((r) => r.runId === 1 && r.tick === 8), `${released} held message(s) released · ${JSON.stringify(end.map(brief))}`);
 
-    // A held reset (run 2) still wins over a copy of the old run handed to a joining tab.
+    // A held reset (run 2) still wins over a copy of the old run handed to a joining tab. Tab C
+    // closes first: a fourth software-rendered WebGL page in one browser did not get its
+    // Enter button clickable within 240 s on this 2-core machine (first run of this script).
+    await c.close();
+    pages.splice(pages.indexOf(c), 1);
     await b.evaluate(() => window.__vmQa.holdPeer(true));
     await b.locator("#gh-reset").click();
     await b.locator('.gh-reset-dialog input[value="practice"]').check();
     await b.locator('.gh-reset-dialog input[name="gh-seed"]').fill("7");
     await b.locator('.gh-reset-dialog button[type="submit"]').click();
     await a.locator("#gh-step").click();
-    const before = await waitAll([a, c], (r) => r.tick === 12);
+    const before = await waitAll([a], (r) => r.tick === 12);
     const d = await open("TabD", "n");
     const dJoined = await waitAll([d], (r) => r.tick === 12, 10_000);
     check("5. B resets (run 2, held); A steps run 1 to tick 12; D joins with run 1 at tick 12", (await run(b)).runId === 2 && before.every((r) => r.runId === 1 && r.tick === 12) && dJoined[0].runId === 1 && dJoined[0].tick === 12, JSON.stringify([brief(await run(b)), ...before.map(brief), brief(dJoined[0])]));
     await b.evaluate(() => window.__vmQa.holdPeer(false));
-    const reset = await waitAll([a, b, c, d], (r) => r.runId === 2, 10_000);
-    check("6. B's held reset is delivered: all four tabs end on run 2, practice seed 7, 06:00", reset.every((r) => r.runId === 2 && r.seed === 7 && r.tick === 0), JSON.stringify(reset.map(brief)));
+    const reset = await waitAll([a, b, d], (r) => r.runId === 2, 10_000);
+    check("6. B's held reset is delivered: A, B and D all end on run 2, practice seed 7, 06:00", reset.every((r) => r.runId === 2 && r.seed === 7 && r.tick === 0), JSON.stringify(reset.map(brief)));
   }
   check("no page errors", pages.every((page) => page.errors.length === 0), pages.flatMap((page) => page.errors).join(" | "));
 } catch (error) {

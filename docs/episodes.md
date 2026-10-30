@@ -440,6 +440,8 @@ Their causes were not established. They are listed with their logs, not counted 
 - **Same-device peer rooms** (no server) do not get the server's one-plug-per-jack refusal; the client still refuses an occupied jack, and the model ignores two plugs in one jack if a race ever produces them.
 - **The PF notes gate is personal**: it opens on this learner's own first Test in this browser session, not on a teammate's.
 - **Predictions, explanations and attempts are per learner and per tab session** (sessionStorage): they are not shared, synced or exported, so a teammate sees only the `test`/`reflect` activity traces.
+- **An edit whose answer is lost with the connection** (not merely late) stays uncertain: the room may have applied it; it is not added to undo, and the next Undo of that entry is refused as stale.
+- **Rescue Signal (Episode 1) peer state responses** still re-stamp the episode copy they hand a joiner, the pattern corrected here for the greenhouse run; it was left unchanged in this round.
 - **Desktop only.** The WebXR path does not include the studio.
 - **Software-rendered evidence.** Captures and frame counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured.
 
@@ -578,11 +580,35 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 | `npm run test:project` (in `npm test`) | `scripts/project-state-check.mjs`, greenhouse part: version 3 round trip with a half-plugged hose, 21 refused files (wrong connector, probe across beds, shared port, off-step and hostile values, a run in the file, wrong version), version-1 migration, recovery emptiness. |
 | `node scripts/e2e-greenhouse-worker.mjs` | Two real browsers (separate processes) and a late joiner over wrangler dev (Durable Object + WebSocket), with real pointer and keyboard input; see the list at the top of the script. |
 | `node scripts/qa-greenhouse.mjs` | Render evidence (peer mode): see [`docs/images/episodes/greenhouse/`](images/episodes/greenhouse/README.md). |
+| `npm test` also runs `greenhouse-join-check.mjs` and `history-late-ack-check.mjs` | The real `DesktopRoom` for three same-device tabs with a held message (a join keeps the accepted run revision); the real room, replica, history and workbench tools with the sender's answer delayed past the 8 s timeout (import, undo, redo, stale, program-only, dropped connection), each against an immediate-answer control. Both take another commit's source directory as a negative control. |
+| `node scripts/e2e-greenhouse-join.mjs` | The join counterexample with three real tabs and the app's QA message hold, then a held reset against a joiner's copy of the old run. |
+| `node scripts/e2e-snapino-import-probe.mjs` | Diagnostic: per edit, when the room relayed it, when each tab's page handled it, and whether the 8 s timer fired. |
 | `node scripts/qa-greenhouse-controls.mjs` | Real pointer clicks on the 3D valve levers and controller dials of the plumbed rig in the overview (peer mode): what is in front of each grip or dial centre, how much of each control is visible around it, and a click on a visible pixel that must select the part and focus its field. |
 
 ### Results of the last developer-environment run
 
-**Correction round, final app `b8d099a`.** This round reran only what the corrections touch. The full list, every failure and the old-code counterexamples are in [the test records](qa/greenhouse/README.md#correction-round-after-the-first-gate-final-app-b8d099a).
+**Second correction round, final app `abd2f51`.** The review of `d06712c` kept the gate blocked on four items, corrected in `abd2f51`:
+- the room reads its clock once per operation, so a day can no longer be unlocked at its end without being settled first;
+- a peer join keeps the run revision the answering tab accepted;
+- an edit, undo or redo answered after the 8 s timeout now reaches the history once;
+- the verdict says G1 is judged on the build recorded when the day ended.
+
+Every failure, the old-code controls and the Snapino timing measurements are in [the test records](qa/greenhouse/README.md#second-correction-round-review-of-d06712c-final-app-abd2f51).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, all model and room checks; **end 62/62** incl. end − 1 / end / end + 1 ms, **join 8/8**, **history late answer 27/27**, time 5/5, relay 3/3, peer 5/5) | `abd2f51` | All passed |
+| The same new checks on the old code | `b8d099a` / `faa7c09` | Fail: end 50/62, join 7/8 (A 8, B 8, C 4), history late answer 15/27 and 15/27 (all immediate-answer controls pass) |
+| `npx vite build`, `greenhouse-panel-check.mjs` | `abd2f51` | OK; **39/39** (attempt 1 found no browser: path not set) |
+| `e2e-greenhouse-join.mjs` (three real tabs, held step; a held reset) | `abd2f51` | **8/8** on attempt 2 (attempt 1: 5/6, the counterexample passed, then a fourth tab timed out opening); on `b8d099a`: 7/8, A 8, B 8, **C 4** |
+| `e2e-greenhouse-fixes-worker.mjs`, `e2e-greenhouse-peer.mjs` | `abd2f51` | **11/11**, **7/7** |
+| `e2e-snapino-history.mjs` (both peers and the history waited for; dependent steps stop at the first failure) | `abd2f51` | **30/30** (one run) |
+| `e2e-worker-sync`, `e2e-room-sync`, `e2e-cable-end` | `abd2f51` | 18/18, 13/13, 12/12 |
+| `qa-greenhouse.mjs` (renders) | `abd2f51` | **12/12** |
+
+Not rerun on `abd2f51`, inherited as `b8d099a` runs: the 3D controls (33/33), pointer plugging (7/7) and the same-camera comparison (their files did not change). The full two-client run `e2e-greenhouse-worker` (40/40) is a `b8d099a` result only.
+
+**Correction round, app `b8d099a`.** This round reran only what the corrections touch. The full list, every failure and the old-code counterexamples are in [the test records](qa/greenhouse/README.md#correction-round-after-the-first-gate-app-b8d099a).
 
 | Command | App | Result |
 |---|---|---|
@@ -597,7 +623,7 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 | `e2e-greenhouse-peer.mjs` (two tabs: reset vs step, both orders) | `b8d099a` | **7/7** |
 | `qa-greenhouse.mjs` (renders) | `b8d099a` | **12/12** on attempt 2. Attempt 1 timed out in the script, which chose a prediction after its own steps had fixed it; the script now starts a new attempt there. |
 | `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync` | `b8d099a` | 18/18, 12/12, 13/13 (room sync on attempt 2: attempt 1 was cut off by a container restart) |
-| `e2e-snapino-history` | `b8d099a` | **failed twice** (24/25, 22/25). The same suite on `faa7c09`, run right after in the same environment, also failed (24/25), the same check as attempt 1; before the restart, `faa7c09` passed 25/25. Cause not established. |
+| `e2e-snapino-history` | `b8d099a` | **failed twice** (24/25, 22/25). The same suite on `faa7c09`, run right after in the same environment, also failed (24/25), the same check as attempt 1; before the restart, `faa7c09` passed 25/25. Cause not established. (Measured and corrected in the second round, above.) |
 
 The Sound, bench-inspector, Rescue Signal and AI-teammate suites were not rerun; their results below are for `faa7c09` only.
 

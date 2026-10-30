@@ -9,7 +9,9 @@ The records were sanitized:
 
 Logs are kept as `.txt`, because the repository ignores `*.log`. Nothing else was edited.
 
-**App versus head (correction round).** The app under test is `b8d099a`. The commit that adds its records changes no app code: it adds records, renders, this text and `docs/episodes.md`. It also changes one test script, `scripts/qa-greenhouse.mjs`, to start a new attempt before its failure day (see its attempt 1 below). `b9dde3c` and `b8d099a` were each tested on a worktree exactly at that commit, with its own `dist/` (`docs/episodes.md` held aside during the runs). The one exception is the renders' attempt 2, which ran that changed script.
+**App versus head (second correction round).** The app under test is `abd2f51` (`abd2f511bff3da9ce22763d8e143d58e0126a96d`). The commit that adds its records changes no app code: it adds records, renders, this text and `docs/episodes.md`, and three test scripts changed after `abd2f51` (listed in that section). Everything ran on a worktree exactly at `abd2f51` with its own `dist/`.
+
+**App versus head (correction round). The app under test is `b8d099a`. The commit that adds its records changes no app code: it adds records, renders, this text and `docs/episodes.md`. It also changes one test script, `scripts/qa-greenhouse.mjs`, to start a new attempt before its failure day (see its attempt 1 below). `b9dde3c` and `b8d099a` were each tested on a worktree exactly at that commit, with its own `dist/` (`docs/episodes.md` held aside during the runs). The one exception is the renders' attempt 2, which ran that changed script.
 
 **App versus head (first submission).** The app under test was `faa7c09`. The commit that adds these records changes no app code (`src/`, `cloudflare/`, `server/`, `public/`): it adds the records, the renders, `scripts/qa-greenhouse-controls.mjs` (which ran from the worktree on `faa7c09`'s `dist/`), and corrects two comment lines at the top of `scripts/e2e-greenhouse-worker.mjs` so they describe what the script checks (the reset race's two accepted outcomes; the dial, not the valve handle).
 
@@ -17,7 +19,8 @@ Logs are kept as `.txt`, because the repository ignores `*.log`. Nothing else wa
 
 | Folder | App | Why it exists |
 |---|---|---|
-| [`app-b8d099a/`](app-b8d099a/) | **`b8d099a` (final, correction round)** | The app this PR now asks to be reviewed (gate findings corrected). The suites listed in its section ran on it. |
+| [`app-abd2f51/`](app-abd2f51/) | **`abd2f51` (final, second correction round)** | The app this PR now asks to be reviewed (the review of `d06712c` corrected). The suites listed in its section ran on it; the `control-*` files ran old code beside it. |
+| [`app-b8d099a/`](app-b8d099a/) | `b8d099a` (first correction round) | Kept blocked by the review of `d06712c`. Its 3D-control, plugging and comparison runs are inherited by `abd2f51` (unchanged files), labelled as `b8d099a` runs. |
 | [`app-b9dde3c/`](app-b9dde3c/) | `b9dde3c` | The first correction candidate. Its full two-client run failed (cables under the new knob console); kept, not counted. |
 | [`dev-before-b9dde3c/`](dev-before-b9dde3c/), [`dev-before-b8d099a/`](dev-before-b8d099a/) | uncommitted trees | Development runs, including failures; not evidence of either app. |
 | [`app-faa7c09/`](app-faa7c09/) | `faa7c09` (first submission) | Not accepted at the first gate. Every suite below its heading ran on it, on a clean worktree at that commit, with its own `dist/`. |
@@ -25,7 +28,101 @@ Logs are kept as `.txt`, because the repository ignores `*.log`. Nothing else wa
 
 Each folder has a `summary.txt` listing every command in run order with its exit code and duration, and a complete text log per command. JSON sidecars are listed per row.
 
-## Correction round after the first gate: final app `b8d099a`
+## Second correction round (review of `d06712c`): final app `abd2f51`
+
+The review of `d06712c` (app `b8d099a`) kept the gate blocked on four items. One app commit, **`abd2f51`**, corrects them; the commit that adds these records changes no app code. The records are in [`app-abd2f51/`](app-abd2f51/); its `summary.txt` lists every command in run order with its exit code and duration, failures and stopped runs included.
+
+**What `abd2f51` changes against `b8d099a`** (`git diff --stat b8d099a abd2f51 -- src cloudflare server public`): `cloudflare/room-core.js`, `src/desktop/collaboration.ts`, `src/desktop/sync-replica.ts`, `src/desktop/workbench-tools.ts`, and one line of `src/greenhouse/gh-panel.ts`. No 3D, rig, scene, model or style file changed.
+
+**Where it ran.** A worktree exactly at `abd2f51` with its own `dist/` (`npx vite build`, entry `index-CKwhT_ME.js`), and wrangler dev + the access proxy started from that worktree. The test scripts ran from the evidence head (`gh/scripts`). Three of them changed after `abd2f51`, test code only: `e2e-snapino-history.mjs` (the lamp wait, below), `e2e-snapino-import-probe.mjs` (fail-fast waits, below) and `e2e-greenhouse-join.mjs` (tab C closes before D opens, below). The node checks ran from the worktree's own `scripts/`.
+
+### 1. Natural end: one clock reading per room operation
+
+`RoomCore.handle()` read its clock once to settle a day that had reached its end and again for the rig lock. With the first reading at end − 1 ms and the second at the end, nothing was settled but the rig unlocked: an unplug was accepted while the stored run still ran from tick 0 with the new rig (tank 16 → 40 L, an "incomplete" end build, nothing final persisted).
+- **Fix.** `handle()` and `reset()` read the clock once (`this.at`); settlement, lock, reducers and messages use that reading. Same-device peer tabs read `Date.now()` once for settle + lock (edit) and for settle + action.
+- **Check.** `greenhouse-end-check.mjs` section 10: a clock that advances 1 ms per reading, the operation's first reading at end − 1, end and end + 1 ms, for an edit and for a live hose-end move (`activeEndpoint` 0). The room must refuse (still running, hose in) or settle with the OLD rig first. Then: the room's final day (resources, the 96 records, the end build) equals the unchanged day; what clients compute; the persisted payload; a JSON restore of the persisted payloads; a rejoin.
+- **Results.** `abd2f51`: **62/62** (`end-check-final.txt`; also in `npm-test.txt`). `b8d099a`'s `cloudflare/` (from `git archive b8d099a`): **50/62** — all six end − 1 ms checks fail for both the edit and the move: accepted while running at tick 0, final tank 40 L, end build "no hose from the tank to the pump" (`control-b8-end-check.txt`). At end and end + 1 ms, `b8d099a` already settled first.
+
+### 2. Peer joins keep the accepted run revision
+
+A tab answering a join re-stamped its unchanged run copy with a new Lamport stamp, so the joiner could hold an older run under a newer stamp than a teammate's later step, and refuse that step.
+- **Fix.** The state response carries the stamp the answering tab accepted for its run (`greenhouseStamp`), never a new one. An idle run nobody acted on carries `null`; a stampless copy only fills an empty tab or replaces another stampless run. Run id still orders first, so a reset still wins.
+- **Deterministic check.** `greenhouse-join-check.mjs` runs the real `DesktopRoom` (bundled from source) for three tabs over a fake BroadcastChannel, with B's update held by the app's own QA hold. `abd2f51` **8/8**; `b8d099a`'s source **7/8**, failing exactly the counterexample: A 8, B 8, **C 4** (`join-check-final.txt`, `control-b8-join-check.txt`). Also covered: an idle join followed by a step, and a held reset against a copy of the old run handed to a joiner.
+- **Real browsers.** `e2e-greenhouse-join.mjs`: three real tabs, real panel buttons, `__vmQa.holdPeer`, participant-id prefixes so the tie-break order is the counterexample's.
+  - Attempt 1 on `abd2f51`: steps 1–4 passed — **A 8, B 8, C 8**. Opening a fourth tab for the reset scenario then failed: its Enter button was not clickable within 240 s with four SwiftShader pages in one browser (5/6; `e2e-greenhouse-join.txt`).
+  - Attempt 1 on `b8d099a`'s `dist/`: **A 8, B 8, C 4** (step 4 fails), then the same fourth-tab timeout (4/6; `control-b8-e2e-greenhouse-join.txt`).
+  - The script now closes tab C before D opens. Attempt 2 on `abd2f51`: **8/8** (A, B, C at tick 8; then A, B, D all on the reset). On `b8d099a`: **7/8**, failing only step 4, again A 8, B 8, **C 4**.
+
+### 3. Snapino history: the harness gap and the late-answer path
+
+All earlier results stay as recorded: `b8d099a` HMZB 24/25 and HSRZ 22/25, `faa7c09` HNNQ 24/25, and the earlier `faa7c09` HQD4 25/25.
+
+**B. Product path, confirmed deterministically.** An edit whose answer reached the sender after `EDIT_TIMEOUT_MS` (8 s): the replica kept it pending and applied the late accepted answer, but the waiter had been resolved "timeout" and removed, and `WorkbenchTools` had returned before recording or committing. The state changed; the history never followed.
+- **Check.** `history-late-ack-check.mjs`: the real `RoomCore` (with the room's edit sanitizer), `DesktopRoom`/`SyncReplica` in server mode, `EditHistory` and `WorkbenchTools`, over a fake socket with ordered, delayable delivery. The teammate gets the change at once; the sender's answer is delayed 9 s. Cases: a parts + program import, its Undo, its Redo, the next Undo, a late **stale** refusal, a program-only import, and a connection that drops before the late answer. Each has an immediate-answer control.
+- **Before.** `b8d099a` and `faa7c09` (their own `src/` and `cloudflare/`): **15/27** each. Every immediate-answer control passes (10/10). Every late case fails:
+  - a late-accepted import is not an undo step, and is not traced;
+  - a late-accepted Undo leaves the entry in Undo (Redo stays disabled), so the next Undo drops it as stale;
+  - the same for Redo;
+  - a late stale refusal leaves the entry in Undo;
+  - the dropped connection is not reported.
+  Records: `control-b8-history-late.txt/.json`, `control-faa-history-late.txt/.json`.
+- **Fix.** On a timeout, `DesktopRoom` gives the caller `later`, a promise that resolves exactly once with the room's late answer: accepted, refused, or "disconnected" if the socket closes first. `WorkbenchTools` then records the import, commits the undo/redo, or drops a stale step, with the trace and status once. It sends no other undo/redo until that answer. Copy: "not confirmed yet · still waiting for the room…". A late "disconnected" stays as before: nothing is committed on a guess, and the entry stays in Undo.
+- **After.** `abd2f51` **27/27** (`history-late-final.txt/.json`; also in `npm-test.txt`). The shared-code regressions pass: `npm test` (sync 858, workbench tools 36, project 306, …).
+
+**A. Harness gap, measured.** The room sends the sender's answer and the teammate's relay in the same turn, but each page handles it when its main thread is free. `e2e-snapino-import-probe.mjs` repeats the failing step in isolation: an import with changed parts and the same running program. For each opId it logs:
+- the network and JavaScript times on both tabs;
+- the 8 s timers that fired;
+- both benches sampled the moment the teammate shows the change.
+
+| Run | Iterations | Importer handled the answer after the teammate (JS) | Importer not yet converged at the teammate's readiness | 8 s timers fired |
+|---|---|---|---|---|
+| `b8d099a`, attempt 1 (`control-b8-probe-attempt1`) | 8 | — | — | 0 · **invalid probe**: it read the lamp before it was seated, so iterations 2–8 changed no parts (the app's status says "same program, now stopped"). Kept, not counted. |
+| `b8d099a`, attempt 2 (`control-b8-probe`) | 8 | 3.6–6.1 s in 7 of 8 (in one, the teammate was 4.8 s later) | 0 of 8 | 0 |
+| `abd2f51`, attempt 1 | 1 | 5.1 s | 0 | 0 · **stopped**: its 90 s lamp wait timed out on the teammate and it continued with an empty state; its own guard stopped it at iteration 2. The waits now fail at 300 s. |
+| `abd2f51`, attempt 2 | 8 | **16.2 s** in iteration 1, 5.1–5.9 s in the others | 0 of 8 | 0 |
+
+What this shows:
+- The teammate routinely shows a change 4–6 s before the importer has handled the room's answer. The old harness checked the importer at once after the teammate. It usually passed only because `page.evaluate` on the busy importer page itself waited ~5 s behind that work. In `abd2f51` attempt 2, iteration 1, that sample ran **16 ms** after the answer was handled.
+- The importer's main thread was blocked **16.2 s** — longer than the 8 s edit timeout. The answer's message task ran before the timer task there. Had the timer run first, `b8d099a` would have lost that history step (B).
+- No run reproduced a failure. The cause of HMZB/HSRZ/HNNQ is therefore not proven, but both mechanisms were observed close to triggering. HSRZ's three failures (Redo, then two dependent checks) match B; HMZB/HNNQ's "and on the importer" matches A.
+
+**Harness fix.** `e2e-snapino-history.mjs` now waits for every shared change on **both** peers, then for the importer's history, each bounded (teammate 180 s, importer 30 s, history 30 s — past the 8 s timeout, because the app now records a late answer; a history that never follows still fails). It prints the timings. The import/undo/redo sequence stops at its first failed check, and the rest is reported NOT RUN. The export/autosave/recovery tail checks its own precondition (room program R on both peers). The lamp is waited for until it is seated on both peers. Run on `abd2f51`: **30/30**, room HD68 (one run; `snapino-history.txt`).
+
+### 4. Verdict copy
+
+`gh-panel.ts`: "G1 is judged on the build recorded when the day ended; G2–G5 on the day's record." The panel check asserts it (C1, 39/39). The renders `09b`/`10b` were captured again on `abd2f51` (below).
+
+### Results on `abd2f51`
+
+| Command | Result | Duration | Record |
+|---|---|---:|---|
+| `npm test` (typecheck, circuit 17,742, agent, project 306, Snapino, sync 858, tools 36 + flow 12, rescue 17,751 + episode sync 55, diagram 66,886, sound 89,528 + 47, greenhouse model 2,835,645, **end 62/62, time 5/5, relay 3/3, peer 5/5, join 8/8, history late answer 27/27**) | all passed | 182 s | `npm-test.txt` |
+| `npx vite build` | OK; entry `index-CKwhT_ME.js` | 19 s | `build.txt` |
+| `greenhouse-panel-check.mjs`, attempt 1 | **did not run**: the browser path was not set, so Playwright found no browser (exit 1 in 1 s) | 1 s | `panel-attempt1-no-browser-path.txt` |
+| `greenhouse-panel-check.mjs`, attempt 2 | **39/39** | 7 s | `panel.txt`, `panel-results.json` |
+| old-code controls (node) | end 50/62 (`b8d099a`), join 7/8 (`b8d099a`), history late answer 15/27 (`b8d099a`) and 15/27 (`faa7c09`) | — | `control-*.txt` |
+| `e2e-worker-sync.mjs` | 18/18, room SQXZ | 3 s | `worker-sync.txt` |
+| `e2e-snapino-history.mjs` (fixed harness) | **30/30**, room HD68 | 687 s | `snapino-history.txt` |
+| `e2e-snapino-import-probe.mjs`, attempts 1 and 2 | see the table above | 471 s, 1,013 s | `snapino-import-probe*.txt/.json` |
+| `e2e-room-sync.mjs` | 13/13, room TGMZ | 646 s | `room-sync.txt` |
+| `e2e-cable-end.mjs` | 12/12, room WEPD | 274 s | `cable-end.txt` |
+| `e2e-greenhouse-fixes-worker.mjs` (two makers + a late joiner, Worker) | **11/11**, room G3MW | 1,021 s | `e2e-greenhouse-fixes.txt`, `e2e-greenhouse-fixes-results.json` |
+| `e2e-greenhouse-peer.mjs` (two real tabs, reset vs step, both orders) | **7/7** | 359 s | `e2e-greenhouse-peer.txt`, `e2e-greenhouse-peer-results.json` |
+| `e2e-greenhouse-join.mjs`, attempt 1 / `b8d099a` control | 5/6 / 4/6 (above) | 885 s / 909 s | `e2e-greenhouse-join.txt`, `control-b8-e2e-greenhouse-join.txt` |
+| **`e2e-greenhouse-join.mjs`, attempt 2** (C closes before D opens) | **8/8**: A, B, C at tick 8; then A, B, D on the reset (run 2, seed 7) | 969 s | `e2e-greenhouse-join-attempt2.txt`, `e2e-greenhouse-join-attempt2-results.json` |
+| control: the same on `b8d099a`'s `dist/` | **7/8**: step 4 fails with **A 8, B 8, C 4**; the reset scenario passes | 986 s | `control-b8-e2e-greenhouse-join-attempt2.txt`, `control-b8-e2e-greenhouse-join-attempt2-results.json` |
+| `qa-greenhouse.mjs` (renders) | **12/12**, no issues: fill 0.914 at 1440 and 0.919 at 1280; the wrong build drawn as built; failure (default allocation) and recovery (worked allocation) as before; phone and PF checks pass. `09b`/`10b` show the new G1 line | 2,227 s | `qa-greenhouse.txt`, `qa-greenhouse-record.json`; renders in [`../../images/episodes/greenhouse/`](../../images/episodes/greenhouse/README.md) |
+
+**Inherited from `b8d099a`, not rerun on `abd2f51`.** These cover only files that `abd2f51` does not change (rig geometry, scene, controls, styles):
+- the 3D controls (`qa-greenhouse-controls`, 33/33);
+- plugging all 14 ends by pointer (`qa-greenhouse-plug`, 7/7);
+- the same-camera comparison.
+
+They are runs of `b8d099a`, not of `abd2f51`. The full two-client greenhouse run (`e2e-greenhouse-worker`, 40/40 on `b8d099a`) was **not** rerun: it runs through the changed room and client code, so it is evidence for `b8d099a` only. `e2e-greenhouse-fixes-worker` (two makers + a late joiner) ran instead. Still not rerun since `faa7c09`: Sound, the bench inspector, Rescue Signal, the AI-teammate tests, `qa-sound` and the Sound DSP check.
+
+**Not changed, noted.** The Rescue Signal episode (Episode 1's code) still re-stamps its copy in the same state response (`stamp: this.sync.stampTransform("episode")`). It is the same pattern as item 2, outside this round's scope, and left as it is.
+
+## Correction round after the first gate: app `b8d099a`
 
 The first independent gate did not accept `faa7c09`. It sent four blockers and, after its source audits, three more correction items and three secondary ones. Two app commits followed:
 - **`b9dde3c`** corrected them all, but its full two-client run failed. It is kept below as a failed candidate.
@@ -78,7 +175,7 @@ The old peer check uses the real `SyncReplica` with `faa7c09`'s acceptance rule.
 | `e2e-snapino-history.mjs`, attempt 2 | **failed, 22/25** (room HSRZ): "Redo brings Q/T back on both peers", "its undo is exactly one step back to T", "and the parts stay as the room has them" | 761 s | `snapino-history.txt` |
 | control: `e2e-snapino-history.mjs` on **`faa7c09`** (its own worktree, `dist/` and Worker), same environment, right after | **failed, 24/25** (room HNNQ), the same check as attempt 1 | — | `control-faa7c09-snapino-history.txt` |
 
-**The Snapino history failures are not explained.** `faa7c09` passed this suite 25/25 before the container restarted. After the restart, `faa7c09` itself failed the same check as `b8d099a`'s attempt 1. So these runs show no difference between the two apps, but they do not prove that `b8d099a` is free of a Snapino regression either. The greenhouse changes touch the shared room code in one place: `RoomCore.handle` first settles a greenhouse day that is running past 06:00, which does nothing in a Snapino room, whose greenhouse day is idle. Attempts were bounded to two plus one control, and the cause was not established.
+**The Snapino history failures are not explained.** `faa7c09` passed this suite 25/25 before the container restarted. After the restart, `faa7c09` itself failed the same check as `b8d099a`'s attempt 1. So these runs show no difference between the two apps, but they do not prove that `b8d099a` is free of a Snapino regression either. The greenhouse changes touch the shared room code in one place: `RoomCore.handle` first settles a greenhouse day that is running past 06:00, which does nothing in a Snapino room, whose greenhouse day is idle. Attempts were bounded to two plus one control, and the cause was not established. The second correction round measured both candidate mechanisms and fixed the product path and the harness ([section 3 above](#3-snapino-history-the-harness-gap-and-the-late-answer-path)).
 
 ### The 3D controls on `b8d099a`, measured
 

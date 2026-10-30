@@ -1,0 +1,31 @@
+$ node scripts/history-late-ack-check.mjs . <scratch>/r3/final/history-late-final.json
+(cwd: wt-abd2f51; started 2026-10-30T07:43:30Z)
+PASS import · control: immediate answer: the importer ends with Q/T — {"l1":[30,12],"w3":[30,33],"program":[{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}]}
+PASS import · control: immediate answer: the accepted import is one undo step (Undo enabled) — {"canUndo":true,"canRedo":false,"undoLabel":"Loaded a project","redoLabel":null,"undoButtonDisabled":false,"redoButtonDisabled":true}
+PASS import · control: immediate answer: traced exactly once — ["Loaded a project (1 part + program)"]
+PASS undo · control: immediate answer: both tabs end at P/S — host {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500}]}
+PASS undo · control: immediate answer: the accepted undo moved the entry to Redo (Redo enabled, Undo empty) — {"canUndo":false,"canRedo":true,"undoLabel":null,"redoLabel":"Loaded a project","undoButtonDisabled":true,"redoButtonDisabled":false}
+PASS undo · control: immediate answer: traced exactly once — ["Undid: Loaded a project"]
+PASS redo · control: immediate answer: both tabs end at Q/T — host {"l1":[30,12],"w3":[30,33],"program":[{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}]}
+PASS redo · control: immediate answer: the accepted redo moved the entry back to Undo — {"canUndo":true,"canRedo":false,"undoLabel":"Loaded a project","redoLabel":null,"undoButtonDisabled":false,"redoButtonDisabled":true}
+PASS redo · control: immediate answer: traced exactly once — ["Redid: Loaded a project"]
+PASS undo after the redo · control: immediate answer: the next undo applies (the history matched the room) — {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500}]} {"canUndo":false,"canRedo":true,"undoLabel":null,"redoLabel":"Loaded a project","undoButtonDisabled":true,"redoButtonDisabled":false}
+PASS import · late answer (9000 ms > 8 s timeout): the importer ends with Q/T — {"l1":[30,12],"w3":[30,33],"program":[{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}]}
+PASS import · late answer (9000 ms > 8 s timeout): the accepted import is one undo step (Undo enabled) — {"canUndo":true,"canRedo":false,"undoLabel":"Loaded a project","redoLabel":null,"undoButtonDisabled":false,"redoButtonDisabled":true}
+PASS import · late answer (9000 ms > 8 s timeout): traced exactly once — ["Loaded a project (1 part + program)"]
+PASS undo · late answer (9000 ms > 8 s timeout): both tabs end at P/S — host {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500}]}
+PASS undo · late answer (9000 ms > 8 s timeout): the accepted undo moved the entry to Redo (Redo enabled, Undo empty) — {"canUndo":false,"canRedo":true,"undoLabel":null,"redoLabel":"Loaded a project","undoButtonDisabled":true,"redoButtonDisabled":false}
+PASS undo · late answer (9000 ms > 8 s timeout): traced exactly once — ["Undid: Loaded a project"]
+PASS redo · late answer (9000 ms > 8 s timeout): both tabs end at Q/T — host {"l1":[30,12],"w3":[30,33],"program":[{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}]}
+PASS redo · late answer (9000 ms > 8 s timeout): the accepted redo moved the entry back to Undo — {"canUndo":true,"canRedo":false,"undoLabel":"Loaded a project","redoLabel":null,"undoButtonDisabled":false,"redoButtonDisabled":true}
+PASS redo · late answer (9000 ms > 8 s timeout): traced exactly once — ["Redid: Loaded a project"]
+PASS undo after the redo · late answer (9000 ms > 8 s timeout): the next undo applies (the history matched the room) — {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500}]} {"canUndo":false,"canRedo":true,"undoLabel":null,"redoLabel":"Loaded a project","undoButtonDisabled":true,"redoButtonDisabled":false}
+PASS stale undo answered late: nothing applies, the entry is dropped (not moved to Redo), both tabs keep the teammate's change — {"canUndo":false,"canRedo":false,"undoLabel":null,"redoLabel":null,"undoButtonDisabled":true,"redoButtonDisabled":true} host {"l1":[31,12],"w3":[30,33],"program":[{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}]}
+PASS program-only import · late answer: the importer has U and one undo step — {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D3","value":true}]} {"canUndo":true,"canRedo":false,"undoLabel":"Loaded a project","redoLabel":null,"undoButtonDisabled":false,"redoButtonDisabled":true}
+PASS program-only import · late answer: traced exactly once — ["Loaded a project (program)"]
+PASS program-only import · late answer: its undo goes back to S on both tabs — {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500}]}
+PASS dropped before the late answer: after reconnecting both tabs show the room's P/S — {"l1":[12,30],"w3":[30,33],"program":[{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500}]}
+PASS and nothing was committed or traced on a guess (the entry stays in Undo) — {"canUndo":true,"canRedo":false,"undoLabel":"Loaded a project","redoLabel":null,"undoButtonDisabled":false,"redoButtonDisabled":true} traces []
+PASS and the importer is told the connection closed before the room answered — ["Undo \"Loaded a project\" not confirmed yet · still waiting for the room; if it accepts, the change appears for everyone and your undo history follows","Undo \"Loaded a project\" not confirmed · the connection closed before the room answered; if the room accepted it, it will appear for everyone after reconnecting (not added to undo)"]
+history late answer: 27/27 checks passed (source: <scratch>/wt-abd2f51)
+exit 0 · 78 s

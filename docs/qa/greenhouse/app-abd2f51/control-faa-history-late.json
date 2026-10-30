@@ -1,0 +1,487 @@
+{
+ "source": "<scratch>/old-faa7c09",
+ "cases": [
+  {
+   "name": "import · control: immediate answer",
+   "senderAnswerDelayMs": 0,
+   "startedAt": 150,
+   "memberReady": true,
+   "memberReadyAt": 172,
+   "atMemberReady": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": true,
+     "canRedo": false,
+     "undoLabel": "Loaded a project",
+     "redoLabel": null,
+     "undoButtonDisabled": false,
+     "redoButtonDisabled": true
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": true,
+     "canRedo": false,
+     "undoLabel": "Loaded a project",
+     "redoLabel": null,
+     "undoButtonDisabled": false,
+     "redoButtonDisabled": true
+    }
+   },
+   "traces": [
+    "Loaded a project (1 part + program)"
+   ],
+   "statuses": [
+    {
+     "t": 152,
+     "tone": "valid",
+     "message": "Loaded a project · shared with the room"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "1bbcf2cc",
+     "sent": 151,
+     "roomAccepted": 151,
+     "senderAnswer": 152,
+     "applied:Member": 152,
+     "timeoutStatus": null
+    }
+   ]
+  },
+  {
+   "name": "undo · control: immediate answer",
+   "senderAnswerDelayMs": 0,
+   "startedAt": 522,
+   "memberReady": true,
+   "memberReadyAt": 542,
+   "atMemberReady": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "traces": [
+    "Undid: Loaded a project"
+   ],
+   "statuses": [
+    {
+     "t": 524,
+     "tone": "neutral",
+     "message": "Undid · Loaded a project · program restored, stopped"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "9e8b5218",
+     "sent": 523,
+     "roomAccepted": 523,
+     "senderAnswer": 524,
+     "applied:Member": 524,
+     "timeoutStatus": null
+    }
+   ]
+  },
+  {
+   "name": "redo · control: immediate answer",
+   "senderAnswerDelayMs": 0,
+   "startedAt": 885,
+   "memberReady": true,
+   "memberReadyAt": 905,
+   "atMemberReady": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": true,
+     "canRedo": false,
+     "undoLabel": "Loaded a project",
+     "redoLabel": null,
+     "undoButtonDisabled": false,
+     "redoButtonDisabled": true
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": true,
+     "canRedo": false,
+     "undoLabel": "Loaded a project",
+     "redoLabel": null,
+     "undoButtonDisabled": false,
+     "redoButtonDisabled": true
+    }
+   },
+   "traces": [
+    "Redid: Loaded a project"
+   ],
+   "statuses": [
+    {
+     "t": 887,
+     "tone": "neutral",
+     "message": "Redid · Loaded a project · program restored, stopped"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "9b6b35e4",
+     "sent": 886,
+     "roomAccepted": 886,
+     "senderAnswer": 887,
+     "applied:Member": 887,
+     "timeoutStatus": null
+    }
+   ]
+  },
+  {
+   "name": "undo after the redo · control: immediate answer",
+   "senderAnswerDelayMs": 0,
+   "startedAt": 1207,
+   "memberReady": true,
+   "memberReadyAt": 1228,
+   "atMemberReady": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "traces": [
+    "Undid: Loaded a project"
+   ],
+   "statuses": [
+    {
+     "t": 1209,
+     "tone": "neutral",
+     "message": "Undid · Loaded a project · program restored, stopped"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "65bc4015",
+     "sent": 1208,
+     "roomAccepted": 1208,
+     "senderAnswer": 1209,
+     "applied:Member": 1209,
+     "timeoutStatus": null
+    }
+   ]
+  },
+  {
+   "name": "import · late answer (9000 ms > 8 s timeout)",
+   "senderAnswerDelayMs": 9000,
+   "startedAt": 1529,
+   "memberReady": true,
+   "memberReadyAt": 1549,
+   "atMemberReady": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": false,
+     "undoLabel": null,
+     "redoLabel": null,
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": false,
+     "undoLabel": null,
+     "redoLabel": null,
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "traces": [],
+   "statuses": [
+    {
+     "t": 9530,
+     "tone": "warning",
+     "message": "Loaded a project not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "9594ed3b",
+     "sent": 1529,
+     "roomAccepted": 1529,
+     "applied:Member": 1530,
+     "senderAnswer": 10529,
+     "timeoutStatus": 9530
+    }
+   ]
+  },
+  {
+   "name": "undo · late answer (9000 ms > 8 s timeout)",
+   "senderAnswerDelayMs": 9000,
+   "startedAt": 19181,
+   "memberReady": true,
+   "memberReadyAt": 19202,
+   "atMemberReady": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "history": {
+     "canUndo": true,
+     "canRedo": false,
+     "undoLabel": "Loaded a project",
+     "redoLabel": null,
+     "undoButtonDisabled": false,
+     "redoButtonDisabled": true
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "history": {
+     "canUndo": true,
+     "canRedo": false,
+     "undoLabel": "Loaded a project",
+     "redoLabel": null,
+     "undoButtonDisabled": false,
+     "redoButtonDisabled": true
+    }
+   },
+   "traces": [],
+   "statuses": [
+    {
+     "t": 27182,
+     "tone": "warning",
+     "message": "Undo \"Loaded a project\" not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "28da41f4",
+     "sent": 19181,
+     "roomAccepted": 19182,
+     "applied:Member": 19183,
+     "senderAnswer": 28182,
+     "timeoutStatus": 27182
+    }
+   ]
+  },
+  {
+   "name": "redo · late answer (9000 ms > 8 s timeout)",
+   "senderAnswerDelayMs": 9000,
+   "startedAt": 28845,
+   "memberReady": true,
+   "memberReadyAt": 28866,
+   "atMemberReady": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "traces": [],
+   "statuses": [
+    {
+     "t": 36846,
+     "tone": "warning",
+     "message": "Redo \"Loaded a project\" not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "bde1b134",
+     "sent": 28845,
+     "roomAccepted": 28845,
+     "applied:Member": 28847,
+     "senderAnswer": 37846,
+     "timeoutStatus": 36846
+    }
+   ]
+  },
+  {
+   "name": "undo after the redo · late answer (9000 ms > 8 s timeout)",
+   "senderAnswerDelayMs": 0,
+   "startedAt": 38467,
+   "memberReady": false,
+   "memberReadyAt": 58481,
+   "atMemberReady": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "member": "{\"l1\":[30,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": true,
+     "undoLabel": null,
+     "redoLabel": "Loaded a project",
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": false
+    }
+   },
+   "traces": [],
+   "statuses": [
+    {
+     "t": 38467,
+     "tone": "neutral",
+     "message": "Nothing to undo"
+    }
+   ],
+   "ops": []
+  },
+  {
+   "name": "undo refused stale, answered late",
+   "history": {
+    "canUndo": true,
+    "canRedo": false,
+    "undoLabel": "Loaded a project",
+    "redoLabel": null,
+    "undoButtonDisabled": false,
+    "redoButtonDisabled": true
+   },
+   "host": "{\"l1\":[31,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+   "member": "{\"l1\":[31,12],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D6\",\"value\":true},{\"op\":\"wait\",\"ms\":300}]}",
+   "statuses": [
+    {
+     "t": 66828,
+     "tone": "warning",
+     "message": "Undo \"Loaded a project\" not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)"
+    }
+   ]
+  },
+  {
+   "name": "program-only import · late answer (9000 ms)",
+   "senderAnswerDelayMs": 9000,
+   "startedAt": 69351,
+   "memberReady": true,
+   "memberReadyAt": 69371,
+   "atMemberReady": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D3\",\"value\":true}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": false,
+     "undoLabel": null,
+     "redoLabel": null,
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": true
+    }
+   },
+   "afterLateAnswer": {
+    "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D3\",\"value\":true}]}",
+    "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D3\",\"value\":true}]}",
+    "history": {
+     "canUndo": false,
+     "canRedo": false,
+     "undoLabel": null,
+     "redoLabel": null,
+     "undoButtonDisabled": true,
+     "redoButtonDisabled": true
+    }
+   },
+   "traces": [],
+   "statuses": [
+    {
+     "t": 77351,
+     "tone": "warning",
+     "message": "Loaded a project not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)"
+    }
+   ],
+   "ops": [
+    {
+     "opId": "339db686",
+     "sent": 69351,
+     "roomAccepted": 69351,
+     "applied:Member": 69352,
+     "senderAnswer": 78352,
+     "timeoutStatus": 77351
+    }
+   ]
+  },
+  {
+   "name": "undo answered late, connection dropped first",
+   "reconnected": true,
+   "history": {
+    "canUndo": true,
+    "canRedo": false,
+    "undoLabel": "Loaded a project",
+    "redoLabel": null,
+    "undoButtonDisabled": false,
+    "redoButtonDisabled": true
+   },
+   "host": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+   "member": "{\"l1\":[12,30],\"w3\":[30,33],\"program\":[{\"op\":\"write\",\"pin\":\"D5\",\"value\":true},{\"op\":\"wait\",\"ms\":500}]}",
+   "traces": [],
+   "statuses": [
+    {
+     "t": 105017,
+     "tone": "warning",
+     "message": "Undo \"Loaded a project\" not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)"
+    }
+   ]
+  }
+ ]
+}

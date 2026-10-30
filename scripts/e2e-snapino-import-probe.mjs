@@ -13,7 +13,10 @@
 //   memberReady  the teammate's bench showed the change (what the history run waited for)
 //   hostAtMemberReady  the importer's bench sampled at that moment (what the history run then
 //                checked at once), and when (and whether) it converged within a bound after.
-// All clocks are this machine's (Date.now in node and in both pages).
+// All clocks are this machine's (Date.now in node and in both pages). The network-layer times are
+// when node received Chromium's DevTools event for the frame; for a page whose renderer is busy
+// that event can itself arrive late, so `roomOut` (the earliest frame of the op on either tab)
+// is the best of them, and the JavaScript times are exact for when each page handled it.
 //
 //   node scripts/e2e-snapino-import-probe.mjs [base] [iterations] [record.json]
 import { chromium } from "playwright";
@@ -128,9 +131,17 @@ try {
   const host = await open(await maker("host@example.test"), "host", true);
   const member = await open(await maker("member@example.test"), "member");
   await press(host, "Load Snapino lamp");
-  const P = (await until(() => bench(member), (state) => Object.values(state.parts).some((part) => part.sockets), 90_000)).value;
+  // The whole lamp wiring on both tabs (it arrives as one edit; the lamp itself must be seated),
+  // so P and Q really differ in the lamp's orientation.
+  const lamp = await until(() => bench(member), (state) => Boolean(state.parts["sno-l1"]?.sockets), 300_000);
+  if (!lamp.ok) throw new Error("the lamp wiring did not reach the teammate within 300 s");
+  const P = lamp.value;
+  if (!(await until(() => bench(host), (state) => partsKey(state) === partsKey(P), 300_000)).ok) throw new Error("the importer does not show the teammate's lamp wiring within 300 s");
+  record.lamp = partsKey(P);
   await press(host, "Run blocks");
-  const R = (await until(() => bench(member), (state) => state.running, 90_000)).value.program;
+  const running = await until(() => bench(member), (state) => state.running, 300_000);
+  if (!running.ok) throw new Error("the lamp program did not start on the teammate within 300 s");
+  const R = running.value.program;
   const pParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
   const qParts = pParts.map((part) => ({ ...part, sockets: part.id === "sno-l1" && part.sockets ? [part.sockets[1], part.sockets[0]] : part.sockets }));
   for (let i = 1; i <= iterations; i += 1) {
@@ -141,6 +152,8 @@ try {
     const target = partsKey({ parts: Object.fromEntries(parts.map((part) => [part.id, { sockets: part.sockets }])) });
     await host.evaluate(() => { window.__probe.js.length = 0; window.__probe.timeouts.length = 0; });
     await member.evaluate(() => { window.__probe.js.length = 0; });
+    const partsBefore = partsKey(await bench(host));
+    if (partsBefore === target) throw new Error(`iteration ${i}: the import would not change the parts (${target})`);
     const before = new Set(ops.keys());
     const clicked = Date.now();
     await importProject(host, { format: "virtual-makerspace.project", version: 1, solver: "dc-mna-1.0.0", studio: "snapino", savedAt: new Date().toISOString(), parts, program: R });
@@ -174,6 +187,7 @@ try {
       hostAtMemberReady: { running: hostAtMemberReady.running, partsMatch: partsKey(hostAtMemberReady) === target },
       hostConvergedOk: hostConverged.ok,
       hostStatus: await status(host),
+      partsChange: `${partsBefore} → ${target}`,
       history: { canUndo: hostConverged.value.canUndo, canRedo: hostConverged.value.canRedo },
     };
     record.iterations.push(entry);

@@ -1,0 +1,247 @@
+{
+ "base": "http://vm.test:8800",
+ "room": "H3SM",
+ "iterations": [
+  {
+   "i": 1,
+   "opId": "da21071d",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 45701,
+    "roomOut": 45703,
+    "memberWire": 50502,
+    "memberJs": 50498,
+    "ackWire": 45703,
+    "ackJs": 45698,
+    "memberReady": 61824,
+    "hostSampled": 67566,
+    "hostConverged": 67573
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 2,
+   "opId": "3217ddba",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 10471,
+    "roomOut": 5081,
+    "memberWire": 5081,
+    "memberJs": 5074,
+    "ackWire": 10479,
+    "ackJs": 10473,
+    "memberReady": 15501,
+    "hostSampled": 20684,
+    "hostConverged": 20694
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 3,
+   "opId": "ade24c17",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 65024,
+    "roomOut": 59704,
+    "memberWire": 59704,
+    "memberJs": 59700,
+    "ackWire": 65039,
+    "ackJs": 65019,
+    "memberReady": 70566,
+    "hostSampled": 76187,
+    "hostConverged": 76205
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 4,
+   "opId": "6ce8a7be",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 22146,
+    "roomOut": 16050,
+    "memberWire": 16050,
+    "memberJs": 16046,
+    "ackWire": 22156,
+    "ackJs": 22147,
+    "memberReady": 27665,
+    "hostSampled": 32979,
+    "hostConverged": 32983
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 5,
+   "opId": "36530585",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 10965,
+    "roomOut": 5356,
+    "memberWire": 5356,
+    "memberJs": 5352,
+    "ackWire": 10973,
+    "ackJs": 10964,
+    "memberReady": 16548,
+    "hostSampled": 21911,
+    "hostConverged": 21919
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 6,
+   "opId": "e536e968",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 42716,
+    "roomOut": 37436,
+    "memberWire": 37436,
+    "memberJs": 37434,
+    "ackWire": 42724,
+    "ackJs": 42718,
+    "memberReady": 48159,
+    "hostSampled": 53318,
+    "hostConverged": 53326
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 7,
+   "opId": "52c00a10",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 9627,
+    "roomOut": 6074,
+    "memberWire": 6074,
+    "memberJs": 6068,
+    "ackWire": 9630,
+    "ackJs": 9623,
+    "memberReady": 15085,
+    "hostSampled": 18430,
+    "hostConverged": 18442
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  },
+  {
+   "i": 8,
+   "opId": "b642d617",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 9474,
+    "roomOut": 5803,
+    "memberWire": 5803,
+    "memberJs": 5795,
+    "ackWire": 9486,
+    "ackJs": 9478,
+    "memberReady": 15405,
+    "hostSampled": 18844,
+    "hostConverged": 18850
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[30,12]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → [[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  }
+ ],
+ "summary": {
+  "iterations": 8,
+  "hostNotYetConvergedWhenMemberReady": 0,
+  "hostConvergedWithinBound": 8,
+  "editTimeoutsFired": 0,
+  "maxAckJsMs": 65019,
+  "maxAckWireToJsMs": 0
+ },
+ "lamp": "[[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]]"
+}

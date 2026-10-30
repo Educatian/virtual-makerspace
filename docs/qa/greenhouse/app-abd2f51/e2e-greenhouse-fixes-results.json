@@ -1,0 +1,83 @@
+{
+ "room": "G3MW",
+ "base": "http://vm.test:8800",
+ "results": [
+  {
+   "name": "both makers hold the brief's rig, fully plumbed and wired",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}",
+   "actor": "host",
+   "at": "2026-10-30T08:55:05.022Z"
+  },
+  {
+   "name": "host: a 3D click on valveA focuses its field; 30 typed and Enter is accepted by the room and arrives at the other maker",
+   "ok": true,
+   "detail": "focus gh-valveA",
+   "actor": "host",
+   "at": "2026-10-30T08:57:48.448Z"
+  },
+  {
+   "name": "member: a 3D click on valveB focuses its field; 50 typed and Enter is accepted by the room and arrives at the other maker",
+   "ok": true,
+   "detail": "focus gh-valveB",
+   "actor": "member",
+   "at": "2026-10-30T09:00:47.716Z"
+  },
+  {
+   "name": "host: a 3D click on pumpBelow focuses its field; 60 typed and Enter is accepted by the room and arrives at the other maker",
+   "ok": true,
+   "detail": "focus gh-pumpBelow",
+   "actor": "host",
+   "at": "2026-10-30T09:03:19.242Z"
+  },
+  {
+   "name": "member: a 3D click on fanAbove focuses its field; 26 typed and Enter is accepted by the room and arrives at the other maker",
+   "ok": true,
+   "detail": "focus gh-fanAbove",
+   "actor": "member",
+   "at": "2026-10-30T09:04:47.836Z"
+  },
+  {
+   "name": "the day ran to its end at ×4 on both; the worked allocation meets the brief",
+   "ok": true,
+   "detail": "tank 11.20 L · run {\"runId\":1,\"seed\":11,\"status\":\"running\",\"speed\":4,\"tick\":13}",
+   "actor": "host",
+   "at": "2026-10-30T09:07:05.580Z"
+  },
+  {
+   "name": "after the day ended, the member unplugged the tank hose by pointer (the rig was unlocked) and both see it unplugged",
+   "ok": true,
+   "detail": "\"loose\"",
+   "actor": "member",
+   "at": "2026-10-30T09:09:16.907Z"
+  },
+  {
+   "name": "…the finished day is unchanged on both: same final tank, same verdict (G1 still met: judged on the build the day ended with), run ended with the same id",
+   "ok": true,
+   "detail": "{\"host\":{\"tank\":11.2,\"met\":true,\"run\":{\"runId\":1,\"seed\":11,\"status\":\"ended\",\"speed\":4,\"tick\":96}},\"member\":{\"tank\":11.2,\"met\":true}}",
+   "actor": "both",
+   "at": "2026-10-30T09:09:16.907Z"
+  },
+  {
+   "name": "a late joiner (PF, fresh tab) sees the same finished day: final tank, verdict",
+   "ok": true,
+   "detail": "tank 11.2",
+   "actor": "late",
+   "at": "2026-10-30T09:09:56.189Z"
+  },
+  {
+   "name": "…and that day is not their attempt: no result, PF explanatory notes still locked, the attempt card says it finished without them",
+   "ok": true,
+   "detail": "{\"resultRun\":null,\"notesUnlocked\":false}",
+   "actor": "late",
+   "at": "2026-10-30T09:09:58.647Z"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-30T09:09:58.647Z"
+  }
+ ]
+}

@@ -1,0 +1,45 @@
+{
+ "base": "http://127.0.0.1:4176",
+ "results": [
+  {
+   "name": "A and B start on the brief's day, idle",
+   "ok": true,
+   "detail": "[[1,11,\"idle\",0],[1,11,\"idle\",0]]"
+  },
+  {
+   "name": "1. A steps run 1 to tick 4; B accepts it",
+   "ok": true,
+   "detail": "[[1,11,\"paused\",4],[1,11,\"paused\",4]]"
+  },
+  {
+   "name": "2. B steps to tick 8 with its update held; A still at tick 4",
+   "ok": true,
+   "detail": "[[1,11,\"paused\",4],[1,11,\"paused\",8]]"
+  },
+  {
+   "name": "3. C joins and holds A's run 1 at tick 4",
+   "ok": true,
+   "detail": "[[1,11,\"paused\",4]]"
+  },
+  {
+   "name": "4. B's held step is delivered: A, B and C all end at tick 8",
+   "ok": true,
+   "detail": "3 held message(s) released · [[1,11,\"paused\",8],[1,11,\"paused\",8],[1,11,\"paused\",8]]"
+  },
+  {
+   "name": "5. B resets (run 2, held); A steps run 1 to tick 12; D joins with run 1 at tick 12",
+   "ok": true,
+   "detail": "[[2,7,\"idle\",0],[1,11,\"paused\",12],[1,11,\"paused\",12]]"
+  },
+  {
+   "name": "6. B's held reset is delivered: A, B and D all end on run 2, practice seed 7, 06:00",
+   "ok": true,
+   "detail": "[[2,7,\"idle\",0],[2,7,\"idle\",0],[2,7,\"idle\",0]]"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

@@ -1,0 +1,45 @@
+{
+ "base": "http://vm.test:8800",
+ "room": "HZ2F",
+ "iterations": [
+  {
+   "i": 1,
+   "opId": "61ad0051",
+   "runningBeforeImport": true,
+   "ms": {
+    "wireSent": 54018,
+    "roomOut": 48890,
+    "memberWire": 48891,
+    "memberJs": 48888,
+    "ackWire": 54029,
+    "ackJs": 54018,
+    "memberReady": 59517,
+    "hostSampled": 65224,
+    "hostConverged": 65233
+   },
+   "timeouts": [],
+   "memberReadyOk": true,
+   "hostAtMemberReady": {
+    "running": false,
+    "partsMatch": true
+   },
+   "hostConvergedOk": true,
+   "hostStatus": "Loaded a project · shared with the room (program stopped)",
+   "partsChange": "[[\"sno-l1\",{\"sockets\":[12,30]}],[\"sno-w2a\",{\"sockets\":[33,15]}],[\"sno-w3\",{\"sockets\":[30,33]}]] → []",
+   "history": {
+    "canUndo": true,
+    "canRedo": false
+   }
+  }
+ ],
+ "summary": {
+  "iterations": 1,
+  "hostNotYetConvergedWhenMemberReady": 0,
+  "hostConvergedWithinBound": 1,
+  "editTimeoutsFired": 0,
+  "maxAckJsMs": 54018,
+  "maxAckWireToJsMs": 0
+ },
+ "lamp": "[]",
+ "error": "iteration 2: the import would not change the parts ([])"
+}

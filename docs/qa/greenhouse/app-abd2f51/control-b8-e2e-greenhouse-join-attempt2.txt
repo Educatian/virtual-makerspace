@@ -1,0 +1,16 @@
+$ node <scratch>/gh/scripts/e2e-greenhouse-join.mjs http://127.0.0.1:4177 <scratch>/r3/final/control-b8-e2e-greenhouse-join-attempt2-results.json
+(cwd: wt-abd2f51; started 2026-10-30T10:56:39Z)
+  [ready] TabA entered: 2 s (+3 frames)
+  [ready] TabB entered: 20 s (+3 frames)
+PASS A and B start on the brief's day, idle — [[1,11,"idle",0],[1,11,"idle",0]]
+PASS 1. A steps run 1 to tick 4; B accepts it — [[1,11,"paused",4],[1,11,"paused",4]]
+PASS 2. B steps to tick 8 with its update held; A still at tick 4 — [[1,11,"paused",4],[1,11,"paused",8]]
+  [ready] TabC entered: 15 s (+3 frames)
+PASS 3. C joins and holds A's run 1 at tick 4 — [[1,11,"paused",4]]
+FAIL 4. B's held step is delivered: A, B and C all end at tick 8 — 3 held message(s) released · [[1,11,"paused",8],[1,11,"paused",8],[1,11,"paused",4]]
+  [ready] TabD entered: 90 s (+6 frames)
+PASS 5. B resets (run 2, held); A steps run 1 to tick 12; D joins with run 1 at tick 12 — [[2,7,"idle",0],[1,11,"paused",12],[1,11,"paused",12]]
+PASS 6. B's held reset is delivered: A, B and D all end on run 2, practice seed 7, 06:00 — [[2,7,"idle",0],[2,7,"idle",0],[2,7,"idle",0]]
+PASS no page errors
+e2e greenhouse join: 7/8 checks passed
+exit 1 · 986 s
