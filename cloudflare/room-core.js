@@ -59,8 +59,20 @@ export class RoomCore {
     this.episode = initial.episode ?? initialRescueState();
     /** Resource-Limited Greenhouse run: model time and resources (cloudflare/greenhouse-run.js); persisted by the host. */
     this.greenhouse = initial.greenhouse ?? initialRun();
-    /** Server clock (injectable for tests). */
-    this.now = initial.now ?? (() => Date.now());
+    /** Server clock (injectable for tests). Read through `now()`. */
+    this.clock = initial.now ?? (() => Date.now());
+    /**
+     * The time of the operation being handled: one reading per `handle()`/`reset()`, so the
+     * day-end settlement, the rig lock, the reducers and the messages all see the same instant.
+     * (Two readings let a day be unsettled at end − 1 ms and unlocked at its end, so a rig
+     * change was accepted while the unsettled run still ran with the new rig.)
+     */
+    this.at = null;
+  }
+
+  /** The current operation's time (see `at`), or the clock outside one. */
+  now() {
+    return this.at ?? this.clock();
   }
 
   /** The greenhouse rig as the room holds it (what the model runs on). */
@@ -168,7 +180,16 @@ export class RoomCore {
    * Handles one sanitized message from `participant` ({ id, name }).
    * @returns {{ sender: object[], others: object[], persist: { state?: Array<[string, object]>, program?: object } }}
    */
-  handle(participant, message, { maxClaims = 16 } = {}) {
+  handle(participant, message, options = {}) {
+    this.at = this.clock();
+    try {
+      return this.handleAt(participant, message, options);
+    } finally {
+      this.at = null;
+    }
+  }
+
+  handleAt(participant, message, { maxClaims = 16 } = {}) {
     const out = { sender: [], others: [], persist: {} };
     this.settleEndedGreenhouse(out);
     switch (message.kind) {
@@ -362,6 +383,15 @@ export class RoomCore {
    * episode keeps its design and rounds; roles are freed and a running transmission ends.
    */
   reset() {
+    this.at = this.clock();
+    try {
+      this.resetAt();
+    } finally {
+      this.at = null;
+    }
+  }
+
+  resetAt() {
     // A running greenhouse day pauses where it is (with the rig it ran on), keeping its resources.
     const paused = onGreenhouseRoomEmpty(this.greenhouse, this.now(), this.greenhouseRig());
     if (paused) this.greenhouse = paused;

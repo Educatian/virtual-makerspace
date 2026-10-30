@@ -42,7 +42,19 @@ export type EditProgramRequest = EditProgram & { conditional?: boolean };
  * plug. "running": a greenhouse day is running, so its rig cannot change (pause first).
  */
 export type EditRefusal = "held" | "stale" | "invalid" | "occupied" | "running" | "offline" | "timeout" | "disconnected";
-export type EditResult = { ok: true } | { ok: false; reason: EditRefusal; holderName?: string; componentId?: string };
+export type EditResult =
+  | { ok: true }
+  | {
+    ok: false;
+    reason: EditRefusal;
+    holderName?: string;
+    componentId?: string;
+    /**
+     * "timeout" only: the edit is still pending (see `expire`), and this resolves exactly once
+     * with the room's late answer — accepted, refused, or "disconnected" if the socket closed first.
+     */
+    later?: Promise<EditResult>;
+  };
 
 export type Stamp = [number, string];
 

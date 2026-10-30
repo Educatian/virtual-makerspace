@@ -1215,7 +1215,7 @@ export class GreenhousePanel {
     const passed = brief.criteria.filter((criterion) => criterion.pass).length;
     this.write(verdict, "verdict", `<p class="ss-result-head"><strong>${brief.met ? (briefDay ? "All five criteria met." : "All five met on this practice day.") : `${passed} of 5 criteria met.`}</strong>${briefDay ? "" : " The brief is judged on the brief's day (seed 11)."}</p>
       <ul class="ss-checks">${brief.criteria.map((criterion) => `<li data-criterion="${criterion.id}" data-pass="${criterion.pass}"><span class="ss-mark" aria-hidden="true">${criterion.pass ? "✓" : "✕"}</span><span><strong>${criterion.id} ${criterion.pass ? "met" : "not met"}</strong> · measured: ${escape(criterion.measured)}${!criterion.pass && di ? `<br><span class="ss-why-note">${escape(DI_EXPLANATIONS[criterion.id])}</span>` : ""}</span></li>`).join("")}</ul>
-      <p class="ss-fine">G1 is judged on the build as it is now; G2–G5 on the day's record.</p>`);
+      <p class="ss-fine">G1 is judged on the build recorded when the day ended; G2–G5 on the day's record.</p>`);
   }
 
   private renderFlow(): void {

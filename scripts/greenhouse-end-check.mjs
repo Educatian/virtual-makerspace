@@ -188,6 +188,77 @@ if (typeof runs.settleEndedDay === "function") {
   check(ended?.status === "ended" && near(ended.snapshot.tank, expected.tank) && ended.endBuild?.complete === true && runs.settleEndedDay(ended, END_MS * 2, rig) === null && runs.settleEndedDay(started, runs.STEP_MS * 50, rig) === null, "9b settleEndedDay ends a day past its end once (with its build), and leaves a day before its end alone");
 }
 
+// ── 10. The exact end, with a clock that moves between readings (review of d06712c, TOCTOU) ──
+// The room used to read its clock once to settle an ended day and again to decide the rig lock.
+// With the first reading at end − 1 ms and the second at the end, nothing was settled but the rig
+// unlocked: an unplug was accepted while the stored run still ran from tick 0, and the day was
+// recomputed with the new rig (tank 16 → 40 L) with no final state persisted. Here every reading
+// of the room's clock advances 1 ms, the operation's first reading lands at end − 1, end or
+// end + 1, and the operation is an edit or a live hose-end move (activeEndpoint 0). The room may
+// refuse (still running) or accept (after settling with the OLD rig); either way the day's
+// resources, its 96 records and its end build stay what the day ran, through a JSON restore of
+// the persisted payloads, a rejoin and the persistence payload itself.
+{
+  // The day as it ran, ended with no change at all.
+  const ref = room();
+  ref.core.handle(alice, { kind: "greenhouse", opId: "start", action: { type: "start" } });
+  ref.clock.now += END_MS;
+  ref.core.handle(bob, { kind: "hello", participantId: "bob", participantName: "Bob" });
+  const day = (run) => JSON.stringify({ tick: run.tick, status: run.status, snapshot: run.snapshot, records: run.records, endBuild: run.endBuild ?? null });
+  const refDay = day(ref.core.greenhouse);
+  check(ref.core.greenhouse.status === "ended" && ref.core.greenhouse.records.length === 96 && near(ref.core.greenhouse.snapshot.tank, expected.tank), "10· (reference) the unchanged day ends with 96 records and the expected tank", `${ref.core.greenhouse.status}, ${ref.core.greenhouse.records.length} records, tank ${ref.core.greenhouse.snapshot.tank}`);
+  for (const via of ["edit", "move"]) {
+    for (const offset of [-1, 0, 1]) {
+      const label = `10 ${via} at end${offset < 0 ? " − 1 ms" : offset > 0 ? " + 1 ms" : ""}`;
+      const start = 70_000_000;
+      let now = start;
+      let ticking = false;
+      const core = new RoomCore({ now: () => (ticking ? now++ : now) });
+      const built = room(start).core;
+      core.state = new Map(JSON.parse(JSON.stringify([...built.state])));
+      core.handle(alice, { kind: "greenhouse", opId: "start", action: { type: "start" } });
+      const end = core.greenhouse.anchorAt + (runs.STEP_MS * 96) / core.greenhouse.speed;
+      const persisted = { state: new Map(JSON.parse(JSON.stringify([...core.state]))), greenhouse: JSON.parse(JSON.stringify(core.greenhouse)) };
+      const keep = (out) => {
+        for (const [id, entry] of out.persist.state ?? []) persisted.state.set(id, JSON.parse(JSON.stringify(entry)));
+        if (out.persist.greenhouse) persisted.greenhouse = JSON.parse(JSON.stringify(out.persist.greenhouse));
+      };
+      if (via === "move") {
+        now = end - 5_000;
+        keep(core.handle(bob, { kind: "claim", componentId: "irrigation-hose::endpoint-0" }));
+      }
+      now = end + offset;
+      ticking = true;
+      const out = via === "edit"
+        ? edit(core, bob, "unplug", [["irrigation-hose", line([null, 1])]])
+        : core.handle(bob, { kind: "transform", componentId: "irrigation-hose", sequence: 1, transform: { ...line([null, 1]), activeEndpoint: 0 } });
+      ticking = false;
+      keep(out);
+      const accepted = via === "edit" ? editResult(out)?.ok === true : out.sender.some((m) => m.kind === "rev-ack");
+      const hoseOut = core.state.get("irrigation-hose").transform.sockets?.[0] === null;
+      const runNow = core.greenhouse;
+      // Accepting means the day was settled first (ended with its old rig); refusing means it still runs, rig unchanged.
+      const coherent = accepted
+        ? runNow.status === "ended" && day(runNow) === refDay && hoseOut && persisted.greenhouse.status === "ended"
+        : runNow.status === "running" && !hoseOut;
+      check(coherent, `${label}: the room ${accepted ? "accepts only after settling the day with the old rig (ended, persisted)" : "refuses (the day still runs, the hose stays)"}`, `accepted ${accepted}; run ${runNow.status} tick ${runNow.tick}; hose ${hoseOut ? "unplugged" : "in"}; persisted run ${persisted.greenhouse.status}; tank ${runNow.snapshot.tank}`);
+      // Later: a hello after the end (settles if still running), then everything a client or storage sees.
+      now = end + 60_000;
+      keep(core.handle(alice, { kind: "hello", participantId: "alice", participantName: "Alice" }));
+      check(day(core.greenhouse) === refDay, `${label}: the room's final day (resources, 96 records, end build) is the day as it ran`, `tank ${core.greenhouse.snapshot.tank} (expected ${ref.core.greenhouse.snapshot.tank}), ${core.greenhouse.records?.length} records, endBuild ${JSON.stringify(core.greenhouse.endBuild)}`);
+      const view = shown(core, now);
+      check(near(view.tank, expected.tank) && near(view.totals.pumped, expected.totals.pumped), `${label}: what clients compute from the room's run and current rig is that day`, `tank ${view.tank}, pumped ${view.totals.pumped}`);
+      const stored = runs.sanitizeGreenhouseRun(JSON.parse(JSON.stringify(persisted.greenhouse)));
+      check(stored !== null && day(stored) === refDay, `${label}: the persisted run payload is the ended day`, `${persisted.greenhouse.status} tick ${persisted.greenhouse.tick} tank ${persisted.greenhouse.snapshot?.tank}`);
+      const restored = new RoomCore({ now: () => now, entries: [...persisted.state], greenhouse: stored });
+      restored.handle(bob, { kind: "hello", participantId: "bob", participantName: "Bob" });
+      check(day(restored.greenhouse) === refDay && near(shown(restored, now).tank, expected.tank), `${label}: after a JSON restore of the persisted payloads the day is unchanged`, `tank ${shown(restored, now).tank}`);
+      const rejoin = restored.join()[0].greenhouse;
+      check(day(rejoin) === refDay, `${label}: a rejoining client gets the ended day`, `${rejoin.status} tank ${rejoin.snapshot.tank}`);
+    }
+  }
+}
+
 console.log(`greenhouse end: ${passed}/${passed + failed.length} checks passed (room code: ${dir})`);
 if (failed.length) {
   console.log(`FAILED:\n- ${failed.join("\n- ")}`);

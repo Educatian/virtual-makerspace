@@ -10,6 +10,13 @@
 //   node scripts/e2e-snapino-history.mjs          # → http://vm.test:8800 (fresh random room)
 //
 // Running-state policy under test: import, undo and redo restore a program STOPPED.
+//
+// Every shared change is waited for on BOTH peers (the room answers the sender and relays to the
+// teammate separately; the sender applies its own change only on that answer) and then for the
+// importer's history, each bounded, with the timings in the output. The import/undo/redo
+// sequence is dependent: at its first failed check the rest of it is reported NOT RUN instead of
+// acting on the state that failure left. (Before d06712c's review round the script sampled the
+// importer right after the teammate showed a change, and kept going after a failure.)
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -37,7 +44,23 @@ const until = async (read, test, timeout = 60_000) => {
   return value;
 };
 const results = [];
-const check = (name, ok, detail = "") => { results.push({ name, ok }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`); };
+/**
+ * The checks of one dependent sequence: once one fails, the rest of that sequence is NOT RUN
+ * (reported, and counted as not passed) instead of acting on a state the failure left behind.
+ */
+let blockedBy = null;
+const check = (name, ok, detail = "") => {
+  if (blockedBy) {
+    results.push({ name, ok: false, notRun: true });
+    console.log(`NOT RUN ${name} — prerequisite failed: ${blockedBy}`);
+    return false;
+  }
+  results.push({ name, ok });
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
+  if (!ok) blockedBy = name;
+  return ok;
+};
+const independent = () => { blockedBy = null; };
 
 async function maker(email) {
   const context = await browser.newContext({ viewport: { width: 1100, height: 760 }, acceptDownloads: true });
@@ -77,116 +100,161 @@ const hostContext = await maker("host@example.test");
 const memberContext = await maker("member@example.test");
 const host = await open(hostContext, "host", true);
 const member = await open(memberContext, "member");
-check("both makers are in the Snapino room", (await bench(host)).studio === "snapino" && (await bench(member)).studio === "snapino");
 
-// P/S: the lamp demo wiring (P) and the uploaded blink program (S).
-// Two software-rendered WebGL pages on a small CI box: allow generous time for each round trip.
-await press(host, "Load Snapino lamp");
-await until(() => bench(host), (state) => Object.values(state.parts).some((part) => part.sockets), 90_000);
-const P = await until(() => bench(member), (state) => Object.values(state.parts).some((part) => part.sockets), 90_000);
-await press(host, "Run blocks");
-const S = await until(() => bench(member), (state) => state.running, 90_000);
-const PS = { parts: partsKey(P), program: programKey(S) };
-const hostPS = await bench(host);
-check("P/S reaches the teammate (wiring + running program)", partsKey(hostPS) === PS.parts && S.running && programKey(hostPS) === PS.program,
-  `member ${PS.parts} ${PS.program} running=${S.running} · host ${partsKey(hostPS)} ${programKey(hostPS)}`);
+/**
+ * Waits for a shared change on BOTH peers, then for the importer's history to be ready. The
+ * room answers the sender and relays to the teammate separately (the sender applies its own
+ * change only on that answer), so the teammate showing it says nothing about the importer yet:
+ * each is waited for, bounded, and the timings are reported. The history bound is past the
+ * client's 8 s edit timeout, so an answer that arrives after it still counts — the app now
+ * records such a late answer — but a history that never follows still fails.
+ */
+const MEMBER_BOUND = 180_000;
+const HOST_BOUND = 30_000;
+const HISTORY_BOUND = 30_000;
+async function converge(memberTest, hostTest, historyTest = () => true) {
+  const started = Date.now();
+  const atMember = await until(() => bench(member), memberTest, MEMBER_BOUND);
+  const memberAt = Date.now();
+  const hostFirst = await bench(host);
+  const atHost = await until(() => bench(host), hostTest, HOST_BOUND);
+  const hostAt = Date.now();
+  const history = await until(() => bench(host), historyTest, HISTORY_BOUND);
+  const historyAt = Date.now();
+  const timing = `teammate ${memberAt - started} ms; importer ${hostTest(hostFirst) ? "already there" : `+${hostAt - memberAt} ms later`}; history ${historyTest(hostFirst) ? "already ready" : `+${historyAt - hostAt} ms`}`;
+  return { member: atMember, host: atHost, history, memberOk: memberTest(atMember), hostOk: hostTest(atHost), historyOk: historyTest(history), timing };
+}
 
-// Q/T: the same parts with the lamp turned around, and a different program.
-const T = [{ op: "write", pin: "D6", value: true }, { op: "wait", ms: 300 }];
-const qParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: id === "sno-l1" && part.sockets ? [part.sockets[1], part.sockets[0]] : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
-const projectQT = { format: "virtual-makerspace.project", version: 1, solver: "dc-mna-1.0.0", studio: "snapino", savedAt: new Date().toISOString(), parts: qParts, program: T };
-await importProject(host, projectQT);
-// Each page's own view, bounded (a slow software-rendered page applies the room's state late; the
-// first re-review run read the views at a 60 s limit and failed without saying which).
-const afterImport = await until(() => bench(member), (state) => programKey(state) === JSON.stringify(T) && partsKey(state) !== PS.parts, 180_000);
-const QT = { parts: partsKey(afterImport), program: JSON.stringify(T) };
-const hostQT = await until(() => bench(host), (state) => partsKey(state) === QT.parts && programKey(state) === QT.program, 180_000);
-check("import Q/T reaches both peers", QT.parts !== PS.parts && programKey(afterImport) === QT.program && partsKey(hostQT) === QT.parts && programKey(hostQT) === QT.program,
-  `member ${QT.parts} ${programKey(afterImport)} · host ${partsKey(hostQT)} ${programKey(hostQT)} · before ${PS.parts}`);
-check("an imported program is loaded stopped (policy)", !afterImport.running && !(await bench(host)).running);
-check("the import is one undo step for the importer", (await bench(host)).canUndo);
+// ── The dependent sequence: each step builds on the state the previous one checked ──
+sequence: {
+  if (!check("both makers are in the Snapino room", (await bench(host)).studio === "snapino" && (await bench(member)).studio === "snapino")) break sequence;
 
-await tap(host, "#undo-edit");
-const undone = await until(() => bench(member), (state) => programKey(state) === PS.program);
-check("Undo restores P/S on the teammate", partsKey(undone) === PS.parts && programKey(undone) === PS.program, partsKey(undone).slice(0, 80));
-check("Undo restores P/S on the importer", partsKey(await bench(host)) === PS.parts && programKey(await bench(host)) === PS.program);
-check("an undone program stays stopped (policy)", !undone.running);
+  // P/S: the lamp demo wiring (P) and the uploaded blink program (S).
+  await press(host, "Load Snapino lamp");
+  const seated = await converge((state) => Object.values(state.parts).some((part) => part.sockets), (state) => Object.values(state.parts).some((part) => part.sockets));
+  if (!check("the lamp wiring P reaches both peers", seated.memberOk && seated.hostOk, seated.timing)) break sequence;
+  const P = seated.member;
+  await press(host, "Run blocks");
+  const ran = await converge((state) => state.running, (state) => state.running);
+  const S = ran.member;
+  const PS = { parts: partsKey(P), program: programKey(S) };
+  if (!check("P/S reaches the teammate (wiring + running program)", ran.memberOk && ran.hostOk && partsKey(ran.host) === PS.parts && programKey(ran.host) === PS.program,
+    `member ${PS.parts} ${PS.program} running=${S.running} · host ${partsKey(ran.host)} ${programKey(ran.host)} · ${ran.timing}`)) break sequence;
 
-await tap(host, "#redo-edit");
-const redone = await until(() => bench(member), (state) => programKey(state) === QT.program);
-check("Redo brings Q/T back on both peers", partsKey(redone) === QT.parts && partsKey(await bench(host)) === QT.parts && programKey(await bench(host)) === QT.program);
+  // Q/T: the same parts with the lamp turned around, and a different program.
+  const T = [{ op: "write", pin: "D6", value: true }, { op: "wait", ms: 300 }];
+  const qParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: id === "sno-l1" && part.sockets ? [part.sockets[1], part.sockets[0]] : part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
+  const projectQT = { format: "virtual-makerspace.project", version: 1, solver: "dc-mna-1.0.0", studio: "snapino", savedAt: new Date().toISOString(), parts: qParts, program: T };
+  const QTparts = partsKey({ parts: Object.fromEntries(qParts.map((part) => [part.id, { sockets: part.sockets }])) });
+  const atQT = (state) => partsKey(state) === QTparts && programKey(state) === JSON.stringify(T);
+  const atPS = (state) => partsKey(state) === PS.parts && programKey(state) === PS.program;
+  await importProject(host, projectQT);
+  const imported = await converge(atQT, atQT, (state) => state.canUndo);
+  if (!check("import Q/T reaches both peers", imported.memberOk && imported.hostOk && QTparts !== PS.parts, `${imported.timing} · member ${partsKey(imported.member)} ${programKey(imported.member)} · host ${partsKey(imported.host)} ${programKey(imported.host)}`)) break sequence;
+  if (!check("an imported program is loaded stopped (policy)", !imported.member.running && !imported.host.running)) break sequence;
+  if (!check("the import is one undo step for the importer", imported.historyOk, `${imported.timing} · ${await status(host)}`)) break sequence;
 
-// A program-only import (same parts, program U) is one undo step and an edit trace.
-const U = [{ op: "write", pin: "D3", value: true }];
-const traceCount = () => host.evaluate((code) => (JSON.parse(localStorage.getItem(`vm-trace:${code}`) ?? "[]")).filter((trace) => trace.action === "edit" && /^Loaded a project/.test(trace.detail ?? "")).length, room);
-const editTracesBefore = await traceCount();
-await importProject(host, { ...projectQT, parts: qParts, program: U, savedAt: new Date().toISOString() });
-const afterU = await until(() => bench(member), (state) => programKey(state) === JSON.stringify(U));
-check("a program-only import reaches the teammate", programKey(afterU) === JSON.stringify(U) && partsKey(afterU) === QT.parts);
-const editTracesAfter = await traceCount();
-check("and is traced as one edit", editTracesAfter === editTracesBefore + 1, `${editTracesBefore} → ${editTracesAfter} "Loaded a project" edit traces`);
-await tap(host, "#undo-edit");
-const backToT = await until(() => bench(member), (state) => programKey(state) === QT.program);
-check("its undo is exactly one step back to T", programKey(backToT) === QT.program && partsKey(backToT) === QT.parts);
+  await tap(host, "#undo-edit");
+  const undone = await converge(atPS, atPS, (state) => state.canRedo);
+  if (!check("Undo restores P/S on the teammate", undone.memberOk, `${partsKey(undone.member).slice(0, 80)} · ${undone.timing}`)) break sequence;
+  if (!check("Undo restores P/S on the importer", undone.hostOk, `${undone.timing} · ${await status(host)}`)) break sequence;
+  if (!check("an undone program stays stopped (policy)", !undone.member.running && !undone.host.running)) break sequence;
+  if (!check("the accepted undo is redoable for the importer", undone.historyOk, `${undone.timing} · ${await status(host)}`)) break sequence;
 
-// Stale undo: the teammate uploads R; the importer's undo (expects T) must not overwrite it.
+  await tap(host, "#redo-edit");
+  const redone = await converge(atQT, atQT, (state) => state.canUndo);
+  if (!check("Redo brings Q/T back on both peers", redone.memberOk && redone.hostOk && redone.historyOk, `${redone.timing} · ${await status(host)}`)) break sequence;
+
+  // A program-only import (same parts, program U) is one undo step and an edit trace.
+  const U = [{ op: "write", pin: "D3", value: true }];
+  const atQU = (state) => partsKey(state) === QTparts && programKey(state) === JSON.stringify(U);
+  const traceCount = () => host.evaluate((code) => (JSON.parse(localStorage.getItem(`vm-trace:${code}`) ?? "[]")).filter((trace) => trace.action === "edit" && /^Loaded a project/.test(trace.detail ?? "")).length, room);
+  const editTracesBefore = await traceCount();
+  await importProject(host, { ...projectQT, parts: qParts, program: U, savedAt: new Date().toISOString() });
+  const programOnly = await converge(atQU, atQU, (state) => state.canUndo);
+  if (!check("a program-only import reaches both peers", programOnly.memberOk && programOnly.hostOk, programOnly.timing)) break sequence;
+  const traced = await until(traceCount, (count) => count === editTracesBefore + 1, 10_000);
+  if (!check("and is traced as one edit", traced === editTracesBefore + 1, `${editTracesBefore} → ${traced} "Loaded a project" edit traces`)) break sequence;
+  await tap(host, "#undo-edit");
+  const backToT = await converge(atQT, atQT, (state) => state.canRedo);
+  if (!check("its undo is exactly one step back to T", backToT.memberOk && backToT.hostOk && backToT.historyOk, `${backToT.timing} · ${await status(host)}`)) break sequence;
+
+  // Stale undo: the teammate uploads R; the importer's undo (expects T) must not overwrite it.
+  const R = [{ op: "write", pin: "D5", value: false }, { op: "wait", ms: 500 }, { op: "write", pin: "D5", value: true }];
+  const atR = (state) => programKey(state) === JSON.stringify(R) && state.running;
+  await member.evaluate((program) => window.__vmQa.editDraft(program), R);
+  await press(member, "Run blocks");
+  const uploaded = await converge(atR, atR);
+  if (!check("the teammate's program R reaches both peers, running", uploaded.memberOk && uploaded.hostOk, uploaded.timing)) break sequence;
+  await tap(host, "#undo-edit");
+  // The importer's answer (refused locally or by the room) is its status; wait for it, bounded.
+  await until(() => status(host), (copy) => /Can't undo|refused/.test(copy), HISTORY_BOUND);
+  if (!check("a stale undo never overwrites the teammate's newer program R", programKey(await bench(host)) === JSON.stringify(R) && programKey(await bench(member)) === JSON.stringify(R), await status(host))) break sequence;
+  if (!check("and the parts stay as the room has them", partsKey(await bench(member)) === QTparts && partsKey(await bench(host)) === QTparts)) break sequence;
+
+  // Importing the program that is already running (same statements) stops it for everyone —
+  // with the same parts (a stop alone) and with changed parts (parts + stop in one edit).
+  if (!check("R is running on both peers before the import", (await bench(host)).running && (await bench(member)).running)) break sequence;
+  const undoBeforeStop = (await bench(host)).canUndo;
+  await importProject(host, { ...projectQT, parts: qParts, program: R, savedAt: new Date().toISOString() });
+  const stoppedR = (state) => !state.running && programKey(state) === JSON.stringify(R) && partsKey(state) === QTparts;
+  const stopSame = await converge(stoppedR, stoppedR);
+  if (!check("same parts + same running program: the import stops it on the teammate", stopSame.memberOk, stopSame.timing)) break sequence;
+  if (!check("and on the importer", stopSame.hostOk, `${stopSame.timing} · ${await status(host)}`)) break sequence;
+  if (!check("a stop alone adds no undo step", (await bench(host)).canUndo === undoBeforeStop)) break sequence;
+  await press(member, "Run blocks");
+  const rerun = await converge(atR, atR);
+  if (!check("R runs again on both peers", rerun.memberOk && rerun.hostOk, rerun.timing)) break sequence;
+  const pParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
+  await importProject(host, { ...projectQT, parts: pParts, program: R, savedAt: new Date().toISOString() });
+  const stoppedP = (state) => !state.running && programKey(state) === JSON.stringify(R) && partsKey(state) === PS.parts;
+  const stopChanged = await converge(stoppedP, stoppedP);
+  if (!check("changed parts + same running program: parts and stop arrive together on the teammate", stopChanged.memberOk, stopChanged.timing)) break sequence;
+  if (!check("and on the importer", stopChanged.hostOk, `${stopChanged.timing} · ${await status(host)}`)) break sequence;
+}
+// Everything after needs the room program R (the teammate's upload above); it is checked first.
+independent();
 const R = [{ op: "write", pin: "D5", value: false }, { op: "wait", ms: 500 }, { op: "write", pin: "D5", value: true }];
-await member.evaluate((program) => window.__vmQa.editDraft(program), R);
-await press(member, "Run blocks");
-await until(() => bench(host), (state) => programKey(state) === JSON.stringify(R));
-await tap(host, "#undo-edit");
-await host.waitForTimeout(1500);
-check("a stale undo never overwrites the teammate's newer program R", programKey(await bench(host)) === JSON.stringify(R) && programKey(await bench(member)) === JSON.stringify(R), await status(host));
-check("and the parts stay as the room has them", partsKey(await bench(member)) === QT.parts);
+const T = [{ op: "write", pin: "D6", value: true }, { op: "wait", ms: 300 }];
+check("(precondition for export, autosave and recovery) the room program is R on both peers", programKey(await bench(host)) === JSON.stringify(R) && programKey(await bench(member)) === JSON.stringify(R));
 
-// Importing the program that is already running (same statements) stops it for everyone —
-// with the same parts (a stop alone) and with changed parts (parts + stop in one edit).
-check("R is running on both peers before the import", (await bench(host)).running && (await bench(member)).running);
-const undoBeforeStop = (await bench(host)).canUndo;
-await importProject(host, { ...projectQT, parts: qParts, program: R, savedAt: new Date().toISOString() });
-const stoppedSame = await until(() => bench(member), (state) => !state.running);
-check("same parts + same running program: the import stops it on the teammate", !stoppedSame.running && programKey(stoppedSame) === JSON.stringify(R) && partsKey(stoppedSame) === QT.parts);
-check("and on the importer", !(await bench(host)).running && programKey(await bench(host)) === JSON.stringify(R), await status(host));
-check("a stop alone adds no undo step", (await bench(host)).canUndo === undoBeforeStop);
-await press(member, "Run blocks");
-await until(() => bench(host), (state) => state.running);
-const pParts = Object.entries(P.parts).map(([id, part]) => ({ id, sockets: part.sockets, ...(part.on !== undefined ? { on: part.on } : {}) }));
-await importProject(host, { ...projectQT, parts: pParts, program: R, savedAt: new Date().toISOString() });
-const stoppedChanged = await until(() => bench(member), (state) => !state.running && partsKey(state) === PS.parts);
-check("changed parts + same running program: parts and stop arrive together on the teammate", !stoppedChanged.running && partsKey(stoppedChanged) === PS.parts && programKey(stoppedChanged) === JSON.stringify(R));
-check("and on the importer", !(await bench(host)).running && partsKey(await bench(host)) === PS.parts);
+tail: {
+  if (blockedBy) {
+    for (const name of ["export carries the room's program (R) and the unsaved draft (D) separately", "autosave holds the latest room program and the draft", "rejoining after everyone left: the bench was reset but the room kept its program", "recovery is offered (saved parts and program differ from the room's)", "restoring brings back the saved parts and program as one edit"]) check(name, false);
+    break tail;
+  }
+  // Export: the room's program and the importer's unsaved draft are kept apart.
+  const D = [{ op: "follow", pin: "D5", invert: false }];
+  await host.evaluate((program) => window.__vmQa.editDraft(program), D);
+  const [download] = await Promise.all([host.waitForEvent("download"), tap(host, "#export-project")]);
+  const exported = JSON.parse(readFileSync(await download.path(), "utf8"));
+  check("export carries the room's program (R) and the unsaved draft (D) separately", JSON.stringify(exported.program) === JSON.stringify(R) && JSON.stringify(exported.draftProgram) === JSON.stringify(D));
 
-// Export: the room's program and the importer's unsaved draft are kept apart.
-const D = [{ op: "follow", pin: "D5", invert: false }];
-await host.evaluate((program) => window.__vmQa.editDraft(program), D);
-const [download] = await Promise.all([host.waitForEvent("download"), tap(host, "#export-project")]);
-const exported = JSON.parse(readFileSync(await download.path(), "utf8"));
-check("export carries the room's program (R) and the unsaved draft (D) separately", JSON.stringify(exported.program) === JSON.stringify(R) && JSON.stringify(exported.draftProgram) === JSON.stringify(D));
+  // Autosave keeps program-only changes and the draft.
+  const saved = await until(() => host.evaluate((code) => localStorage.getItem(`vm-project:${code}:snapino`), room), (text) => Boolean(text) && text.includes('"D3"') === false && text.includes('"follow"'));
+  const savedProject = saved ? JSON.parse(saved) : null;
+  check("autosave holds the latest room program and the draft", JSON.stringify(savedProject?.program) === JSON.stringify(R) && JSON.stringify(savedProject?.draftProgram) === JSON.stringify(D));
 
-// Autosave keeps program-only changes and the draft.
-const saved = await until(() => host.evaluate((code) => localStorage.getItem(`vm-project:${code}:snapino`), room), (text) => Boolean(text) && text.includes('"D3"') === false && text.includes('"follow"'));
-const savedProject = saved ? JSON.parse(saved) : null;
-check("autosave holds the latest room program and the draft", JSON.stringify(savedProject?.program) === JSON.stringify(R) && JSON.stringify(savedProject?.draftProgram) === JSON.stringify(D));
-
-// Recovery compares programs: same parts, different saved program → offered.
-const savedParts = partsKey(await bench(host));
-await memberContext.close();
-await host.evaluate(([code, program]) => {
-  const key = `vm-project:${code}:snapino`;
-  const project = JSON.parse(localStorage.getItem(key));
-  project.program = program;
-  delete project.draftProgram;
-  localStorage.setItem(key, JSON.stringify(project));
-}, [room, T]);
-await host.close();
-const back = await open(hostContext, "host-again");
-const banner = await until(() => back.evaluate(() => !document.querySelector("#recovery-banner")?.hidden), Boolean, 20_000);
-const roomNow = await bench(back);
-check("rejoining after everyone left: the bench was reset but the room kept its program", !Object.values(roomNow.parts).some((part) => part.sockets) && programKey(roomNow) === JSON.stringify(R));
-check("recovery is offered (saved parts and program differ from the room's)", banner);
-await tap(back, '[data-recovery="restore"]');
-const restored = await until(() => bench(back), (state) => programKey(state) === JSON.stringify(T));
-check("restoring brings back the saved parts and program as one edit", partsKey(restored) === savedParts && programKey(restored) === JSON.stringify(T) && !restored.running);
+  // Recovery compares programs: same parts, different saved program → offered.
+  const savedParts = partsKey(await bench(host));
+  await memberContext.close();
+  await host.evaluate(([code, program]) => {
+    const key = `vm-project:${code}:snapino`;
+    const project = JSON.parse(localStorage.getItem(key));
+    project.program = program;
+    delete project.draftProgram;
+    localStorage.setItem(key, JSON.stringify(project));
+  }, [room, T]);
+  await host.close();
+  const back = await open(hostContext, "host-again");
+  const banner = await until(() => back.evaluate(() => !document.querySelector("#recovery-banner")?.hidden), Boolean, 20_000);
+  const roomNow = await bench(back);
+  check("rejoining after everyone left: the bench was reset but the room kept its program", !Object.values(roomNow.parts).some((part) => part.sockets) && programKey(roomNow) === JSON.stringify(R));
+  check("recovery is offered (saved parts and program differ from the room's)", banner);
+  await tap(back, '[data-recovery="restore"]');
+  const restored = await until(() => bench(back), (state) => programKey(state) === JSON.stringify(T));
+  check("restoring brings back the saved parts and program as one edit", partsKey(restored) === savedParts && programKey(restored) === JSON.stringify(T) && !restored.running);
+}
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

@@ -253,6 +253,8 @@ try {
   await page.evaluate(() => window.h.panel.refresh());
   s = await state();
   check("C1 the worked allocation's day, which this learner was present for, meets the brief", s.verdict?.met === true && s.resultRun === 1, JSON.stringify(s.verdict?.met));
+  const verdictNote = await page.locator("#gh-verdict .ss-fine").last().textContent().catch(() => "");
+  check("C1 the verdict says G1 is judged on the build recorded when the day ended (not the build as it is now)", /G1 is judged on the build recorded when the day ended; G2–G5 on the day's record\./.test(verdictNote ?? "") && !/as it is now/.test(verdictNote ?? ""), JSON.stringify(verdictNote));
   const firstText = "Bed B dried less because valve B gets 50 %.";
   await typeInto("#gh-explain", firstText);
   await page.locator("#gh-explain-save").click();
