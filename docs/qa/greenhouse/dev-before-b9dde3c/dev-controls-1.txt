@@ -1,0 +1,34 @@
+  [ready] 1440 entered: 4 s (+3 frames)
+  [ready] 1440 overview: 16 s (+3 frames)
+PASS 1440 valve A handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 67×68 px; grab spheres behind the plate at 0 samples; other surfaces {}
+PASS 1440 valve A handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field — [{"dx":0,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":-15,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":15,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":0,"dy":-15,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":0,"dy":15,"focused":"gh-valveA","selected":"valve-manifold"}]
+  [ready] 1440 valveA 0: 10 s (+3 frames)
+  [ready] 1440 valveA 50: 19 s (+3 frames)
+  [ready] 1440 valveA 100: 19 s (+3 frames)
+PASS 1440 valve A handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field — [{"value":0,"applied":true,"centreAfter":true},{"value":50,"applied":true,"centreAfter":true},{"value":100,"applied":true,"centreAfter":true}]
+  [ready] 1440 valveA drag: 17 s (+3 frames)
+PASS 1440 valve B handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 65×64 px; grab spheres behind the plate at 1 samples; other surfaces {}
+PASS 1440 valve B handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field — [{"dx":0,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":-15,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":15,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":0,"dy":-15,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":0,"dy":15,"focused":"gh-valveB","selected":"valve-manifold"}]
+  [ready] 1440 valveB 0: 18 s (+3 frames)
+  [ready] 1440 valveB 50: 17 s (+3 frames)
+  [ready] 1440 valveB 100: 9 s (+3 frames)
+PASS 1440 valve B handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field — [{"value":0,"applied":true,"centreAfter":true},{"value":50,"applied":true,"centreAfter":true},{"value":100,"applied":true,"centreAfter":true}]
+  [ready] 1440 valveB drag: 9 s (+3 frames)
+PASS 1440 PUMP BELOW knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 56×57 px; grab spheres behind the plate at 0 samples; other surfaces {}
+PASS 1440 PUMP BELOW knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field — [{"dx":0,"dy":0,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":-15,"dy":0,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":15,"dy":0,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":0,"dy":-15,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":0,"dy":15,"focused":"gh-pumpBelow","selected":"farm-controller"}]
+  [ready] 1440 pumpBelow 10: 9 s (+3 frames)
+  [ready] 1440 pumpBelow 50: 9 s (+3 frames)
+  [ready] 1440 pumpBelow 90: 7 s (+3 frames)
+PASS 1440 PUMP BELOW knob: values typed after the 3D click are applied (10, 50, 90), and in each resulting pose the centre still focuses the field — [{"value":10,"applied":true,"centreAfter":true},{"value":50,"applied":true,"centreAfter":true},{"value":90,"applied":true,"centreAfter":true}]
+  [ready] 1440 pumpBelow drag: 9 s (+3 frames)
+PASS 1440 FAN ABOVE knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 56×60 px; grab spheres behind the plate at 0 samples; other surfaces {}
+PASS 1440 FAN ABOVE knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field — [{"dx":0,"dy":0,"focused":"gh-fanAbove","selected":"farm-controller"},{"dx":-15,"dy":0,"focused":"gh-fanAbove","selected":"farm-controller"},{"dx":15,"dy":0,"focused":"gh-fanAbove","selected":"farm-controller"},{"dx":0,"dy":-15,"focused":"gh-fanAbove","selected":"farm-controller"},{"dx":0,"dy":15,"focused":"gh-fanAbove","selected":"farm-controller"}]
+  [ready] 1440 fanAbove 20: 9 s (+3 frames)
+  [ready] 1440 fanAbove 30: 7 s (+3 frames)
+  [ready] 1440 fanAbove 40: 8 s (+3 frames)
+PASS 1440 FAN ABOVE knob: values typed after the 3D click are applied (20, 30, 40), and in each resulting pose the centre still focuses the field — [{"value":20,"applied":true,"centreAfter":true},{"value":30,"applied":true,"centreAfter":true},{"value":40,"applied":true,"centreAfter":true}]
+  [ready] 1440 fanAbove drag: 8 s (+3 frames)
+FAIL 1440 no click or short drag on a control moved any hose or cable end (every plug in the same port, at the same place) — {"lines":{"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"},"ends":{"irrigation-hose":[[762,434],[338,534]],"irrigation-hose-2":[[444,546],[493,552]],"irrigation-hose-3":[[571,532],[388,432]],"irrigation-hose-4":[[641,540],[579,452]],"power-cable-1":[[857,550],[669,621]],"power-cable-2":[[732,629],[382,585]],"power-cable-3":[[795,637],[669,460]]}} → {"lines":{"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"},"ends":{"irrigation-hose":[[727,369],[407,628]],"irrigation-hose-2":[[515,601],[564,588]],"irrigation-hose-3":[[622,541],[388,497]],"irrigation-hose-4":[[688,525],[583,452]],"power-cable-1":[[860,460],[742,591]],"power-cable-2":[[796,577],[472,660]],"power-cable-3":[[850,564],[662,427]]}}
+ERROR page.evaluate: Target page, context or browser has been closed
+qa greenhouse controls: 12/13 checks passed (rooms Q73V)
+exit=1

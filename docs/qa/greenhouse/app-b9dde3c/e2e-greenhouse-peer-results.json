@@ -1,0 +1,39 @@
+{
+ "results": [
+  {
+   "name": "round 1: both tabs start on the same run",
+   "ok": true,
+   "detail": "[[1,\"idle\",0],[1,\"idle\",0]]"
+  },
+  {
+   "name": "round 1: before delivery, tab a holds its reset (new run) and tab z its step of the old run",
+   "ok": true,
+   "detail": "[[2,6,0],[1,11,4]]"
+  },
+  {
+   "name": "round 1 (tab a's message delivered first): both tabs end on the reset — run 2, practice seed 6, 06:00 — never back on the stepped old run",
+   "ok": true,
+   "detail": "[[2,6,\"idle\",0],[2,6,\"idle\",0]]"
+  },
+  {
+   "name": "round 2: both tabs start on the same run",
+   "ok": true,
+   "detail": "[[2,\"idle\",0],[2,\"idle\",0]]"
+  },
+  {
+   "name": "round 2: before delivery, tab a holds its reset (new run) and tab z its step of the old run",
+   "ok": true,
+   "detail": "[[3,7,0],[2,6,4]]"
+  },
+  {
+   "name": "round 2 (tab z's message delivered first): both tabs end on the reset — run 3, practice seed 7, 06:00 — never back on the stepped old run",
+   "ok": true,
+   "detail": "[[3,7,\"idle\",0],[3,7,\"idle\",0]]"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

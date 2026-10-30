@@ -1,0 +1,286 @@
+{
+ "room": "G59F",
+ "base": "http://vm.test:8800",
+ "results": [
+  {
+   "name": "both hold the room's day: run 1, seed 11, not started, 06:00, tank 40 L",
+   "ok": true,
+   "detail": "{\"tick\":0,\"tank\":40,\"beds\":{\"A\":11,\"B\":11},\"battery\":6,\"air\":21.08642659120388,\"stress\":{\"A\":0,\"B\":0,\"heat\":0}} | {\"tick\":0,\"tank\":40,\"beds\":{\"A\":11,\"B\":11},\"battery\":6,\"air\":21.08642659120388,\"stress\":{\"A\":0,\"B\":0,\"heat\":0}}",
+   "actor": "",
+   "at": "2026-10-30T01:13:33.137Z"
+  },
+  {
+   "name": "DI host sees the worked example; PF member does not; the greenhouse tab is the open dock tab",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-30T01:13:44.230Z"
+  },
+  {
+   "name": "nothing is built at the start (no auto-build in either condition)",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"unplugged\",\"irrigation-hose-2\":\"unplugged\",\"irrigation-hose-3\":\"unplugged\",\"irrigation-hose-4\":\"unplugged\",\"power-cable-1\":\"unplugged\",\"power-cable-2\":\"unplugged\",\"power-cable-3\":\"unplugged\"}",
+   "actor": "",
+   "at": "2026-10-30T01:13:44.230Z"
+  },
+  {
+   "name": "typed ports: a hose end dropped on PUMP 12 V IN stays out, for both, with the reason",
+   "ok": true,
+   "detail": "status \"PUMP 12 V IN takes a power plug (a hose fits water couplers only) · Hose 1 end A stays out\"",
+   "actor": "host",
+   "at": "2026-10-30T01:16:35.917Z"
+  },
+  {
+   "name": "wrong build: TANK OUT → BED A INLET is drawn as built (no pump, ✕), carries nothing; DI explains it, PF withholds the explanation until a finished day",
+   "ok": true,
+   "detail": "edge {\"status\":\"no-pump\",\"flow\":\"wrong\"}; PF notes \"9 explanatory notes appear after your own first finished day in this session (the diagram already shows the rig as built).\"",
+   "actor": "host",
+   "at": "2026-10-30T01:20:56.454Z"
+  },
+  {
+   "name": "pointer-built rig: both makers hold the same complete rig (supply, delivery, two branches, solar, two feeds, probe in bed A)",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"} probe A",
+   "actor": "host + member",
+   "at": "2026-10-30T01:39:32.178Z"
+  },
+  {
+   "name": "occupied: a cable end dropped on PUMP 12 V IN (taken) stays out; the pump's cable is untouched",
+   "ok": true,
+   "detail": "status \"PUMP 12 V IN already holds a line (one per port) · Cable 3 end B stays out\"",
+   "actor": "member",
+   "at": "2026-10-30T01:40:41.854Z"
+  },
+  {
+   "name": "keyboard plumbing: choosing FAN 12 V IN for cable 3's free end in its card connects it for both",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}",
+   "actor": "member",
+   "at": "2026-10-30T01:42:12.147Z"
+  },
+  {
+   "name": "off-step valve value (33 %) is caught on the page: nothing sent, the room keeps 100 %",
+   "ok": true,
+   "detail": "note \"Valve A: use 5 % steps (the room refuses values between steps).\"",
+   "actor": "host",
+   "at": "2026-10-30T01:44:00.388Z"
+  },
+  {
+   "name": "host's valve A 30 % (typed, Enter) accepted and shown to the member",
+   "ok": true,
+   "detail": "",
+   "actor": "host",
+   "at": "2026-10-30T01:46:00.325Z"
+  },
+  {
+   "name": "member's unapplied draft (valve B 45 %) survives the host's accepted 50 %; the room shows 50 %",
+   "ok": true,
+   "detail": "field \"45\" drafts {\"valve-manifold:valveB\":\"45\"}",
+   "actor": "host vs member",
+   "at": "2026-10-30T01:49:40.754Z"
+  },
+  {
+   "name": "stale: one of two simultaneous rule edits is refused; that maker keeps their draft and the room's value",
+   "ok": true,
+   "detail": "attempt 1: [\"Not applied · a teammate changed it first, so their value is kept; nothing changed. Your draft is kept below.\",\"Set rules to pump below 70 %, fan above 30 °C · shared with the room\"]",
+   "actor": "host",
+   "at": "2026-10-30T01:53:13.114Z"
+  },
+  {
+   "name": "Undo and Redo of the host's rule edit reach the member",
+   "ok": true,
+   "detail": "",
+   "actor": "host",
+   "at": "2026-10-30T01:56:14.298Z"
+  },
+  {
+   "name": "start (host): both clients run the room's day; the rig is locked on both",
+   "ok": true,
+   "detail": "{\"runId\":1,\"seed\":11,\"status\":\"running\",\"speed\":1,\"tick\":0}",
+   "actor": "host",
+   "at": "2026-10-30T01:57:43.022Z"
+  },
+  {
+   "name": "while the day runs, a hose drag is refused on the page and nothing changes",
+   "ok": true,
+   "detail": "status \"The greenhouse day is running: the rig is locked · pause the day to change it\"",
+   "actor": "member",
+   "at": "2026-10-30T01:58:30.149Z"
+  },
+  {
+   "name": "while the day runs, Undo is refused by the room (running) and the rule stays",
+   "ok": true,
+   "detail": "status \"Undo \"Set rules to pump below 60 %, fan above 26 °C\" refused · the greenhouse day is running; pause it to change the rig · nothing changed\"",
+   "actor": "host",
+   "at": "2026-10-30T01:58:57.174Z"
+  },
+  {
+   "name": "pause vs Undo race: both clients hold the same paused day and the same rig",
+   "ok": true,
+   "detail": "{\"tick\":56,\"tank\":11.2,\"beds\":{\"A\":11.564360959866208,\"B\":13.483859314760968},\"battery\":0.9484993601942568,\"air\":32.724358363099086,\"stress\":{\"A\":0,\"B\":0,\"heat\":0}} | {\"tick\":56,\"tank\":11.2,\"beds\":{\"A\":11.564360959866208,\"B\":13.483859314760968},\"battery\":0.9484993601942568,\"air\":32.724358363099086,\"stress\":{\"A\":0,\"B\":0,\"heat\":0}}",
+   "actor": "member + host",
+   "at": "2026-10-30T02:00:10.433Z"
+  },
+  {
+   "name": "paused day: water and energy ledgers balance (|residual| < 1e-9 L / Wh); records = model time",
+   "ok": true,
+   "detail": "{\"water\":-1.4210854715202004e-14,\"energy\":-2.842170943040401e-14}",
+   "actor": "",
+   "at": "2026-10-30T02:00:10.433Z"
+  },
+  {
+   "name": "late joiner (paused day): the same model time and resources, exactly",
+   "ok": true,
+   "detail": "{\"tick\":56,\"tank\":11.2,\"beds\":{\"A\":11.564360959866208,\"B\":13.483859314760968},\"battery\":0.9484993601942568,\"air\":32.724358363099086,\"stress\":{\"A\":0,\"B\":0,\"heat\":0}}",
+   "actor": "late",
+   "at": "2026-10-30T02:03:17.716Z"
+  },
+  {
+   "name": "interrupted connection: the member's Step while offline is not applied (nothing changed); the member does not move on alone; after reconnecting it holds the room's day exactly, including the host's hour",
+   "ok": true,
+   "detail": "note \"Not applied · reconnecting to the room; nothing changed.\"; before 56, while away 56, after 60 (host 60)",
+   "actor": "member",
+   "at": "2026-10-30T02:06:40.674Z"
+  },
+  {
+   "name": "step one hour: +4 steps for both",
+   "ok": true,
+   "detail": "60 → 64",
+   "actor": "member",
+   "at": "2026-10-30T02:07:39.266Z"
+  },
+  {
+   "name": "reset race: no reset is applied to a run its maker did not see (one stale refusal, or two resets in turn); tank 40 L, 06:00 for both",
+   "ok": true,
+   "detail": "[\"Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room\",\"Not applied · a teammate changed the day first (it was reset); look at the new day before acting; nothing changed.\"]; run 1 → 2",
+   "actor": "host + member",
+   "at": "2026-10-30T02:09:24.554Z"
+  },
+  {
+   "name": "speed ×4 (member) reaches the host's day",
+   "ok": true,
+   "detail": "{\"runId\":2,\"seed\":11,\"status\":\"running\",\"speed\":4,\"tick\":20}",
+   "actor": "member",
+   "at": "2026-10-30T02:14:47.064Z"
+  },
+  {
+   "name": "default allocation on the brief's day fails (bed B out of range too long); both see the same measured values",
+   "ok": true,
+   "detail": "[\"G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed\",\"G2:bed A stressed 0 h\",\"G3:bed B stressed 9.5 h\",\"G4:air above 35 °C for 1.5 h\",\"G5:16.0 L left\"]",
+   "actor": "",
+   "at": "2026-10-30T02:15:38.549Z"
+  },
+  {
+   "name": "after the day: DI host sees why each failed criterion failed; PF member sees measured values only",
+   "ok": true,
+   "detail": "",
+   "actor": "host vs member",
+   "at": "2026-10-30T02:15:38.549Z"
+  },
+  {
+   "name": "PF member: explanatory notes withheld before their own first finished day, unlocked after it",
+   "ok": true,
+   "detail": "",
+   "actor": "member",
+   "at": "2026-10-30T02:15:38.615Z"
+  },
+  {
+   "name": "member's attempt 1 holds this day's result (a private record)",
+   "ok": true,
+   "detail": "{\"attempt\":1,\"result\":2}",
+   "actor": "member",
+   "at": "2026-10-30T02:15:40.779Z"
+  },
+  {
+   "name": "worked allocation on the brief's day: all five criteria met, for both",
+   "ok": true,
+   "detail": "[\"G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed\",\"G2:bed A stressed 0 h\",\"G3:bed B stressed 1 h\",\"G4:air above 35 °C for 0 h\",\"G5:11.2 L left\"]",
+   "actor": "member",
+   "at": "2026-10-30T02:24:56.325Z"
+  },
+  {
+   "name": "member: attempt 2 met and explained (the goal counts only with an explanation)",
+   "ok": true,
+   "detail": "Attempt 2 · brief met · explained",
+   "actor": "member",
+   "at": "2026-10-30T02:25:35.666Z"
+  },
+  {
+   "name": "export: a version-3 greenhouse project, build only (no run, tank, model time, names, notes)",
+   "ok": true,
+   "detail": "[\"format\",\"version\",\"solver\",\"studio\",\"savedAt\",\"parts\"]",
+   "actor": "host",
+   "at": "2026-10-30T02:26:08.327Z"
+  },
+  {
+   "name": "import while the day runs is refused by the room (running); nothing changed",
+   "ok": true,
+   "detail": "Loaded a project refused · the greenhouse day is running; pause it to change the rig · nothing changed",
+   "actor": "host",
+   "at": "2026-10-30T02:29:36.864Z"
+  },
+  {
+   "name": "Reset bench (paused): every line unplugged and the probe in its holder, for both; the day's resources are untouched (no refill)",
+   "ok": true,
+   "detail": "tank 20.8 → 20.8",
+   "actor": "host",
+   "at": "2026-10-30T02:31:38.439Z"
+  },
+  {
+   "name": "import of the export restores the rig and values for both (one room edit); the tank is not refilled",
+   "ok": true,
+   "detail": "",
+   "actor": "host",
+   "at": "2026-10-30T02:32:19.607Z"
+  },
+  {
+   "name": "a version-1 greenhouse file: a notice, then the default rig for both",
+   "ok": true,
+   "detail": "This is an earlier greenhouse file (version 1). Its layout does not fit the typed water and power ports, so it loads as ",
+   "actor": "host",
+   "at": "2026-10-30T02:33:18.603Z"
+  },
+  {
+   "name": "camera keys 1/2/3 (overview, top, beds) frame three different views",
+   "ok": true,
+   "detail": "[0.20000000000000018,0.75,0.28500000000000014] | [0.20000000000000018,0.45,0.28500000000000014] | [-1.375,0.7000000000000001,-0.5]",
+   "actor": "host",
+   "at": "2026-10-30T02:39:28.428Z"
+  },
+  {
+   "name": "selecting the fan on the diagram selects it in 3D and opens its card",
+   "ok": true,
+   "detail": "",
+   "actor": "host",
+   "at": "2026-10-30T02:40:50.553Z"
+  },
+  {
+   "name": "clicking the controller's PUMP BELOW dial in 3D selects the controller and focuses its field",
+   "ok": true,
+   "detail": "focus gh-pumpBelow; under the pointer [{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":10.129,\"control\":\"pumpBelow\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"housing_grey_abs\"},{\"part\":\"farm-controller\",\"mesh\":\"Mesh\",\"distance\":10.14,\"control\":\"pumpBelow\",\"handle\":false,\"ring\":false,\"visible\":true,\"material\":\"housing_black_abs\"}]",
+   "actor": "host",
+   "at": "2026-10-30T02:41:15.180Z"
+  },
+  {
+   "name": "everyone left mid-day: the day paused where it was (same run, model time not before the leave, no refill)",
+   "ok": true,
+   "detail": "left at 39 (16.00 L); back at 42 (16.00 L), paused",
+   "actor": "host",
+   "at": "2026-10-30T02:42:38.830Z"
+  },
+  {
+   "name": "the bench reset as in every studio; the returning host is offered and restores its saved rig",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}",
+   "actor": "host",
+   "at": "2026-10-30T02:43:07.920Z"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": "",
+   "actor": "",
+   "at": "2026-10-30T02:43:07.920Z"
+  }
+ ]
+}

@@ -1,0 +1,21 @@
+  [ready] host entered: 10 s (+3 frames)
+  [ready] member entered: 32 s (+3 frames)
+PASS both makers hold the brief's rig, fully plumbed and wired — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"charging","power-cable-2":"feed","power-cable-3":"feed"}
+  [ready] overview for valveA: 47 s (+3 frames)
+PASS host: a 3D click on valveA focuses its field; 30 typed and Enter is accepted by the room and arrives at the other maker — focus gh-valveA
+  [ready] overview for valveB: 48 s (+3 frames)
+PASS member: a 3D click on valveB focuses its field; 50 typed and Enter is accepted by the room and arrives at the other maker — focus gh-valveB
+  [ready] overview for pumpBelow: 49 s (+3 frames)
+PASS host: a 3D click on pumpBelow focuses its field; 60 typed and Enter is accepted by the room and arrives at the other maker — focus gh-pumpBelow
+  [ready] overview for fanAbove: 28 s (+3 frames)
+PASS member: a 3D click on fanAbove focuses its field; 26 typed and Enter is accepted by the room and arrives at the other maker — focus gh-fanAbove
+PASS the day ran to its end at ×4 on both; the worked allocation meets the brief — tank 11.20 L · run {"runId":1,"seed":11,"status":"running","speed":4,"tick":22}
+  [ready] member overview before unplug: 30 s (+3 frames)
+PASS after the day ended, the member unplugged the tank hose by pointer (the rig was unlocked) and both see it unplugged — "loose"
+PASS …the finished day is unchanged on both: same final tank, same verdict (G1 still met: judged on the build the day ended with), run ended with the same id — {"host":{"tank":11.2,"met":true,"run":{"runId":1,"seed":11,"status":"ended","speed":4,"tick":96}},"member":{"tank":11.2,"met":true}}
+  [ready] late entered: 27 s (+3 frames)
+PASS a late joiner (PF, fresh tab) sees the same finished day: final tank, verdict — tank 11.2
+PASS …and that day is not their attempt: no result, PF explanatory notes still locked, the attempt card says it finished without them — {"resultRun":null,"notesUnlocked":false}
+PASS no page errors
+e2e greenhouse fixes: 11/11 checks passed (room GJYN; artifacts <scratch>/dev-fixes)
+exit=0

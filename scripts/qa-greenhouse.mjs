@@ -96,12 +96,6 @@ async function control(page, selector) {
   await page.locator('.discussion-tab[data-tab="greenhouse"]').click();
   await page.locator(selector).click();
 }
-async function resetBrief(page) {
-  await control(page, "#gh-reset");
-  await page.locator('.gh-reset-dialog input[value="brief"]').check();
-  await page.locator('.gh-reset-dialog button[type="submit"]').click();
-  await page.waitForFunction(() => window.__vmQa.greenhouse().panel.shown.tick === 0);
-}
 async function runDay(page) {
   await control(page, "#gh-run-toggle");
   await control(page, '#gh-panel [data-speed="4"]');
@@ -167,8 +161,12 @@ try {
   }
   await page.evaluate(() => window.__vmQa.preset("overview"));
 
-  // Failure: the default allocation on the brief's day.
-  await resetBrief(page);
+  // Failure: the default allocation on the brief's day, as a new attempt (the mid-day steps above
+  // began attempt 1's day, which fixed its prediction; a new attempt predicts again).
+  await control(page, "#gh-new-attempt");
+  await page.locator('.gh-reset-dialog input[value="brief"]').check();
+  await page.locator('.gh-reset-dialog button[type="submit"]').click();
+  await page.waitForFunction(() => window.__vmQa.greenhouse().panel.attempt === 2 && window.__vmQa.greenhouse().panel.shown.tick === 0);
   await setValues(page, "valve-manifold", { valveA: 100, valveB: 100 });
   await setValues(page, "farm-controller", { pumpBelow: 50, fanAbove: 30 });
   await page.locator('#gh-predictions input[value="meets"]').check();
@@ -194,7 +192,7 @@ try {
   await page.locator("#gh-new-attempt").click();
   await page.locator('.gh-reset-dialog input[value="brief"]').check();
   await page.locator('.gh-reset-dialog button[type="submit"]').click();
-  await page.waitForFunction(() => window.__vmQa.greenhouse().panel.attempt === 2 && window.__vmQa.greenhouse().panel.shown.tick === 0);
+  await page.waitForFunction(() => window.__vmQa.greenhouse().panel.attempt === 3 && window.__vmQa.greenhouse().panel.shown.tick === 0);
   await setValues(page, "valve-manifold", { valveA: 30, valveB: 50 });
   await setValues(page, "farm-controller", { pumpBelow: 60, fanAbove: 26 });
   await runDay(page);

@@ -1,0 +1,116 @@
+
+> virtual-makerspace@0.1.0 test
+> npm run typecheck && npm run test:circuit && npm run test:agent && npm run test:project && npm run test:snapino && npm run test:sync && npm run test:tools && npm run test:episode && npm run test:diagram && npm run test:sound && npm run test:greenhouse
+
+
+> virtual-makerspace@0.1.0 typecheck
+> tsc --noEmit -p .
+
+
+> virtual-makerspace@0.1.0 test:circuit
+> node --experimental-strip-types scripts/circuit-engine-check.mjs
+
+generated: 821 safe loops succeeded, 223 overdriven loops refused, 3284 variants checked (reversed, bypassed, shorted, 10 Ω)
+fuzz: 3000 random layouts solved (1154 safe successes)
+circuit engine: 17742 checks passed (dc-mna-1.0.0)
+
+> virtual-makerspace@0.1.0 test:agent
+> node --experimental-strip-types scripts/teachable-agent-check.mjs && node --experimental-strip-types scripts/ai-teammate-sync-check.mjs
+
+teachable-agent: all checks passed
+A build log: [{"run":1,"event":"build started (4 moves)"},{"run":1,"part":"resistor-1k","claim":"granted","release":"accepted"},{"run":1,"event":"ended: superseded by a newer build"},{"run":4,"event":"build started (1 moves)"},{"run":4,"part":"resistor-1k","claim":"granted","release":"accepted"},{"run":4,"event":"built (0 skipped)"}]
+A Bolt said: ["Hi! I'm Bolt. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.","I'll build my plan now.","So parts only connect when they share a column. Got it.","So the current has to come back to the battery. Got it.","So the resistor keeps too much current from reaching the LED. Got it.","Done. Have a look, then we can test."]
+B build log: [{"run":1,"event":"build started (4 moves)"},{"run":1,"part":"resistor-1k","claim":"granted","release":"accepted"},{"run":1,"event":"ended: superseded by a newer build"},{"run":4,"event":"not planned: the host's board is behind on resistor-1k"},{"run":5,"event":"not planned: the host's board is behind on resistor-1k"},{"run":6,"event":"not planned: the host's board is behind on resistor-1k"},{"run":7,"event":"not planned: the host's board is behind on resistor-1k"}]
+B Bolt said: ["Hi! I'm Bolt. I'm still learning circuits, so I'll make mistakes — tell me what's wrong and why, and I'll remember.","I'll build my plan now.","So parts only connect when they share a column. Got it.","So the current has to come back to the battery. Got it.","So the resistor keeps too much current from reaching the LED. Got it.","I can't see the board's latest state yet, so I can't tell whether it matches my plan. Could you check it?"]
+ai-teammate sync: 19 checks passed (../src/desktop/ai-teammate.ts)
+
+> virtual-makerspace@0.1.0 test:project
+> node --experimental-strip-types scripts/project-state-check.mjs
+
+project state: 306 checks passed
+
+> virtual-makerspace@0.1.0 test:snapino
+> node --experimental-strip-types scripts/snapino-check.mjs && node --experimental-strip-types scripts/snapino-sketch-check.mjs
+
+snapino self-check passed
+snapino sketch: 16 generated sketches pass g++ -fsyntax-only (stub Arduino.h; not an AVR build)
+
+> virtual-makerspace@0.1.0 test:sync
+> node --experimental-strip-types scripts/sync-check.mjs
+
+sync: 400 random multi-client schedules converged (1512 edits accepted, 5273 refused)
+sync: 858 checks passed
+
+> virtual-makerspace@0.1.0 test:tools
+> node --experimental-strip-types scripts/tools-check.mjs && node --experimental-strip-types scripts/flow-plan-check.mjs
+
+workbench tools: 36 checks passed
+flow plan: 12 checks passed
+
+> virtual-makerspace@0.1.0 test:episode
+> node --experimental-strip-types scripts/rescue-signal-check.mjs && node --experimental-strip-types scripts/episode-sync-check.mjs
+
+rescue signal: 17751 checks passed
+episode sync: 55 checks passed
+
+> virtual-makerspace@0.1.0 test:diagram
+> node --experimental-strip-types scripts/snapino-diagram-check.mjs
+
+66886/66886 diagram checks passed
+
+> virtual-makerspace@0.1.0 test:sound
+> node --experimental-strip-types scripts/sound-model-check.mjs && node --experimental-strip-types scripts/sound-engine-check.mjs
+
+brief met for cutoffs 105–410 Hz (5 Hz grid, gain grid 0.05)
+sound model: 89528 checks passed
+sound engine: 47 checks passed (fake AudioContext; lifecycle only, no audio; inspector draft and refusal copy)
+
+> virtual-makerspace@0.1.0 test:greenhouse
+> node --experimental-strip-types scripts/greenhouse-model-check.mjs && node --experimental-strip-types scripts/greenhouse-end-check.mjs && node --experimental-strip-types scripts/greenhouse-time-check.mjs && node scripts/greenhouse-relay-check.mjs && node --experimental-strip-types scripts/greenhouse-peer-check.mjs
+
+brief met by 1106 of 149940 grid strategies (0.74 %)
+greenhouse model: 2835645 checks passed
+reference day (default rig, seed 11): tank 16.000 L, pumped 24.000 L, stress A 0 B 38 heat 6; G1 true
+  before the unplug: stored run running, tick 0 (the clock says 96)
+PASS 1a after the end the rig is unlocked: Bob's unplug of the tank hose is accepted — {"kind":"edit-result","opId":"unplug","ok":true,"changes":[{"componentId":"irrigation-hose","rev":2}]}
+PASS 1b the room holds the day ended at tick 96, same run id — ended tick 96 run 1
+PASS 1c the room's final tank and pumped water are the day as it ran (not restored by the unplug) — tank 16 (expected 16); pumped 24 (expected 24)
+PASS 1d what every client computes from the room's run and the changed rig is still that day — tank 16, pumped 24, stress {"A":0,"B":38,"heat":6}
+PASS 1e teammates receive the ended day before the change that followed it — ["run:ended","edit"]
+PASS 1f the ended day is persisted with that change — "ended"
+PASS 1g the verdict's G1 is the build the day ended with, not the unplugged rig — G1 true (tank → pump → both beds; pump and fan on channels; solar in; probe in a bed)
+PASS 1h after a JSON restore of the room, the day is unchanged — tank 16
+PASS 1i a late joiner gets the ended day with its final tank — ended tank 16
+PASS 1j an Undo (the hose plugged back) leaves the finished day as it was
+PASS 1k start, resume and step on the finished day are refused (ended); nothing is refilled — ["ended","ended","ended"]
+PASS 1l only a reset refills the tank, as a new run (id 2)
+PASS 2a a pause after the end is answered 'ended' — {"kind":"greenhouse-result","opId":"pause","ok":false,"reason":"ended"}
+PASS 2b and the room has committed and persisted the ended day — ended tick 96; persisted ended
+PASS 2c a change after that leaves the day as it was — tank 16
+PASS 3a after the end a live hose-end move is accepted — "rev-ack"
+PASS 3b the room settled the day and told everyone at the claim, before the move — ["greenhouse-state","claim","greenhouse-state","claim-granted"]
+PASS 3c the moved hose does not rewrite the day — tank 16
+PASS 4a an import after the end is accepted and leaves the day as it was — tank 16
+PASS 5a a reconnecting client's hello settles and persists the ended day; its join shows it ended — ended / ended
+PASS 6a after a restart past the end, the day ends with the stored rig; a later unplug does not rewrite it — ended tank 16
+PASS 7a everyone left after the end: the day is stored ended with its final tank — ended tank 16
+PASS 8a (control) a hose unplugged while paused at tick 10 does change the rest of that day: pumping stops — pumped 6 < 24
+PASS 9a the run module exports settleEndedDay for same-device peer tabs
+PASS 9b settleEndedDay ends a day past its end once (with its build), and leaves a day before its end alone
+greenhouse end: 25/25 checks passed (room code: <scratch>/gh/cloudflare)
+PASS 1 a same-speed action every second for 240 s leaves the day at the tick its running time gives (96) — tick 96
+PASS 2 pausing and resuming every second: 100 s of running time gives 40 steps (×1) — tick 40
+PASS 3 half a step at ×1, then ×4: the step completes after a further eighth of a ×1 step
+PASS 3 a quarter step at ×4, then ×1: the next step comes after three quarters of a ×1 step
+PASS 4 settling at random moments (1–1700 ms apart) never moves the tick away from running time / step, and the day ends
+greenhouse time: 5/5 checks passed (room code: <scratch>/gh/cloudflare)
+PASS a step gives a paused day at tick 4 — paused 4
+PASS after the last socket closed, a rejoin gets the same paused day (tick 4), not a fresh idle day — paused tick 4
+PASS the bench itself reset (as in the Durable Object)
+greenhouse relay: 3/3 checks passed (relay: <scratch>/gh/server/collaboration.mjs)
+PASS 1 a-first: a's reset (new run) and z's concurrent step on the old run: both tabs keep the reset — a: run 2 idle tick 0 seed 7; z: run 2 idle tick 0 seed 7
+PASS 1 z-first: a's reset (new run) and z's concurrent step on the old run: both tabs keep the reset — a: run 2 idle tick 0 seed 7; z: run 2 idle tick 0 seed 7
+PASS 2 every pair of concurrent run actions, both delivery orders (196 cases): both tabs converge on the same run state — 196/196
+PASS 2 …and never on a run older than the newest one either tab made (a reset is never undone) — 196/196
+PASS 3 an older run's state with a high stamp (a late or replayed message) never replaces a newer run — run 2 idle tick 0 seed 11
+greenhouse peer (epoch): 5/5 checks passed

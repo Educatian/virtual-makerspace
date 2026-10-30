@@ -1,0 +1,45 @@
+reference day (default rig, seed 11): tank 16.000 L, pumped 24.000 L, stress A 0 B 38 heat 6; G1 true
+  before the unplug: stored run running, tick 0 (the clock says 96)
+PASS 1a after the end the rig is unlocked: Bob's unplug of the tank hose is accepted — {"kind":"edit-result","opId":"unplug","ok":true,"changes":[{"componentId":"irrigation-hose","rev":2}]}
+FAIL 1b the room holds the day ended at tick 96, same run id — running tick 0 run 1
+FAIL 1c the room's final tank and pumped water are the day as it ran (not restored by the unplug) — tank 40 (expected 16); pumped 0 (expected 24)
+FAIL 1d what every client computes from the room's run and the changed rig is still that day — tank 40, pumped 0, stress {"A":67,"B":75,"heat":17}
+FAIL 1e teammates receive the ended day before the change that followed it — ["edit"]
+FAIL 1f the ended day is persisted with that change
+FAIL 1g the verdict's G1 is the build the day ended with, not the unplugged rig — G1 false (no hose from the tank to the pump)
+FAIL 1h after a JSON restore of the room, the day is unchanged — tank 40
+FAIL 1i a late joiner gets the ended day with its final tank — running tank 40
+PASS 1j an Undo (the hose plugged back) leaves the finished day as it was
+FAIL 1k start, resume and step on the finished day are refused (ended); nothing is refilled — ["ended","ended","ended"]
+PASS 1l only a reset refills the tank, as a new run (id 2)
+PASS 2a a pause after the end is answered 'ended' — {"kind":"greenhouse-result","opId":"pause","ok":false,"reason":"ended"}
+FAIL 2b and the room has committed and persisted the ended day — running tick 0; persisted undefined
+FAIL 2c a change after that leaves the day as it was — tank 40
+PASS 3a after the end a live hose-end move is accepted — "rev-ack"
+FAIL 3b the room settled the day and told everyone at the claim, before the move — ["claim","claim-granted"]
+FAIL 3c the moved hose does not rewrite the day — tank 40
+FAIL 4a an import after the end is accepted and leaves the day as it was — tank 40
+FAIL 5a a reconnecting client's hello settles and persists the ended day; its join shows it ended — undefined / running
+FAIL 6a after a restart past the end, the day ends with the stored rig; a later unplug does not rewrite it — running tank 40
+PASS 7a everyone left after the end: the day is stored ended with its final tank — ended tank 16
+PASS 8a (control) a hose unplugged while paused at tick 10 does change the rest of that day: pumping stops — pumped 6 < 24
+FAIL 9a the run module exports settleEndedDay for same-device peer tabs
+greenhouse end: 7/24 checks passed (room code: <scratch>/old-faa7c09/cloudflare)
+FAILED:
+- 1b the room holds the day ended at tick 96, same run id — running tick 0 run 1
+- 1c the room's final tank and pumped water are the day as it ran (not restored by the unplug) — tank 40 (expected 16); pumped 0 (expected 24)
+- 1d what every client computes from the room's run and the changed rig is still that day — tank 40, pumped 0, stress {"A":67,"B":75,"heat":17}
+- 1e teammates receive the ended day before the change that followed it — ["edit"]
+- 1f the ended day is persisted with that change
+- 1g the verdict's G1 is the build the day ended with, not the unplugged rig — G1 false (no hose from the tank to the pump)
+- 1h after a JSON restore of the room, the day is unchanged — tank 40
+- 1i a late joiner gets the ended day with its final tank — running tank 40
+- 1k start, resume and step on the finished day are refused (ended); nothing is refilled — ["ended","ended","ended"]
+- 2b and the room has committed and persisted the ended day — running tick 0; persisted undefined
+- 2c a change after that leaves the day as it was — tank 40
+- 3b the room settled the day and told everyone at the claim, before the move — ["claim","claim-granted"]
+- 3c the moved hose does not rewrite the day — tank 40
+- 4a an import after the end is accepted and leaves the day as it was — tank 40
+- 5a a reconnecting client's hello settles and persists the ended day; its join shows it ended — undefined / running
+- 6a after a restart past the end, the day ends with the stored rig; a later unplug does not rewrite it — running tank 40
+- 9a the run module exports settleEndedDay for same-device peer tabs

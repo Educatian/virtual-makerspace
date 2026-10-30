@@ -1,0 +1,12 @@
+FAIL 1 a same-speed action every second for 240 s leaves the day at the tick its running time gives (96) — tick 0
+FAIL 2 pausing and resuming every second: 100 s of running time gives 40 steps (×1) — tick 0
+FAIL 3 half a step at ×1, then ×4: the step completes after a further eighth of a ×1 step
+FAIL 3 a quarter step at ×4, then ×1: the next step comes after three quarters of a ×1 step
+FAIL 4 settling at random moments (1–1700 ms apart) never moves the tick away from running time / step, and the day ends
+greenhouse time: 0/5 checks passed (room code: <scratch>/old-faa7c09/cloudflare)
+FAILED:
+- 1 a same-speed action every second for 240 s leaves the day at the tick its running time gives (96) — tick 0
+- 2 pausing and resuming every second: 100 s of running time gives 40 steps (×1) — tick 0
+- 3 half a step at ×1, then ×4: the step completes after a further eighth of a ×1 step
+- 3 a quarter step at ×4, then ×1: the next step comes after three quarters of a ×1 step
+- 4 settling at random moments (1–1700 ms apart) never moves the tick away from running time / step, and the day ends

@@ -7,7 +7,7 @@ episode at a time**. Each episode is reviewed before the next one starts.
 |---|---|---|---|
 | 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Merged into the `desktop` release branch with PRs #2–#4 (`db85d85`); production deployment and live checks are recorded outside this document. |
 | 2 | Sound Flow Studio | Sound Flow Studio (new) | Accepted at the parent gate as a development gate (PR #5 head `8e87371`, app `63a3421`). Not merged or deployed. |
-| 3 | Resource-Limited Greenhouse | Greenhouse | **Implemented on `feat/resource-limited-greenhouse`** (stacked on PR #5, final app `faa7c09`). Awaiting its independent gate. Not merged or deployed. The model and criteria below were fixed before the code. |
+| 3 | Resource-Limited Greenhouse | Greenhouse | **Implemented on `feat/resource-limited-greenhouse`** (PR #6, stacked on PR #5). The first independent gate did not accept app `faa7c09`; its findings are corrected in app `b8d099a`, which awaits the gate's recheck. Not merged or deployed. The model and criteria below were fixed before the code. |
 | 4 | Smart Sorting Center | new | Planned. The acceptance contract is below; not started. |
 | 5 | Structural Test Yard | new | Planned. The acceptance contract is below; not started. |
 
@@ -468,13 +468,15 @@ These are the genuine tradeoffs:
 - **Sensing:** there is one soil probe. The bed it sits in decides when the pump runs; the other bed is watered blind.
 
 **The learning loop** (the same structure as Episode 2):
-1. **Predict / design.** A private prediction per attempt: meets the brief, a bed dries out, a bed gets waterlogged, overheating, or the tank runs low. The learner adds why.
+1. **Predict / design.** A private prediction per attempt: meets the brief, a bed dries out, a bed gets waterlogged, overheating, or the tank runs low. The learner adds why. When the attempt's day begins (started or stepped), the prediction and the why are fixed for that attempt — or recorded as "none made" — and the day's result is compared with that; changing them takes a new attempt.
 2. **Build / allocate.** Hoses, power cables, the soil probe, the valves, the controller thresholds. Every change is a room edit, and edits are refused while the day is running.
 3. **Run / test / inspect.** Start, pause, step one hour, resume, speed ×1 or ×4, reset. The live resource graph, sensors and inspector show the current model time. The verdict and the measured values appear when the day ends.
-4. **Explain.** What happened and why. The goal counts as met only for a passing run that has an explanation.
+4. **Explain.** What happened and why. The goal counts as met only for a passing run with a **saved** explanation. Editing or erasing the text afterwards never changes the saved one; the page says the draft differs until it is saved again.
 5. **Revise.** A new attempt resets the day (the tank refills only by an explicit reset, which starts a new run) and keeps the history of earlier attempts.
 
 There are no points, XP or countdowns. The model clock is a time control, not a challenge timer.
+
+**Whose attempt a day is.** A finished day counts for this learner's current attempt only if they were present for it before it ended (this tab showed it before 06:00 the next morning) and it is inside the attempt's boundary. The first attempt's boundary is set by the first day this tab sees: a day that had already ended when the learner arrived (a teammate's, or one that ended while they were away) is the room's result — shown in *The day*, never their attempt, never their `test` trace, and it does not open the PF notes.
 
 **PF / DI.**
 - **Both conditions:** the brief and criteria, the part ratings and safety limits, the live graph and sensors, and the measured values after each finished run.
@@ -520,21 +522,24 @@ An empty tank, a pump without supply, starved loads, no probe, extreme soil and 
 
 **One authoritative state.** The room's versioned parts drive the 3D rig, the model inputs, the graph, the inspector and project files: hose and cable ports, the probe slot, the valves and the thresholds. The room's **run state** drives model time and resources:
 - seed, status, speed, attempt counter;
-- the anchor tick and its server time;
+- the anchor tick and its server time (back-dated by the part of a step already elapsed, so no action discards elapsed time; a paused day keeps that fraction as `sub`);
 - the resource snapshot at the anchor: tank, beds, battery, last air reading, and running totals for the balance and stress;
-- the per-step record up to the anchor.
+- the per-step record up to the anchor;
+- once the day has ended, the build it ended with (`endBuild`: G1 of its verdict).
 
 The current state at server time t is `simulate(anchor, current build, ticks since anchor)`. That is deterministic, so every client computes the same values regardless of frame rate.
 
 **Time and collaboration policy.**
 - Run actions are start, pause, resume, step one hour, speed ×1 (2.5 s per step) or ×4, and reset. Each is a room action, ordered and answered (accepted or refused) like an edit.
-- Pause and step settle the model on the server: the snapshot and record advance to the current tick.
+- Pause and step settle the model on the server: the snapshot and record advance to the current tick. A speed action at the current speed changes nothing.
+- **A day that reaches 06:00 is settled before anything else.** The end unlocks the rig, so before the room handles any message after the end (an edit, a cable move, an import, Undo/Redo, a pause, a hello on reconnect) it settles the day with the rig it ran on, ends it, records its build, persists it and tells everyone — before the change that follows. A change after the end therefore never rewrites the finished day's water, records or verdict.
 - While a day is running, every change to the rig is refused (`running`): edits, cable moves, imports, reset bench, Undo/Redo. Pause first. A change and a pause that race are ordered by the room.
 - When the last participant leaves, the run pauses at that model time and its resources are kept. The bench resets as in every studio, and Recovery restores it. Nobody gets elapsed time or water for being away.
 - A late joiner or a reconnecting client receives the run state and the server time, and so shows the same model time and resources.
 - The run ends at step 96. If the server restarts mid-run, it continues from its persisted anchor by server time, up to that end.
 - Project files hold the build only, never resources or model time, so importing cannot refill the tank or resurrect an old run.
-- Same-device peer rooms (no server) apply the run actions in each tab with a shared clock, like Episode 1.
+- Same-device peer rooms (no server) apply the run actions in each tab with a shared clock, like Episode 1. Their stamped run states are ordered by run id first (a reset's new run always wins over an action on the old run; an older run never replaces a newer one), then by Lamport stamp within one run. A tab settles a day that reached its end before it changes the rig.
+- The local development relay (`server/collaboration.mjs`) keeps a room's day in memory when everyone leaves, as the Durable Object does; restarting that process forgets it.
 
 **Assumptions stated in the studio.**
 - These are teaching numbers. Water uptake, weather and plant response are not validated crop, weather or botanical models.
@@ -543,23 +548,23 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 
 ### On screen
 
-- **The greenhouse** fills the space between the parts rail and the dock: a glasshouse frame with glazing over two raised timber beds (four plants each, soil that darkens when wet and puddles when waterlogged, leaves that pale and droop when dry and curl in heat), the 40 L tank with its water level and a dial gauge, the equipment plinth (pump, valve manifold with two ball-valve handles, farm controller with its display, dials, channel LEDs and the CH1/CH2/SOLAR IN sockets), the vent fan at the gable, the solar panel on its stand, the climate and light sensors, four green hoses and three black power cables coiled in the aisle, and the soil probe in its holder. Water ports are blue couplers, power ports keyed black sockets, probe slots two brass pins in a bed. A plugged end stands in its port; a free end lies on the floor or plinth; a carried end hangs under the pointer.
+- **The greenhouse** fills the space between the parts rail and the dock: a glasshouse frame with glazing over two raised timber beds (four plants each, soil that darkens when wet and puddles when waterlogged, leaves that pale and droop when dry and curl in heat), the 40 L tank with its water level and a dial gauge, the equipment plinth (pump; the valve manifold, whose two ball valves are turned by red handwheels on square position plates at the front of the plinth, SHUT to OPEN; the farm controller with its display, channel LEDs and the CH1/CH2/SOLAR IN sockets, and a sloped console on top with the PUMP BELOW and FAN ABOVE knobs on their scale plates — all four controls face the room, with nothing that can be plugged in front of them), the vent fan at the gable, the solar panel on its stand, the climate and light sensors, four green hoses coiled in the aisle and three black power cables coiled on the floor in front of the plinth, below its sockets, and the soil probe in its holder. Water ports are blue couplers, power ports keyed black sockets, probe slots two brass pins in a bed. A plugged end stands in its port; a free end lies on the floor or plinth; a carried end hangs under the pointer.
 - **Everything that moves follows the model:** the pump rotor and its LED, the fan, water marks in hoses that carried water in the shown step, the tank level and gauge, soil colour, plants, the controller's display and channel LEDs (red when a load was starved), the sensors' displays and the probe's reading. Wrong hoses and cables wear red fault collars at their ports.
 - **Camera views:** Overview `1`, Top `2`, Beds `3`, Fit selected `F`, as buttons and keys.
 - **One contextual dock tab, *Greenhouse*** (the rest stay: Chat, Voice, Activity, Notes), with a jump bar (Day · Flow · Selected · Attempt):
   - the brief and its five criteria, the teaching-numbers note and (DI) the worked example;
   - **The day:** the model clock (`HH:MM`, step k of 96, a progress line), *Start the day* / *Pause* / *Resume*, *Step 1 h*, ×1 / ×4, *Reset day…* (the brief's seed 11 or a practice seed), the outcome of the last run control, the live resource graph (tank with the 8 L reserve, soil θ of both beds with the 30–90 % band, greenhouse and outside air with 35 °C, battery, a strip of the steps the pump and fan ran or were starved), a text summary and an hourly table, and the verdict when the day ends;
   - **Live resource flow:** the diagram (power column: solar → controller → fan, sensors; water column: tank → pump → manifold → beds; edges with litres or watts in the shown step, idle dashes, wrong or loose dots with ✕), fault notes and the text connection list;
-  - **Selected:** Overview / Ports / Behaviour & limits for any fixture, hose, cable or the probe; valve and rule fields with steppers (drafts until *Apply to the room* or Enter), *Unplug and coil in the aisle*, *Back to its holder*;
+  - **Selected:** Overview / Ports / Behaviour & limits for any fixture, hose, cable or the probe; valve and rule fields with steppers (drafts until *Apply to the room* or Enter), *Unplug and coil it on the floor*, *Back to its holder*;
   - **Your attempt:** predict (five choices and why), build, run, explain, revise (*New attempt* resets the day for everyone after confirmation), earlier attempts.
 - **HUD** over the viewport: model time, run status, tank, probed soil, air and battery, from the model.
 - **Collapsing the dock** never stops the day: model time comes from the room's clock.
-- **Cross-link:** selecting a part in 3D, in the parts rail, on the diagram or in the connection list selects it everywhere; clicking a visible part of a valve (its lever or ball) or of a controller dial in 3D focuses that field. When a hose fitting or cable is in front, the click selects that line instead.
+- **Cross-link:** selecting a part in 3D, in the parts rail, on the diagram or in the connection list selects it everywhere; clicking a valve handwheel or a controller knob (anywhere on its plate) in 3D selects the part and focuses that field.
 
 ### Collaboration, files and persistence
 
 - **Room authority.** Plugging and unplugging are line-end moves with claims; valve and rule values are atomic edits with the revision the sender saw. The server refuses moved fixtures, wrong connector types, both ends in one port, a second line in a port (`occupied`), the probe outside a slot pair, out-of-range or off-step values (never clamped), and every rig change while the day runs (`running`). Wrong plumbing a learner makes on purpose (OUT→OUT, IN→IN, tank to bed, loops, solar to a load) is allowed and drawn.
-- **Run actions** are ordered and answered by the room like edits and carry the run id the sender saw; an action for another run is refused (`stale`), so a reset decided on an old view never wipes a newer day. If an answer is lost (timeout, closed connection), the copy is uncertain, and the next run state says whether it applied.
+- **Run actions** are ordered and answered by the room like edits and carry the run id the sender saw; an action for another run is refused (`stale`), so a reset decided on an old view never wipes a newer day. If an answer is lost (timeout, closed connection), the copy is uncertain. The room tags each accepted action's run state with that action's op id and type, and only a run state naming this action's op id confirms it; a teammate's action, however similar, never does — the copy then says only what the room now shows.
 - **Late join and reconnect** receive the run state and the server time with the rig, and show the same model time and resources. Peer rooms (no server) start the brief's day in the first tab and share stamped run states.
 - **Undo/Redo** covers value edits, line moves, imports and reset, with the existing stale/held rules; while the day runs the room refuses them (`running`).
 - **Project files.** Greenhouse projects are **version 3**: valve and rule values, each line's two ports (one end may be out) and the probe's slot; never the run, resources or model time. Version-1 greenhouse files (the earlier placeholder) migrate to the default rig with a notice. Predictions, explanations, attempts, names and chat are never exported.
@@ -577,7 +582,26 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 
 ### Results of the last developer-environment run
 
-**Final app `faa7c09`.** The run used headless Chromium with SwiftShader, wrangler dev and the local access proxy, on 2 CPU cores. It is not GitHub CI. Every room was a fresh random QA room; 7K3M was never used. Every command, its exit code, its duration and every non-passing attempt are in [the test records](qa/greenhouse/README.md), per app (`app-faa7c09/`, `app-fe4fdf8/`).
+**Correction round, final app `b8d099a`.** This round reran only what the corrections touch. The full list, every failure and the old-code counterexamples are in [the test records](qa/greenhouse/README.md#correction-round-after-the-first-gate-final-app-b8d099a).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, all model and room checks; greenhouse model 2,835,645, **end 25/25, time 5/5, relay 3/3, peer 5/5**) | `b8d099a` | All passed |
+| `npx vite build` | `b8d099a` | OK |
+| The original counterexamples on `faa7c09`'s code: end, time, relay, peer and panel checks | `faa7c09` | Fail: 7/24, 0/5, 2/3, 1/5, 7/37 |
+| `greenhouse-panel-check.mjs` (participation, run-control answers, saved explanation, fixed prediction, list focus) | `b8d099a` | **38/38** |
+| `e2e-greenhouse-worker.mjs` (two makers plus a late joiner, Worker) | `b8d099a` | **40/40** (on `b9dde3c`: **failed**, cables 1 and 3 could not be plugged by pointer; fixed in `b8d099a`) |
+| `e2e-greenhouse-fixes-worker.mjs` (all four 3D controls by pointer across two makers; a finished day unchanged by an unplug; a late PF joiner not credited) | `b8d099a` | **11/11** |
+| `qa-greenhouse-controls.mjs` (44 px squares, five fixed click points, poses, running lock, neighbouring hose end, 1440 and 1280) | `b8d099a` | **33/33** |
+| `qa-greenhouse-plug.mjs` (14 ends by pointer at 1440, 1280 and 960) | `b8d099a` | **7/7** |
+| `e2e-greenhouse-peer.mjs` (two tabs: reset vs step, both orders) | `b8d099a` | **7/7** |
+| `qa-greenhouse.mjs` (renders) | `b8d099a` | **12/12** on attempt 2. Attempt 1 timed out in the script, which chose a prediction after its own steps had fixed it; the script now starts a new attempt there. |
+| `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync` | `b8d099a` | 18/18, 12/12, 13/13 (room sync on attempt 2: attempt 1 was cut off by a container restart) |
+| `e2e-snapino-history` | `b8d099a` | **failed twice** (24/25, 22/25). The same suite on `faa7c09`, run right after in the same environment, also failed (24/25), the same check as attempt 1; before the restart, `faa7c09` passed 25/25. Cause not established. |
+
+The Sound, bench-inspector, Rescue Signal and AI-teammate suites were not rerun; their results below are for `faa7c09` only.
+
+**First submission, app `faa7c09`.** The run used headless Chromium with SwiftShader, wrangler dev and the local access proxy, on 2 CPU cores. It is not GitHub CI. Every room was a fresh random QA room; 7K3M was never used. Every command, its exit code, its duration and every non-passing attempt are in [the test records](qa/greenhouse/README.md), per app (`app-faa7c09/`, `app-fe4fdf8/`).
 
 | Command | App | Result |
 |---|---|---|
@@ -602,9 +626,10 @@ The current state at server time t is `simulate(anchor, current build, ticks sin
 - **A teaching water-balance and climate abstraction.** Weather, uptake and plant response are not validated crop, weather or botanical models; there is no growth or yield.
 - **No thermal mass, fixed-flow pump, lossless hoses, linear valves**, power accounted per 15-minute step, ideal sensors.
 - **Model time is the room's clock.** A client whose clock estimate is off shows the same steps a little earlier or later; paused states are identical everywhere.
-- **The verdict's G1 is judged on the build as it is when the day ends**; a rig changed while paused mid-day still counts as one run.
+- **The verdict's G1 is judged on the build the day ended with** (recorded by the room); a rig changed while paused mid-day still counts as one run.
 - **Same-device peer rooms** (no server) do not pause the day when everyone leaves.
-- **The 3D valve levers and dials are small targets.** In the overview of the brief's plumbed rig at 1440×900, the hose fittings cover the valve grips and power cable 3 crosses the FAN ABOVE dial; each control is the first visible surface at only 8–13 of 441 sampled pixels around it. A click there works (measured), but the dock's 44 px fields and the keyboard are the reliable way to set values.
+- **3D control targets are measured in the overview only** (1440×900 and 1280×720, the brief's plumbed rig). Other camera angles (orbiting, Top, Beds) were not measured.
+- **A free cable end dropped on the floor behind the controller** can lie under its knob console in the overview, where a press picks the knob; the line's card (its port selects, keyboard-operable) still connects it. Other camera views were not checked for this. Plugging all 14 ends by pointer from where they lie at the start was measured at 1440, 1280 and 960 px.
 - **The PF notes gate is personal**: it opens on this learner's own first finished day in this browser session.
 - **Desktop only.** The WebXR path does not include the studio.
 - **Software-rendered evidence.** Captures and counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured; 390×844 is a viewport check, not phone testing.

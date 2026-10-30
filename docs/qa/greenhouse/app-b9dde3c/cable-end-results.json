@@ -1,0 +1,109 @@
+{
+ "room": "WQZL",
+ "results": [
+  {
+   "name": "both makers are on the Circuit Bench",
+   "ok": true,
+   "detail": "[\"circuit\",\"circuit\"]"
+  },
+  {
+   "name": "the drag path accepts the drop",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the teammate sees end A seated",
+   "ok": true,
+   "detail": "[36,null]"
+  },
+  {
+   "name": "the mover's end stays seated (its final move was not refused)",
+   "ok": true,
+   "detail": "[36,null]"
+  },
+  {
+   "name": "(the host can undo)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "undo restores the end's previous place on both screens",
+   "ok": true,
+   "detail": "null → null"
+  },
+  {
+   "name": "one drag was exactly one undo step (nothing left to undo, redo available)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "redo seats it again on both screens",
+   "ok": true,
+   "detail": "[36,null]"
+  },
+  {
+   "name": "the teammate's drop is accepted by the drag path",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "each end can be seated by a different maker",
+   "ok": true,
+   "detail": "[36,39]"
+  },
+  {
+   "name": "a late joiner gets both seated ends from the room",
+   "ok": true,
+   "detail": "[36,39]"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "trail": [
+  {
+   "at": "2026-10-29T23:11:14.394Z",
+   "label": "after host drop",
+   "page": "member",
+   "wire": [
+    36,
+    null
+   ]
+  },
+  {
+   "at": "2026-10-29T23:11:53.845Z",
+   "label": "after undo",
+   "page": "member",
+   "wire": null
+  },
+  {
+   "at": "2026-10-29T23:12:37.386Z",
+   "label": "after redo",
+   "page": "member",
+   "wire": [
+    36,
+    null
+   ]
+  },
+  {
+   "at": "2026-10-29T23:13:07.109Z",
+   "label": "after member drop",
+   "page": "host",
+   "wire": [
+    36,
+    39
+   ]
+  },
+  {
+   "at": "2026-10-29T23:14:43.680Z",
+   "label": "late joiner",
+   "page": "late",
+   "wire": [
+    36,
+    39
+   ]
+  }
+ ]
+}

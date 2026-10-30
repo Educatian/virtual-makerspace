@@ -1,0 +1,9 @@
+1440 valveA {"centre":{"x":559.6153439191828,"y":578.2346600450022},"plate":{"w":66.79482964081967,"h":67.96711916280015},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+1440 valveB {"centre":{"x":635.3574204932456,"y":587.1727490783},"plate":{"w":67.86184094636678,"h":68.5715249329561},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+1440 pumpBelow {"centre":{"x":701.3818806967661,"y":550.2473111392785},"plate":{"w":63.465156114805495,"h":63.56530997443838},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+1440 fanAbove {"centre":{"x":780.7232099649777,"y":559.2352813537341},"plate":{"w":64.46452627302779,"h":64.15267702220717},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+1280 valveA {"centre":{"x":498.4610830333458,"y":471.2265121287203},"plate":{"w":57.90321612313511,"h":59.001594455302666},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+1280 valveB {"centre":{"x":564.2068264633153,"y":479.0864287161032},"plate":{"w":58.931721757471905,"h":59.585399160015925},"own":144,"total":144,"handleInFront":0,"handleBehind":3,"misses":{}}
+1280 pumpBelow {"centre":{"x":621.4705845082153,"y":446.9867626249286},"plate":{"w":55.119822322336745,"h":55.19371242329936},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+1280 fanAbove {"centre":{"x":690.4860246179907,"y":454.87439632475315},"plate":{"w":56.0854337234108,"h":55.761364221920076},"own":144,"total":144,"handleInFront":0,"handleBehind":0,"misses":{}}
+exit=0

@@ -1,0 +1,46 @@
+  [ready] host entered: 3 s (+3 frames)
+  [ready] member entered: 6 s (+3 frames)
+PASS both hold the room's day: run 1, seed 11, not started, 06:00, tank 40 L — {"tick":0,"tank":40,"beds":{"A":11,"B":11},"battery":6,"air":21.08642659120388,"stress":{"A":0,"B":0,"heat":0}} | {"tick":0,"tank":40,"beds":{"A":11,"B":11},"battery":6,"air":21.08642659120388,"stress":{"A":0,"B":0,"heat":0}}
+PASS DI host sees the worked example; PF member does not; the greenhouse tab is the open dock tab
+PASS nothing is built at the start (no auto-build in either condition) — {"irrigation-hose":"unplugged","irrigation-hose-2":"unplugged","irrigation-hose-3":"unplugged","irrigation-hose-4":"unplugged","power-cable-1":"unplugged","power-cable-2":"unplugged","power-cable-3":"unplugged"}
+  [ready] before irrigation-hose:0→12: 13 s (+3 frames)
+  [ready] host after wrong-type: 15 s (+3 frames)
+PASS typed ports: a hose end dropped on PUMP 12 V IN stays out, for both, with the reason — status "PUMP 12 V IN takes a power plug (a hose fits water couplers only) · Hose 1 end A stays out"
+  [ready] before irrigation-hose:0→0: 14 s (+3 frames)
+  [ready] before irrigation-hose:1→6: 15 s (+3 frames)
+PASS wrong build: TANK OUT → BED A INLET is drawn as built (no pump, ✕), carries nothing; DI explains it, PF withholds the explanation until a finished day — edge {"status":"no-pump","flow":"wrong"}; PF notes "9 explanatory notes appear after your own first finished day in this session (the diagram already shows the rig as built)."
+  [ready] before irrigation-hose:1→1: 8 s (+3 frames)
+  [ready] before irrigation-hose-2:0→2: 10 s (+3 frames)
+  [ready] before irrigation-hose-2:1→3: 9 s (+3 frames)
+  [ready] before irrigation-hose-3:0→4: 9 s (+3 frames)
+  [ready] before irrigation-hose-3:1→6: 8 s (+3 frames)
+  [ready] before irrigation-hose-4:0→5: 8 s (+3 frames)
+  [ready] before irrigation-hose-4:1→7: 8 s (+3 frames)
+  [ready] before power-cable-1:0→8: 7 s (+3 frames)
+  [ready] before power-cable-1:1→9: 8 s (+3 frames)
+  [ready] before power-cable-2:0→10: 8 s (+3 frames)
+  [ready] before power-cable-2:1→12: 8 s (+3 frames)
+  [ready] before power-cable-3:0→11: 8 s (+3 frames)
+  [ready] before power-cable-3:1→13: 8 s (+3 frames)
+  [ready] before probe: 9 s (+3 frames)
+FAIL pointer-built rig: both makers hold the same complete rig (supply, delivery, two branches, solar, two feeds, probe in bed A) — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"loose","power-cable-2":"feed","power-cable-3":"loose"} probe A
+  [ready] before power-cable-3:1→12: 7 s (+3 frames)
+PASS occupied: a cable end dropped on PUMP 12 V IN (taken) stays out; the pump's cable is untouched — status "PUMP 12 V IN already holds a line (one per port) · Cable 3 end B stays out"
+FAIL keyboard plumbing: choosing FAN 12 V IN for cable 3's free end in its card connects it for both — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"loose","power-cable-2":"feed","power-cable-3":"feed"}
+locator.click: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /opt/pw-browsers/chromium --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --host-resolver-rules=MAP vm.test 127.0.0.1 --unsafely-treat-insecure-origin-as-secure=http://vm.test:8800 --no-proxy-server --use-gl=swiftshader --enable-unsafe-swiftshader --user-data-dir=<tmp> --remote-debugging-pipe --no-startup-window
+<launched> pid=9863
+Call log:
+[2m  - waiting for locator('#gh-valveA')[22m
+[2m    - locator resolved to <input type="text" value="100" id="gh-valveA" inputmode="numeric" data-draft="valve-manifold:valveA" aria-describedby="gh-valveA-range"/>[22m
+[2m  - attempting click action[22m
+[2m    - waiting for element to be visible, enabled and stable[22m
+[2m    - element is visible, enabled and stable[22m
+[2m    - scrolling into view if needed[22m
+
+    at typeInto (<scratch>/gh/scripts/e2e-greenhouse-worker.mjs:145:32)
+    at setValues (<scratch>/gh/scripts/e2e-greenhouse-worker.mjs:154:62)
+    at async file://<scratch>/gh/scripts/e2e-greenhouse-worker.mjs:232:3
+e2e greenhouse: 6/9 checks passed (room GZK6; artifacts <scratch>/fin/e2e-greenhouse)
