@@ -2551,3 +2551,119 @@ textarea:focus-visible {
 .sound-inspector .si-actions .primary-button, .sound-inspector .si-panel .secondary-button { min-height: 44px; }
 .sound-inspector .bare-button { min-height: 44px; }
 .si-fine { color: #93a2ba; font-size: 0.66rem; }
+
+/* ── Resource-Limited Greenhouse (Episode 3): one dock tab, resource graph, flow diagram ──────
+   Colour is never the only cue: graph series also differ by stroke pattern and are named in the
+   legend and summary; diagram edges carry a pattern and a text label; criteria a ✓/✕ and words.
+   Targets are at least 44 px. */
+.discussion-panel[data-panel="greenhouse"] { overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 52px; }
+.gh-panel { display: grid; align-content: start; gap: 10px; padding: 12px; color: var(--text); font-size: 0.74rem; line-height: 1.45; --gh-water: #38bdf8; --gh-bed-a: #4ade80; --gh-bed-b: #f472b6; --gh-air: #fb923c; --gh-out: #94a3b8; --gh-power: #facc15; --gh-fault: #ef4444; }
+.gh-jump { position: sticky; top: -12px; z-index: 2; display: flex; gap: 4px; margin: 0 -12px; padding: 6px 12px; background: rgba(16, 22, 32, 0.96); border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.gh-jump a { display: inline-flex; flex: 1; align-items: center; justify-content: center; min-height: 44px; color: #cfd9ea; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; font-weight: 600; text-decoration: none; }
+.gh-jump a:hover, .gh-jump a:focus-visible { color: #fff; border-color: #53a4ff; outline: none; }
+.gh-panel h3[tabindex="-1"]:focus { outline: none; }
+.gh-clock { display: grid; gap: 6px; }
+.gh-time strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.gh-time small { color: var(--muted); margin-left: 6px; }
+.gh-dayline { display: block; height: 6px; overflow: hidden; background: rgba(255, 255, 255, 0.07); border-radius: 999px; }
+.gh-dayline span { display: block; height: 100%; background: linear-gradient(90deg, #f59e0b, #fde68a 45%, #60a5fa); border-radius: inherit; }
+.gh-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gh-controls button { min-height: 44px; }
+.gh-speed { display: inline-flex; gap: 0; }
+.gh-speed button { min-width: 48px; border-radius: 0; }
+.gh-speed button:first-child { border-radius: 8px 0 0 8px; }
+.gh-speed button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.gh-speed button[aria-pressed="true"] { color: #0b1220; background: #ffd166; border-color: #ffd166; font-weight: 700; }
+.gh-panel .si-edit-note[hidden] { display: none; }
+.gh-graph { background: #0b1017; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; }
+.gg-svg { display: block; width: 100%; height: auto; font-family: inherit; }
+.gg-plot { fill: rgba(255, 255, 255, 0.02); stroke: rgba(255, 255, 255, 0.08); }
+.gg-band { fill: rgba(74, 222, 128, 0.07); }
+.gg-grid { stroke: rgba(255, 255, 255, 0.06); }
+.gg-tick { fill: #7f8ea6; font-size: 9px; font-variant-numeric: tabular-nums; }
+.gg-title { fill: #c4cfe0; font-size: 9.5px; font-weight: 700; }
+.gg-limit { stroke: var(--gh-fault); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.7; }
+.gg-limit-label { fill: #fca5a5; font-size: 8.5px; }
+.gg-line { fill: none; stroke-width: 1.8; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.gg-line.is-tank { stroke: var(--gh-water); stroke-width: 2.2; }
+.gg-line.is-bed-a { stroke: var(--gh-bed-a); }
+.gg-line.is-bed-b { stroke: var(--gh-bed-b); stroke-dasharray: 5 3; }
+.gg-line.is-air { stroke: var(--gh-air); }
+.gg-line.is-outside { stroke: var(--gh-out); stroke-dasharray: 1.5 3; }
+.gg-line.is-battery { stroke: var(--gh-power); }
+.gg-load.is-pump { fill: var(--gh-water); }
+.gg-load.is-fan { fill: #a5b4fc; }
+.gg-load.is-starved { fill: var(--gh-fault); }
+.gg-now { stroke: #e8eef7; stroke-width: 1; stroke-dasharray: 2 2; }
+.gh-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; color: #c4cfe0; font-size: 0.64rem; }
+.gh-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.gg-key { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid; }
+.gg-key.is-tank { border-color: var(--gh-water); }
+.gg-key.is-bed-a { border-color: var(--gh-bed-a); }
+.gg-key.is-bed-b { border-top-style: dashed; border-color: var(--gh-bed-b); }
+.gg-key.is-air { border-color: var(--gh-air); }
+.gg-key.is-outside { border-top-style: dotted; border-color: var(--gh-out); }
+.gg-key.is-battery { border-color: var(--gh-power); }
+.gg-key.is-pump-strip, .gg-key.is-fan-strip, .gg-key.is-starved-strip, .gg-key.is-band { height: 8px; border: 0; border-radius: 2px; }
+.gg-key.is-pump-strip { background: var(--gh-water); }
+.gg-key.is-fan-strip { background: #a5b4fc; }
+.gg-key.is-starved-strip { background: var(--gh-fault); }
+.gg-key.is-band { background: rgba(74, 222, 128, 0.25); }
+.gh-table summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: #cfd9ea; }
+.gh-data { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.66rem; }
+.gh-data th, .gh-data td { padding: 3px 4px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.gh-data th[scope="row"], .gh-data thead th:first-child { text-align: left; }
+.gh-data thead th { color: var(--muted); font-weight: 600; }
+.gd-diagram { overflow-x: auto; background: #0b1017; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; }
+.gd-svg { display: block; width: 100%; min-width: 300px; max-width: 520px; height: auto; margin: 0 auto; font-family: inherit; }
+.gd-node { cursor: pointer; }
+.gd-node[role="img"] { cursor: default; }
+.gd-node-box { fill: #1a2230; stroke: #4b5b74; stroke-width: 2; }
+.gd-node[data-state="on"] .gd-node-box { fill: #13261d; stroke: #3fa66a; }
+.gd-node[data-state="warn"] .gd-node-box { stroke: #d6a53a; }
+.gd-node[data-state="fault"] .gd-node-box { stroke: var(--gh-fault); stroke-dasharray: 5 4; }
+.gd-node.is-selected .gd-node-box { stroke: var(--tone-a, #f59e0b); stroke-width: 4; }
+.gd-node:focus-visible, .gd-edge:focus-visible { outline: 2px solid #53a4ff; }
+.gd-node-name { fill: #e8eef7; font-size: 12.5px; font-weight: 700; }
+.gd-node-value { fill: #a9bcd8; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.gd-probe-label { fill: #d7ffe5; font-size: 10.5px; font-weight: 700; }
+.gd-edge { cursor: pointer; }
+.gd-edge-line { stroke-width: 2.6; stroke-linecap: round; }
+.gd-edge.is-water .gd-edge-line { stroke: var(--gh-water); }
+.gd-edge.is-power .gd-edge-line { stroke: var(--gh-power); }
+.gd-edge.is-idle .gd-edge-line { stroke-dasharray: 10 6; opacity: 0.6; }
+.gd-edge.is-starved .gd-edge-line { stroke: #fb923c; stroke-dasharray: 10 6; }
+.gd-edge.is-wrong .gd-edge-line, .gd-edge.is-loose .gd-edge-line { stroke: #fca5a5; stroke-dasharray: 2 5; }
+.gd-edge-halo { stroke: var(--tone-b, #22d3ee); stroke-width: 10; stroke-opacity: 0.35; }
+.gd-edge-label { fill: #dbe5f3; font-size: 9.5px; font-weight: 600; paint-order: stroke; stroke: #0b1017; stroke-width: 3.5px; stroke-linejoin: round; }
+.gd-edge-label.is-fault { fill: #fca5a5; }
+.gd-open-end { fill: #0b1017; stroke: #fca5a5; stroke-width: 2; }
+.gd-signal { stroke: #a5b4fc; stroke-width: 1.5; stroke-dasharray: 2 4; opacity: 0.7; }
+.gd-port-dot { fill: #e8eef7; stroke: #0b1017; stroke-width: 2; }
+.gd-port-open { fill: #0b1017; stroke: #9fb3d1; stroke-width: 1.5; }
+.gd-port-label { fill: #8b9bb4; font-size: 7.5px; font-weight: 700; }
+.gd-key-water { border-top-color: var(--gh-water, #38bdf8) !important; }
+.gd-key-power { border-top-color: var(--gh-power, #facc15) !important; }
+.gd-list .gd-open { color: #ffe3a1; }
+.sd-notes .sd-ok { color: #b9ffd2; }
+.gh-part-panel { display: grid; gap: 8px; line-height: 1.5; }
+.gh-part-panel p, .gh-part-panel ul, .gh-part-panel h4 { margin: 0; }
+.gh-part-panel ul { padding-left: 16px; }
+.gh-part-panel h4 { color: #9fb3d1; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.gh-part-panel .si-ports { list-style: none; padding-left: 0; display: grid; gap: 6px; }
+.gh-part-panel .si-ports li { padding: 6px 8px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; }
+.gh-part-panel .secondary-button, .gh-part-panel .primary-button, .gh-part-panel .bare-button { min-height: 44px; }
+.gh-part #gh-part-title small { color: var(--muted); font-weight: 500; }
+.gh-panel textarea { min-height: 48px; padding: 8px; color: var(--text); background: rgba(0, 0, 0, 0.3); border: 1px solid #3c4d68; border-radius: 8px; font: inherit; resize: vertical; }
+.gh-reset-dialog fieldset { display: grid; gap: 6px; margin: 0 0 12px; padding: 0; border: 0; }
+.gh-reset-dialog legend { margin-bottom: 6px; color: #e8eef7; font-weight: 600; font-size: 0.82rem; }
+.gh-reset-dialog .ss-choice { font-size: 0.8rem; }
+.gh-reset-dialog input[type="number"] { width: 6.5em; min-height: 36px; margin-left: 4px; padding: 0 8px; color: var(--text); background: rgba(0, 0, 0, 0.3); border: 1px solid #3c4d68; border-radius: 6px; font: inherit; }
+.gh-reset-dialog .dialog-actions button { min-height: 44px; }
+.gh-reset-error { color: #ffb4b4 !important; }
+.gh-reset-error[hidden] { display: none; }
+.environment-heading strong#metric-clock { color: #e8eef7; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .gh-dayline span { transition: none; } }
+.gh-part-panel select { min-height: 44px; padding: 0 8px; color: var(--text); background: rgba(0, 0, 0, 0.3); border: 1px solid #3c4d68; border-radius: 8px; font: inherit; font-size: 0.74rem; }
+.gh-part-panel select:focus-visible { outline: 2px solid #8eb8ff; outline-offset: 2px; }
+.gh-ports-form .si-actions, .gh-probe-actions { flex-wrap: wrap; }

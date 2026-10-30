@@ -1,0 +1,33 @@
+  [ready] 960x640 irrigation-hose:0: 1 s (+3 frames)
+  [ready] 960x640 after irrigation-hose:0: 5 s (+3 frames)
+  [ready] 960x640 irrigation-hose:1: 5 s (+3 frames)
+  [ready] 960x640 after irrigation-hose:1: 5 s (+3 frames)
+  [ready] 960x640 irrigation-hose-2:0: 5 s (+3 frames)
+  [ready] 960x640 after irrigation-hose-2:0: 3 s (+3 frames)
+  [ready] 960x640 irrigation-hose-2:1: 3 s (+3 frames)
+  [ready] 960x640 after irrigation-hose-2:1: 3 s (+3 frames)
+  [ready] 960x640 irrigation-hose-3:0: 3 s (+3 frames)
+  [ready] 960x640 after irrigation-hose-3:0: 3 s (+3 frames)
+  [ready] 960x640 irrigation-hose-3:1: 3 s (+3 frames)
+  [ready] 960x640 after irrigation-hose-3:1: 3 s (+3 frames)
+  [ready] 960x640 irrigation-hose-4:0: 3 s (+3 frames)
+  [ready] 960x640 after irrigation-hose-4:0: 3 s (+3 frames)
+  [ready] 960x640 irrigation-hose-4:1: 3 s (+3 frames)
+  [ready] 960x640 after irrigation-hose-4:1: 3 s (+3 frames)
+  [ready] 960x640 power-cable-1:0: 3 s (+3 frames)
+  [ready] 960x640 after power-cable-1:0: 3 s (+3 frames)
+  [ready] 960x640 power-cable-1:1: 3 s (+3 frames)
+  [ready] 960x640 after power-cable-1:1: 3 s (+3 frames)
+  [ready] 960x640 power-cable-2:0: 3 s (+3 frames)
+  [ready] 960x640 after power-cable-2:0: 3 s (+3 frames)
+  [ready] 960x640 power-cable-2:1: 3 s (+3 frames)
+  [ready] 960x640 after power-cable-2:1: 3 s (+3 frames)
+  [ready] 960x640 power-cable-3:0: 3 s (+3 frames)
+  [ready] 960x640 after power-cable-3:0: 3 s (+3 frames)
+  [ready] 960x640 power-cable-3:1: 3 s (+3 frames)
+  [ready] 960x640 after power-cable-3:1: 3 s (+3 frames)
+FAIL 960x640: no grab point lies under a 3D control (each end is picked up, not a knob) — [{"line":"power-cable-1","end":1,"port":9,"status":"loose","firstAtGrab":"farm-controller:control_plate (control fanAbove)"},{"line":"power-cable-3","end":1,"port":13,"status":"loose","firstAtGrab":"farm-controller:housing_black_abs (control fanAbove)"}]
+FAIL 960x640: 14 real pointer drags build the brief's rig, every line in its ports — {"irrigation-hose":"supply","irrigation-hose-2":"delivery","irrigation-hose-3":"branch","irrigation-hose-4":"branch","power-cable-1":"loose","power-cable-2":"feed","power-cable-3":"loose"}
+PASS no page errors
+qa greenhouse plug: 1/3 checks passed
+exit=1

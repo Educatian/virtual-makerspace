@@ -1,0 +1,81 @@
+$ node --experimental-strip-types scripts/greenhouse-end-check.mjs ../old-b8d099a/cloudflare
+(cwd: wt-abd2f51; started 2026-10-30T07:43:23Z)
+reference day (default rig, seed 11): tank 16.000 L, pumped 24.000 L, stress A 0 B 38 heat 6; G1 true
+  before the unplug: stored run running, tick 0 (the clock says 96)
+PASS 1a after the end the rig is unlocked: Bob's unplug of the tank hose is accepted — {"kind":"edit-result","opId":"unplug","ok":true,"changes":[{"componentId":"irrigation-hose","rev":2}]}
+PASS 1b the room holds the day ended at tick 96, same run id — ended tick 96 run 1
+PASS 1c the room's final tank and pumped water are the day as it ran (not restored by the unplug) — tank 16 (expected 16); pumped 24 (expected 24)
+PASS 1d what every client computes from the room's run and the changed rig is still that day — tank 16, pumped 24, stress {"A":0,"B":38,"heat":6}
+PASS 1e teammates receive the ended day before the change that followed it — ["run:ended","edit"]
+PASS 1f the ended day is persisted with that change — "ended"
+PASS 1g the verdict's G1 is the build the day ended with, not the unplugged rig — G1 true (tank → pump → both beds; pump and fan on channels; solar in; probe in a bed)
+PASS 1h after a JSON restore of the room, the day is unchanged — tank 16
+PASS 1i a late joiner gets the ended day with its final tank — ended tank 16
+PASS 1j an Undo (the hose plugged back) leaves the finished day as it was
+PASS 1k start, resume and step on the finished day are refused (ended); nothing is refilled — ["ended","ended","ended"]
+PASS 1l only a reset refills the tank, as a new run (id 2)
+PASS 2a a pause after the end is answered 'ended' — {"kind":"greenhouse-result","opId":"pause","ok":false,"reason":"ended"}
+PASS 2b and the room has committed and persisted the ended day — ended tick 96; persisted ended
+PASS 2c a change after that leaves the day as it was — tank 16
+PASS 3a after the end a live hose-end move is accepted — "rev-ack"
+PASS 3b the room settled the day and told everyone at the claim, before the move — ["greenhouse-state","claim","greenhouse-state","claim-granted"]
+PASS 3c the moved hose does not rewrite the day — tank 16
+PASS 4a an import after the end is accepted and leaves the day as it was — tank 16
+PASS 5a a reconnecting client's hello settles and persists the ended day; its join shows it ended — ended / ended
+PASS 6a after a restart past the end, the day ends with the stored rig; a later unplug does not rewrite it — ended tank 16
+PASS 7a everyone left after the end: the day is stored ended with its final tank — ended tank 16
+PASS 8a (control) a hose unplugged while paused at tick 10 does change the rest of that day: pumping stops — pumped 6 < 24
+PASS 9a the run module exports settleEndedDay for same-device peer tabs
+PASS 9b settleEndedDay ends a day past its end once (with its build), and leaves a day before its end alone
+PASS 10· (reference) the unchanged day ends with 96 records and the expected tank — ended, 96 records, tank 16
+FAIL 10 edit at end − 1 ms: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run running tick 0; hose unplugged; persisted run running; tank 40
+FAIL 10 edit at end − 1 ms: the room's final day (resources, 96 records, end build) is the day as it ran — tank 40 (expected 16), 96 records, endBuild {"complete":false,"missing":"no hose from the tank to the pump"}
+FAIL 10 edit at end − 1 ms: what clients compute from the room's run and current rig is that day — tank 40, pumped 0
+FAIL 10 edit at end − 1 ms: the persisted run payload is the ended day — ended tick 96 tank 40
+FAIL 10 edit at end − 1 ms: after a JSON restore of the persisted payloads the day is unchanged — tank 40
+FAIL 10 edit at end − 1 ms: a rejoining client gets the ended day — ended tank 40
+PASS 10 edit at end: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run ended tick 96; hose unplugged; persisted run ended; tank 16
+PASS 10 edit at end: the room's final day (resources, 96 records, end build) is the day as it ran — tank 16 (expected 16), 96 records, endBuild {"complete":true,"missing":""}
+PASS 10 edit at end: what clients compute from the room's run and current rig is that day — tank 16, pumped 24
+PASS 10 edit at end: the persisted run payload is the ended day — ended tick 96 tank 16
+PASS 10 edit at end: after a JSON restore of the persisted payloads the day is unchanged — tank 16
+PASS 10 edit at end: a rejoining client gets the ended day — ended tank 16
+PASS 10 edit at end + 1 ms: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run ended tick 96; hose unplugged; persisted run ended; tank 16
+PASS 10 edit at end + 1 ms: the room's final day (resources, 96 records, end build) is the day as it ran — tank 16 (expected 16), 96 records, endBuild {"complete":true,"missing":""}
+PASS 10 edit at end + 1 ms: what clients compute from the room's run and current rig is that day — tank 16, pumped 24
+PASS 10 edit at end + 1 ms: the persisted run payload is the ended day — ended tick 96 tank 16
+PASS 10 edit at end + 1 ms: after a JSON restore of the persisted payloads the day is unchanged — tank 16
+PASS 10 edit at end + 1 ms: a rejoining client gets the ended day — ended tank 16
+FAIL 10 move at end − 1 ms: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run running tick 0; hose unplugged; persisted run running; tank 40
+FAIL 10 move at end − 1 ms: the room's final day (resources, 96 records, end build) is the day as it ran — tank 40 (expected 16), 96 records, endBuild {"complete":false,"missing":"no hose from the tank to the pump"}
+FAIL 10 move at end − 1 ms: what clients compute from the room's run and current rig is that day — tank 40, pumped 0
+FAIL 10 move at end − 1 ms: the persisted run payload is the ended day — ended tick 96 tank 40
+FAIL 10 move at end − 1 ms: after a JSON restore of the persisted payloads the day is unchanged — tank 40
+FAIL 10 move at end − 1 ms: a rejoining client gets the ended day — ended tank 40
+PASS 10 move at end: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run ended tick 96; hose unplugged; persisted run ended; tank 16
+PASS 10 move at end: the room's final day (resources, 96 records, end build) is the day as it ran — tank 16 (expected 16), 96 records, endBuild {"complete":true,"missing":""}
+PASS 10 move at end: what clients compute from the room's run and current rig is that day — tank 16, pumped 24
+PASS 10 move at end: the persisted run payload is the ended day — ended tick 96 tank 16
+PASS 10 move at end: after a JSON restore of the persisted payloads the day is unchanged — tank 16
+PASS 10 move at end: a rejoining client gets the ended day — ended tank 16
+PASS 10 move at end + 1 ms: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run ended tick 96; hose unplugged; persisted run ended; tank 16
+PASS 10 move at end + 1 ms: the room's final day (resources, 96 records, end build) is the day as it ran — tank 16 (expected 16), 96 records, endBuild {"complete":true,"missing":""}
+PASS 10 move at end + 1 ms: what clients compute from the room's run and current rig is that day — tank 16, pumped 24
+PASS 10 move at end + 1 ms: the persisted run payload is the ended day — ended tick 96 tank 16
+PASS 10 move at end + 1 ms: after a JSON restore of the persisted payloads the day is unchanged — tank 16
+PASS 10 move at end + 1 ms: a rejoining client gets the ended day — ended tank 16
+greenhouse end: 50/62 checks passed (room code: <scratch>/old-b8d099a/cloudflare)
+FAILED:
+- 10 edit at end − 1 ms: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run running tick 0; hose unplugged; persisted run running; tank 40
+- 10 edit at end − 1 ms: the room's final day (resources, 96 records, end build) is the day as it ran — tank 40 (expected 16), 96 records, endBuild {"complete":false,"missing":"no hose from the tank to the pump"}
+- 10 edit at end − 1 ms: what clients compute from the room's run and current rig is that day — tank 40, pumped 0
+- 10 edit at end − 1 ms: the persisted run payload is the ended day — ended tick 96 tank 40
+- 10 edit at end − 1 ms: after a JSON restore of the persisted payloads the day is unchanged — tank 40
+- 10 edit at end − 1 ms: a rejoining client gets the ended day — ended tank 40
+- 10 move at end − 1 ms: the room accepts only after settling the day with the old rig (ended, persisted) — accepted true; run running tick 0; hose unplugged; persisted run running; tank 40
+- 10 move at end − 1 ms: the room's final day (resources, 96 records, end build) is the day as it ran — tank 40 (expected 16), 96 records, endBuild {"complete":false,"missing":"no hose from the tank to the pump"}
+- 10 move at end − 1 ms: what clients compute from the room's run and current rig is that day — tank 40, pumped 0
+- 10 move at end − 1 ms: the persisted run payload is the ended day — ended tick 96 tank 40
+- 10 move at end − 1 ms: after a JSON restore of the persisted payloads the day is unchanged — tank 40
+- 10 move at end − 1 ms: a rejoining client gets the ended day — ended tank 40
+exit 1 · 1 s

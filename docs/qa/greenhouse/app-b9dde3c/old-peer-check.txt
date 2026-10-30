@@ -1,0 +1,6 @@
+FAIL 1 a-first: a's reset (new run) and z's concurrent step on the old run: both tabs keep the reset — a: run 1 paused tick 4 seed 11; z: run 1 paused tick 4 seed 11
+FAIL 1 z-first: a's reset (new run) and z's concurrent step on the old run: both tabs keep the reset — a: run 1 paused tick 4 seed 11; z: run 1 paused tick 4 seed 11
+PASS 2 every pair of concurrent run actions, both delivery orders (196 cases): both tabs converge on the same run state — 196/196
+FAIL 2 …and never on a run older than the newest one either tab made (a reset is never undone) — 176/196
+FAIL 3 an older run's state with a high stamp (a late or replayed message) never replaces a newer run — run 1 idle tick 0 seed 11
+greenhouse peer (stamp): 1/5 checks passed

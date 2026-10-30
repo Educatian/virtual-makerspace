@@ -1,0 +1,25 @@
+app b8d099aeb680e9c610b41873532400d62751313e
+(docs/episodes.md held aside during the runs: the worktree is exactly the app commit)
+npm-test exit=0 131s
+build exit=0 9s
+panel exit=0 5s
+old-end-check exit=1 0s
+old-time-check exit=1 0s
+old-relay-check exit=1 20s
+old-peer-check exit=1 1s
+old-panel exit=1 35s
+e2e-greenhouse exit=0 5420s
+e2e-greenhouse-fixes exit=0 1533s
+worker-sync exit=0 3s
+cable-end exit=0 421s
+room-sync attempt1 interrupted: the container restarted during it (no exit code recorded); log room-sync-attempt1-interrupted.txt
+room-sync exit=0 666s
+snapino-history attempt1 exit=1 611s (24/25: "changed parts + same running program … and on the importer" failed; log snapino-history-attempt1.txt)
+snapino-history attempt2 exit=1 761s
+control: e2e-snapino-history on faa7c09 (its own worktree and dist), same environment after the container restart: exit=1, 24/25 (the attempt-1 check) — log control-faa7c09-snapino-history.txt
+qa-greenhouse-controls exit=0 2993s
+e2e-greenhouse-peer exit=0 337s
+qa-greenhouse-compare exit=0 190s
+qa-greenhouse-plug exit=0 2581s
+qa-greenhouse attempt1 exit=1 1402s (4 checks passed, then the script timed out choosing a prediction: its mid-day steps had begun attempt 1's day, which now fixes that attempt's prediction; log qa-greenhouse-attempt1.txt). Attempt 2 runs the script changed to start a new attempt there (a test-script change; the app is unchanged)
+qa-greenhouse exit=0 2066s

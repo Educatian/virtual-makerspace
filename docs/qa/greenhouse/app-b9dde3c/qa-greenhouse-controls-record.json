@@ -1,0 +1,319 @@
+{
+ "app": "b9dde3c01a239d30cfff692bfd01dfba35efefa8",
+ "base": "http://127.0.0.1:4173",
+ "rooms": [
+  "QLHB",
+  "QJ2C"
+ ],
+ "checks": [
+  {
+   "name": "1440 valve A handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 67×68 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1440 valve A handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"}]"
+  },
+  {
+   "name": "1440 valve A handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":0,\"applied\":true,\"centreAfter\":true},{\"value\":50,\"applied\":true,\"centreAfter\":true},{\"value\":100,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1440 valve B handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 67×67 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1440 valve B handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"}]"
+  },
+  {
+   "name": "1440 valve B handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":0,\"applied\":true,\"centreAfter\":true},{\"value\":50,\"applied\":true,\"centreAfter\":true},{\"value\":100,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1440 PUMP BELOW knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 63×62 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1440 PUMP BELOW knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"}]"
+  },
+  {
+   "name": "1440 PUMP BELOW knob: values typed after the 3D click are applied (10, 50, 90), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":10,\"applied\":true,\"centreAfter\":true},{\"value\":50,\"applied\":true,\"centreAfter\":true},{\"value\":90,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1440 FAN ABOVE knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 64×63 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1440 FAN ABOVE knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"}]"
+  },
+  {
+   "name": "1440 FAN ABOVE knob: values typed after the 3D click are applied (20, 30, 40), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":20,\"applied\":true,\"centreAfter\":true},{\"value\":30,\"applied\":true,\"centreAfter\":true},{\"value\":40,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1440 no click or short drag on a control moved any hose or cable end (both ends of every line at the same world position, every line's status unchanged)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1440 from the 3D click: the field, its steppers and Apply are ≥ 44 px tall, and Tab moves to the next control",
+   "ok": true,
+   "detail": "{\"sizes\":[{\"what\":\"Lower Valve A opening\",\"h\":44},{\"what\":\"gh-valveA\",\"h\":44},{\"what\":\"Raise Valve A opening\",\"h\":44},{\"what\":\"Lower Valve B opening\",\"h\":44},{\"what\":\"gh-valveB\",\"h\":44},{\"what\":\"Raise Valve B opening\",\"h\":44},{\"what\":\"Apply to the room\",\"h\":44},{\"what\":\"Discard draft\",\"h\":44}],\"next\":{\"label\":\"Raise Valve A opening\",\"h\":44}}"
+  },
+  {
+   "name": "1440 while the day runs: a 3D click on valve B selects the manifold, its fields are locked with the reason shown, and the unapplied valve A draft (35) is kept",
+   "ok": true,
+   "detail": "{\"drafts\":{\"valve-manifold:valveA\":\"35\"},\"disabled\":true,\"note\":true}"
+  },
+  {
+   "name": "1440 …and nothing was sent: the room's valve values are unchanged",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1440 after a pause, the kept draft applies (valve A 35 %)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1440 the hose end at VALVE B OUT (next to the valve B handwheel) is dragged out of its port and back into it by pointer",
+   "ok": true,
+   "detail": "{\"underTheGrab\":[{\"part\":\"irrigation-hose-4\",\"mesh\":\"Mesh\",\"distance\":9.433,\"control\":null,\"handle\":false,\"ring\":false,\"visible\":false,\"material\":\"fault_collar\"},{\"part\":\"irrigation-hose-4\",\"mesh\":\"Mesh\",\"distance\":9.45,\"control\":null,\"handle\":true,\"ring\":true,\"visible\":true,\"material\":\"\"}],\"out\":\"loose\",\"back\":\"branch\"}"
+  },
+  {
+   "name": "1280 valve A handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 58×59 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1280 valve A handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-valveA\",\"selected\":\"valve-manifold\"}]"
+  },
+  {
+   "name": "1280 valve A handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":0,\"applied\":true,\"centreAfter\":true},{\"value\":50,\"applied\":true,\"centreAfter\":true},{\"value\":100,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1280 valve B handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 58×58 px; grab spheres behind the plate at 3 samples; other surfaces {}"
+  },
+  {
+   "name": "1280 valve B handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-valveB\",\"selected\":\"valve-manifold\"}]"
+  },
+  {
+   "name": "1280 valve B handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":0,\"applied\":true,\"centreAfter\":true},{\"value\":50,\"applied\":true,\"centreAfter\":true},{\"value\":100,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1280 PUMP BELOW knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 54×54 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1280 PUMP BELOW knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-pumpBelow\",\"selected\":\"farm-controller\"}]"
+  },
+  {
+   "name": "1280 PUMP BELOW knob: values typed after the 3D click are applied (10, 50, 90), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":10,\"applied\":true,\"centreAfter\":true},{\"value\":50,\"applied\":true,\"centreAfter\":true},{\"value\":90,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1280 FAN ABOVE knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front",
+   "ok": true,
+   "detail": "144/144; plate 55×55 px; grab spheres behind the plate at 0 samples; other surfaces {}"
+  },
+  {
+   "name": "1280 FAN ABOVE knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field",
+   "ok": true,
+   "detail": "[{\"dx\":0,\"dy\":0,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":-15,\"dy\":0,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":15,\"dy\":0,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":-15,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"},{\"dx\":0,\"dy\":15,\"focused\":\"gh-fanAbove\",\"selected\":\"farm-controller\"}]"
+  },
+  {
+   "name": "1280 FAN ABOVE knob: values typed after the 3D click are applied (20, 30, 40), and in each resulting pose the centre still focuses the field",
+   "ok": true,
+   "detail": "[{\"value\":20,\"applied\":true,\"centreAfter\":true},{\"value\":30,\"applied\":true,\"centreAfter\":true},{\"value\":40,\"applied\":true,\"centreAfter\":true}]"
+  },
+  {
+   "name": "1280 no click or short drag on a control moved any hose or cable end (both ends of every line at the same world position, every line's status unchanged)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1280 from the 3D click: the field, its steppers and Apply are ≥ 44 px tall, and Tab moves to the next control",
+   "ok": true,
+   "detail": "{\"sizes\":[{\"what\":\"Lower Valve A opening\",\"h\":44},{\"what\":\"gh-valveA\",\"h\":44},{\"what\":\"Raise Valve A opening\",\"h\":44},{\"what\":\"Lower Valve B opening\",\"h\":44},{\"what\":\"gh-valveB\",\"h\":44},{\"what\":\"Raise Valve B opening\",\"h\":44},{\"what\":\"Apply to the room\",\"h\":44},{\"what\":\"Discard draft\",\"h\":44}],\"next\":{\"label\":\"Raise Valve A opening\",\"h\":44}}"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "targets": {
+  "1280": {
+   "valveA": {
+    "centre": {
+     "x": 498.4610830333458,
+     "y": 471.2265121287203
+    },
+    "plate": {
+     "w": 58,
+     "h": 59
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   },
+   "valveB": {
+    "centre": {
+     "x": 569.3254617271607,
+     "y": 479.7248835178213
+    },
+    "plate": {
+     "w": 58,
+     "h": 58
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 3,
+     "others": {}
+    }
+   },
+   "pumpBelow": {
+    "centre": {
+     "x": 625.866027136216,
+     "y": 446.46826447138596
+    },
+    "plate": {
+     "w": 54,
+     "h": 54
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   },
+   "fanAbove": {
+    "centre": {
+     "x": 693.7742955926252,
+     "y": 453.20012656501353
+    },
+    "plate": {
+     "w": 55,
+     "h": 55
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   }
+  },
+  "1440": {
+   "valveA": {
+    "centre": {
+     "x": 559.6153439191828,
+     "y": 578.2346600450022
+    },
+    "plate": {
+     "w": 67,
+     "h": 68
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   },
+   "valveB": {
+    "centre": {
+     "x": 640.0446476061661,
+     "y": 587.8099746751237
+    },
+    "plate": {
+     "w": 67,
+     "h": 67
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   },
+   "pumpBelow": {
+    "centre": {
+     "x": 705.1732983530117,
+     "y": 549.8636810841119
+    },
+    "plate": {
+     "w": 63,
+     "h": 62
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   },
+   "fanAbove": {
+    "centre": {
+     "x": 783.8600686502369,
+     "y": 557.7542697431802
+    },
+    "plate": {
+     "w": 64,
+     "h": 63
+    },
+    "square": {
+     "own": 144,
+     "total": 144,
+     "handleInFront": 0,
+     "handleBehind": 0,
+     "others": {}
+    }
+   }
+  }
+ },
+ "issues": [],
+ "ok": true
+}

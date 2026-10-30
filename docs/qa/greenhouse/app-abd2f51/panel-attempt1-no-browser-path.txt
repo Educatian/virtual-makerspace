@@ -1,0 +1,22 @@
+$ node scripts/greenhouse-panel-check.mjs <scratch>/r3/final/panel-results.json
+(cwd: wt-abd2f51; started 2026-10-30T08:01:20Z)
+panel source: this checkout
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1217/chrome-headless-shell-linux64/chrome-headless-shell
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     npx playwright install                                 ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+    at <scratch>/wt-abd2f51/scripts/greenhouse-panel-check.mjs:98:32 {
+  name: 'Error'
+}
+
+Node.js v22.22.0
+exit 1 · 1 s

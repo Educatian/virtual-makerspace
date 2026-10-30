@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { RoomCore } from "./room-core.js";
 import { sanitizeRescueAction, sanitizeRescueState } from "../src/episodes/rescue-state.ts";
+import { sanitizeGreenhouseAction, sanitizeGreenhouseRun } from "./greenhouse-run.js";
 import { COMPONENT_IDS, componentResource, sanitizeEdit, sanitizeProgram, sanitizeTransform } from "./sanitize.js";
 
 const ROOM_CODE = /^[A-Z2-9]{4,12}$/;
@@ -29,6 +30,7 @@ const ALLOWED_MESSAGE_KINDS = new Set([
   "edit",
   "room-state-request",
   "episode",
+  "greenhouse",
   "clock",
 ]);
 
@@ -358,8 +360,11 @@ export class MakerspaceRoom extends DurableObject {
       const stored = await this.state.storage.list({ prefix: "bench:" });
       const metadata = await this.state.storage.get("metadata");
       const episode = sanitizeRescueState(await this.state.storage.get("episode"));
+      // The greenhouse run (model time + resources) survives hibernation and restarts.
+      const greenhouse = sanitizeGreenhouseRun(await this.state.storage.get("greenhouse"));
       this.core = new RoomCore({
         ...(episode ? { episode } : {}),
+        ...(greenhouse ? { greenhouse } : {}),
         entries: [...stored].map(([key, entry]) => [key.slice("bench:".length), entry]),
         programRev: Number.isSafeInteger(metadata?.programRev) ? metadata.programRev : 0,
         program: metadata?.program ? { program: metadata.program, running: Boolean(metadata.programRunning) } : null,
@@ -475,6 +480,7 @@ export class MakerspaceRoom extends DurableObject {
       });
     }
     if (result.persist.episode) this.state.storage.put("episode", result.persist.episode);
+    if (result.persist.greenhouse) this.state.storage.put("greenhouse", result.persist.greenhouse);
     if (result.persist.state?.length) {
       this.state.storage.put(Object.fromEntries(result.persist.state.map(([componentId, entry]) => [`bench:${componentId}`, entry])));
     }
@@ -513,6 +519,7 @@ export class MakerspaceRoom extends DurableObject {
       });
     }
     this.state.storage.put("episode", this.core.episode);
+    this.state.storage.put("greenhouse", this.core.greenhouse);
     socket.close(code, reason);
   }
 
@@ -619,6 +626,11 @@ export class MakerspaceRoom extends DurableObject {
     }
     if (incoming.kind === "clock") {
       return typeof incoming.t0 === "number" && Number.isFinite(incoming.t0) ? { kind: "clock", t0: incoming.t0 } : null;
+    }
+    if (incoming.kind === "greenhouse") {
+      const action = sanitizeGreenhouseAction(incoming.action);
+      if (!action || typeof incoming.opId !== "string" || !/^[\w-]{1,80}$/.test(incoming.opId)) return null;
+      return { kind: "greenhouse", participantId: participant.id, opId: incoming.opId, action };
     }
     if (incoming.kind === "episode") {
       const action = sanitizeRescueAction(incoming.action);

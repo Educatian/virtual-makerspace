@@ -1,0 +1,17 @@
+  [ready] 1440 entered: 6 s (+3 frames)
+  [ready] 1440 overview: 16 s (+3 frames)
+PASS 1440 valve A handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 67×68 px; grab spheres behind the plate at 0 samples; other surfaces {}
+PASS 1440 valve A handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field — [{"dx":0,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":-15,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":15,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":0,"dy":-15,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":0,"dy":15,"focused":"gh-valveA","selected":"valve-manifold"}]
+  [ready] 1440 valveA 0: 7 s (+3 frames)
+  [ready] 1440 valveA 50: 10 s (+3 frames)
+  [ready] 1440 valveA 100: 10 s (+3 frames)
+PASS 1440 valve A handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field — [{"value":0,"applied":true,"centreAfter":true},{"value":50,"applied":true,"centreAfter":true},{"value":100,"applied":true,"centreAfter":true}]
+  [ready] 1440 valveA drag, overview again: 9 s (+3 frames)
+PASS 1440 valve B handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 64×63 px; grab spheres behind the plate at 1 samples; other surfaces {}
+PASS 1440 valve B handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field — [{"dx":0,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":-15,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":15,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":0,"dy":-15,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":0,"dy":15,"focused":"gh-valveB","selected":"valve-manifold"}]
+  [ready] 1440 valveB 0: 9 s (+3 frames)
+  [ready] 1440 valveB 50: 8 s (+3 frames)
+  [ready] 1440 valveB 100: 9 s (+3 frames)
+FAIL 1440 valve B handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field — [{"value":0,"applied":false,"centreAfter":true,"beforeEnter":{"active":"gh-valveB","value":"0","drafts":{"valve-manifold:valveA":"1100","valve-manifold:valveB":"0"}},"afterEnter":{"editNote":"Valve A: enter 0–100 %.","list":["valve A 100 %, valve B 100 %","soil < 50 %, fan when air > 30 °C"]}},{"value":50,"applied":false,"centreAfter":true,"beforeEnter":{"active":"gh-valveB","value":"50","drafts":{"valve-manifold:valveA":"1100","valve-manifold:valveB":"50"}},"afterEnter":{"editNote":"Valve A: enter 0–100 %.","list":["valve A 100 %, valve B 100 %","soil < 50 %, fan when air > 30 °C"]}},{"value":100,"applied":true,"centreAfter":true}]
+ERROR page.waitForFunction: Target page, context or browser has been closed
+qa greenhouse controls: 5/6 checks passed (rooms QQCZ)

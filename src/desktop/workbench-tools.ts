@@ -23,7 +23,7 @@ import {
 } from "../circuit/part-props.ts";
 import type { CircuitAnalysis } from "./circuit-topology.js";
 import type { CollaborationPhase, DesktopRoom, EditResult, SharedTransform } from "./collaboration.js";
-import { EditHistory, planProgramLoad, sameProgram, sameTransform, type HistoryChange } from "./edit-history.ts";
+import { EditHistory, planProgramLoad, sameProgram, sameTransform, type HistoryChange, type HistoryVerdict } from "./edit-history.ts";
 import { buildProject, isDefaultProject, parseProject, projectFileName, type ProjectFile } from "./project-file.ts";
 import type { ComponentSpec, DesktopWorkbenchScene, StudioKind } from "./scene.js";
 import type { SnapinoStatement } from "./snapino.ts";
@@ -491,7 +491,7 @@ export class WorkbenchTools {
   async submit(
     changes: Array<{ id: string; transform: SharedTransform }>,
     label: string,
-    options: { program?: SnapinoStatement[]; traceId?: string; record?: boolean; tone?: "neutral" | "valid" } = {},
+    options: { program?: SnapinoStatement[]; traceId?: string; record?: boolean; tone?: "neutral" | "valid"; afterAccept?: () => void | Promise<void> } = {},
   ): Promise<boolean> {
     const workbench = this.host.workbench();
     const room = this.host.room();
@@ -503,6 +503,7 @@ export class WorkbenchTools {
     const program = load.send?.program;
     if (!real.length && !load.send) {
       this.host.status(`${label} · nothing to change`, "neutral");
+      await options.afterAccept?.();
       return true;
     }
     const held = real.map((change) => ({ id: change.id, holder: this.host.holderOf(change.id) })).find((entry) => entry.holder);
@@ -516,9 +517,40 @@ export class WorkbenchTools {
       this.host.status(refusalCopy(label, result), "warning");
       this.lastEditorKey = "";
       this.queueRender();
+      // Not confirmed in time is not refused: the edit is still with the room. Its late answer
+      // finishes this edit exactly once — recorded, traced and reported as an accepted one, or
+      // reported as refused (nothing changed).
+      if (result.reason === "timeout" && result.later) {
+        void result.later.then(async (late) => {
+          if (this.disposed) return;
+          if (late.ok) {
+            await this.accepted(before, real, programBefore, program, load, label, options);
+            return;
+          }
+          this.host.status(refusalCopy(label, late), "warning");
+          this.lastEditorKey = "";
+          this.queueRender();
+        });
+      }
       return false;
     }
-    // The accepted state was applied (through the room) before this resolved.
+    await this.accepted(before, real, programBefore, program, load, label, options);
+    return true;
+  }
+
+  /** An edit from `submit` the room accepted (now, or late after a timeout): history, trace, status. */
+  private async accepted(
+    before: Record<string, SharedTransform>,
+    real: Array<{ id: string; transform: SharedTransform }>,
+    programBefore: SnapinoStatement[],
+    program: SnapinoStatement[] | undefined,
+    load: ReturnType<typeof planProgramLoad>,
+    label: string,
+    options: { traceId?: string; record?: boolean; tone?: "neutral" | "valid"; afterAccept?: () => void | Promise<void> },
+  ): Promise<void> {
+    const workbench = this.host.workbench();
+    if (!workbench) return;
+    // The accepted state was applied (through the room) before this ran.
     if (options.record !== false) {
       const after = workbench.getSharedTransforms();
       const recorded: HistoryChange[] = real.map((change) => ({ id: change.id, before: before[change.id], after: after[change.id] }));
@@ -538,7 +570,7 @@ export class WorkbenchTools {
     this.lastEditorKey = "";
     this.queueRender();
     this.noteChange();
-    return true;
+    await options.afterAccept?.();
   }
 
   private trace(componentId: string | undefined, detail: string): void {
@@ -610,7 +642,6 @@ export class WorkbenchTools {
       (id) => Boolean(this.host.holderOf(id)),
       () => this.host.roomProgram().program,
     );
-    const did = direction === "undo" ? "Undid" : "Redid";
     if (!verdict.ok) {
       const copy = verdict.reason === "empty"
         ? `Nothing to ${direction}`
@@ -622,8 +653,31 @@ export class WorkbenchTools {
       return;
     }
     this.stepping = true;
-    const result = await room.submitEdit(verdict.apply, verdict.program ? { program: verdict.program, running: false } : undefined)
-      .finally(() => { this.stepping = false; });
+    let result: EditResult;
+    try {
+      result = await room.submitEdit(verdict.apply, verdict.program ? { program: verdict.program, running: false } : undefined);
+    } catch (error) {
+      this.stepping = false;
+      throw error;
+    }
+    if (!result.ok && result.reason === "timeout" && result.later) {
+      // Still with the room: say so, and settle this step on its late answer, exactly once.
+      // Until then no other undo/redo is sent (it would re-submit or overtake this one).
+      this.host.status(refusalCopy(`${direction === "undo" ? "Undo" : "Redo"} "${verdict.label}"`, result), "warning");
+      this.updateHistoryButtons();
+      void result.later.then((late) => {
+        this.stepping = false;
+        if (!this.disposed) this.settleStep(direction, verdict, late);
+      });
+      return;
+    }
+    this.stepping = false;
+    this.settleStep(direction, verdict, result);
+  }
+
+  /** The room's answer to an undo/redo (on time or late): move or drop its entry, trace, report. */
+  private settleStep(direction: "undo" | "redo", verdict: Extract<HistoryVerdict, { ok: true }>, result: EditResult): void {
+    const did = direction === "undo" ? "Undid" : "Redid";
     if (!result.ok) {
       // The room is the judge: a stale step can never apply again; held/offline may later.
       if (result.reason === "stale") this.history.drop(direction, verdict.entry);
@@ -763,6 +817,7 @@ export class WorkbenchTools {
       this.host.status(`Import refused · ${parsed.error}`, "warning");
       return false;
     }
+    if (parsed.notice && confirm && !(await confirmDialog("Older greenhouse file", parsed.notice, "Load default rig"))) return false;
     const project = parsed.project;
     if (project.studio !== this.host.studio()) {
       this.host.status(`Import refused · this project is for the ${project.studio} studio; switch studios first`, "warning");
@@ -779,7 +834,12 @@ export class WorkbenchTools {
     ))) return false;
     const changes: Array<{ id: string; transform: SharedTransform }> = [];
     for (const part of project.parts) {
-      const transform = part.sockets ? workbench.placementTransform(part.id, part.sockets) : workbench.homeTransform(part.id);
+      const sockets = part.sockets;
+      const transform = !sockets
+        ? workbench.homeTransform(part.id)
+        : sockets[0] === null || sockets[1] === null
+          ? workbench.partialLineTransform(part.id, sockets)
+          : workbench.placementTransform(part.id, [sockets[0], sockets[1]]);
       if (!transform) {
         this.host.status(`Import refused · ${part.id} cannot be placed there`, "warning");
         return false;
@@ -788,18 +848,20 @@ export class WorkbenchTools {
       if (part.on !== undefined) transform.on = part.on;
       changes.push({ id: part.id, transform });
     }
-    const applied = await this.submit(changes, label, { program: project.program, tone: "valid" });
-    if (applied && project.episode && this.host.applyEpisodeDesign) {
-      // The workshop design is room state with its own rules (the sender's, not during a
-      // round): applied after the parts and program, and reported if the room refuses it.
-      const designed = await this.host.applyEpisodeDesign({ mission: project.episode.mission, intent: project.episode.intent });
-      if (!designed) this.host.status(`${label} · the Rescue Signal design was not applied (only the sender can change it, in an open workshop, and not during a round)`, "warning");
-    }
-    if (applied && project.draftProgram) {
-      this.host.loadDraft(project.draftProgram);
-      this.host.status(`${label} · its unsaved code draft is in your editor (press Run to share it)`, "valid");
-    }
-    return applied;
+    // After the room accepts the parts and program (now, or late after a timeout).
+    const afterAccept = async (): Promise<void> => {
+      if (project.episode && this.host.applyEpisodeDesign) {
+        // The workshop design is room state with its own rules (the sender's, not during a
+        // round): applied after the parts and program, and reported if the room refuses it.
+        const designed = await this.host.applyEpisodeDesign({ mission: project.episode.mission, intent: project.episode.intent });
+        if (!designed) this.host.status(`${label} · the Rescue Signal design was not applied (only the sender can change it, in an open workshop, and not during a round)`, "warning");
+      }
+      if (project.draftProgram) {
+        this.host.loadDraft(project.draftProgram);
+        this.host.status(`${label} · its unsaved code draft is in your editor (press Run to share it)`, "valid");
+      }
+    };
+    return this.submit(changes, label, { program: project.program, tone: "valid", afterAccept });
   }
 
   /** Something on the bench or the room program changed (here or remotely): autosave soon. */
@@ -887,10 +949,12 @@ function refusalCopy(label: string, result: Exclude<EditResult, { ok: true }>): 
       return `${label} refused by the room's validation (a value or jack outside the rules) · nothing changed`;
     case "occupied":
       return `${label} refused · that jack already holds another cable's plug (one plug per jack) · nothing changed`;
+    case "running":
+      return `${label} refused · the greenhouse day is running; pause it to change the rig · nothing changed`;
     case "offline":
       return `${label} not sent · reconnecting to the room, nothing changed`;
     case "timeout":
-      return `${label} not confirmed in time · if the room accepted it, it will still appear for everyone (not added to undo)`;
+      return `${label} not confirmed yet · still waiting for the room; if it accepts, the change appears for everyone and your undo history follows`;
     case "disconnected":
       // The connection closed while the edit was out: the room may have accepted it before.
       return `${label} not confirmed · the connection closed before the room answered; if the room accepted it, it will appear for everyone after reconnecting (not added to undo)`;

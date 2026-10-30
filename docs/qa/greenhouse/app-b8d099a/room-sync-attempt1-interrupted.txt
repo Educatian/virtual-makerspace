@@ -1,0 +1,11 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForSelector: Target page, context or browser has been closed
+Call log:
+[2m  - waiting for locator('#viewport-heading') to be visible[22m
+
+    at <scratch>/gh/scripts/e2e-room-sync.mjs:91:12
+
+Node.js v22.22.0

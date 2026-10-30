@@ -38,10 +38,23 @@ export type EditProgramRequest = EditProgram & { conditional?: boolean };
 
 /**
  * "invalid": the room's validation refused the batch (a value out of range, an unknown jack, a
- * moved fixture). "occupied": a Sound Flow Studio jack already holds another cable's plug.
+ * moved fixture). "occupied": a Sound Flow Studio jack or greenhouse port already holds another
+ * plug. "running": a greenhouse day is running, so its rig cannot change (pause first).
  */
-export type EditRefusal = "held" | "stale" | "invalid" | "occupied" | "offline" | "timeout" | "disconnected";
-export type EditResult = { ok: true } | { ok: false; reason: EditRefusal; holderName?: string; componentId?: string };
+export type EditRefusal = "held" | "stale" | "invalid" | "occupied" | "running" | "offline" | "timeout" | "disconnected";
+export type EditResult =
+  | { ok: true }
+  | {
+    ok: false;
+    reason: EditRefusal;
+    holderName?: string;
+    componentId?: string;
+    /**
+     * "timeout" only: the edit is still pending (see `expire`), and this resolves exactly once
+     * with the room's late answer — accepted, refused, or "disconnected" if the socket closed first.
+     */
+    later?: Promise<EditResult>;
+  };
 
 export type Stamp = [number, string];
 
@@ -58,7 +71,7 @@ export type SyncEffect =
    * still has later moves of the part in flight (sent after a new claim); those decide, so keep
    * the local position and take only values — the last one's ack or refusal settles it.
    */
-  | { type: "revert"; componentId: string; transform: SharedTransform | null; holderName?: string; superseded?: boolean; reason?: "occupied" }
+  | { type: "revert"; componentId: string; transform: SharedTransform | null; holderName?: string; superseded?: boolean; reason?: "occupied" | "running" }
   | { type: "claim-denied"; componentId: string; holderName: string }
   | { type: "claim-result"; resourceId: string; granted: boolean }
   /** Every move of a released drag was answered: `ok` if none was refused. */
@@ -281,7 +294,7 @@ export class SyncReplica {
         const count = this.unacked.get(componentId) ?? 0;
         const transform = (raw.transform as SharedTransform | null) ?? null;
         const holderName = typeof raw.holderName === "string" ? raw.holderName : undefined;
-        const reason = raw.reason === "occupied" ? "occupied" as const : undefined;
+        const reason = raw.reason === "occupied" ? "occupied" as const : raw.reason === "running" ? "running" as const : undefined;
         effects.push(count > 1
           ? { type: "revert", componentId, transform, holderName, superseded: true, ...(reason ? { reason } : {}) }
           : { type: "revert", componentId, transform, holderName, ...(reason ? { reason } : {}) });
@@ -362,7 +375,7 @@ export class SyncReplica {
           }
           const programRev = rev(raw.programRev);
           if (programRev !== null) this.programRev = programRev;
-          const reason = raw.reason === "held" || raw.reason === "stale" || raw.reason === "invalid" || raw.reason === "occupied" ? raw.reason : "stale";
+          const reason = raw.reason === "held" || raw.reason === "stale" || raw.reason === "invalid" || raw.reason === "occupied" || raw.reason === "running" ? raw.reason : "stale";
           effects.push({
             type: "resolve",
             opId,

@@ -1,0 +1,7 @@
+  [ready] overview-1440: 30 s (+3 frames)
+shot overview-1440: 252 calls, 53682 triangles
+  [ready] closeup-controls: 42 s (+3 frames)
+shot closeup-controls: 196 calls, 44590 triangles
+  [ready] overview-1280: 23 s (+3 frames)
+shot overview-1280: 251 calls, 53574 triangles
+exit=0

@@ -1,0 +1,189 @@
+{
+ "results": [
+  {
+   "name": "A1 PF learner joining a room whose day already ended (unsettled run): the day is shown as over",
+   "ok": true,
+   "detail": "tick 96"
+  },
+  {
+   "name": "A1 that day is not this learner's attempt: no result, PF notes still locked, no personal test trace",
+   "ok": false,
+   "detail": "{\"resultRun\":1,\"notesUnlocked\":true,\"traces\":[\"test Greenhouse day · attempt 1 · seed 11 · 3/5 (failed G3, G4)\"]}"
+  },
+  {
+   "name": "A1 the attempt card says the shown day finished without this learner (the room's result)",
+   "ok": false,
+   "detail": "Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: no prediction recorded. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A."
+  },
+  {
+   "name": "A2 PF: joining after the day was settled as ended: no attempt result, no test trace, notes locked",
+   "ok": false,
+   "detail": "{\"resultRun\":1,\"notesUnlocked\":true}"
+  },
+  {
+   "name": "A2 DI: joining after the day was settled as ended: no attempt result, no test trace",
+   "ok": false,
+   "detail": "{\"resultRun\":1,\"notesUnlocked\":true}"
+  },
+  {
+   "name": "A3 present during the day (tick 10): the run is recorded as one this learner was present for",
+   "ok": false,
+   "detail": "{}"
+  },
+  {
+   "name": "A3 after a studio switch, the day they were present for ends: it is their attempt, notes unlock, one test trace",
+   "ok": true,
+   "detail": "{\"resultRun\":1,\"notesUnlocked\":true,\"traces\":[\"test Greenhouse day · attempt 1 · seed 11 · 3/5 (failed G3, G4)\"]}"
+  },
+  {
+   "name": "A4 present at tick 50, reconnected after the end: their attempt (run 1), notes unlocked",
+   "ok": true,
+   "detail": "{\"resultRun\":1,\"notesUnlocked\":true}"
+  },
+  {
+   "name": "A5 the observed day was not credited; after the learner's reset, the new day (run 2) is their attempt",
+   "ok": false,
+   "detail": "{\"sent\":{\"type\":\"reset\",\"seed\":11,\"runId\":1},\"resultRun\":1,\"notesUnlocked\":true}"
+  },
+  {
+   "name": "A6 (boundary) a learner who arrived at tick 95, before the end, is credited with that day",
+   "ok": true,
+   "detail": "{\"resultRun\":1}"
+  },
+  {
+   "name": "B1 my reset's answer timed out: the outcome is uncertain (pending confirmation)",
+   "ok": false,
+   "detail": "Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed."
+  },
+  {
+   "name": "B1 a teammate's reset to seed 7 (run 2) is never reported as my reset; the note names what the room now shows",
+   "ok": false,
+   "detail": "Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B1 a run state without a cause (a join or reconnect) does not confirm it either",
+   "ok": false,
+   "detail": "Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B1 the room's state naming my op id confirms it (late answer)",
+   "ok": false,
+   "detail": "Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B2 pause: after my pause timed out, a teammate's pause does not confirm mine",
+   "ok": false,
+   "detail": "Paused the day · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B2 pause: the state naming my op id confirms it",
+   "ok": false,
+   "detail": "Paused the day · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B2 resume: after my resume timed out, a teammate's resume does not confirm mine",
+   "ok": false,
+   "detail": "Resumed the day · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B2 resume: the state naming my op id confirms it",
+   "ok": false,
+   "detail": "Resumed the day · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B2 step: after my step timed out, a teammate's step does not confirm mine",
+   "ok": false,
+   "detail": "Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed."
+  },
+  {
+   "name": "B2 step: the state naming my op id confirms it",
+   "ok": false,
+   "detail": "Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed."
+  },
+  {
+   "name": "B2 speed: after my speed timed out, a teammate's speed does not confirm mine",
+   "ok": false,
+   "detail": "Speed ×4 · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "B2 speed: the state naming my op id confirms it",
+   "ok": false,
+   "detail": "Speed ×4 · for everyone in the room (the room's answer arrived after the wait)"
+  },
+  {
+   "name": "C1 the worked allocation's day, which this learner was present for, meets the brief",
+   "ok": true,
+   "detail": "true"
+  },
+  {
+   "name": "C1 saved: the attempt is met and explained with the saved text",
+   "ok": false,
+   "detail": "{\"explained\":true}"
+  },
+  {
+   "name": "C1 erasing the draft does not erase the saved explanation: it stays saved, the page says the draft differs",
+   "ok": false,
+   "detail": "{\"explained\":true,\"pill\":\"Attempt 1 · brief met · explained\",\"status\":null}"
+  },
+  {
+   "name": "C1 a changed draft is not saved until Save: the saved text is still the first one",
+   "ok": false,
+   "detail": "{}"
+  },
+  {
+   "name": "C1 section completed",
+   "ok": false,
+   "detail": "locator.click: Timeout 30000ms exceeded."
+  },
+  {
+   "name": "C2 mid-day (tick 6): the prediction made before the day is fixed (dry, with its why); the choices are disabled and a forced change does not alter it",
+   "ok": false,
+   "detail": ""
+  },
+  {
+   "name": "C2 the finished day's summary compares with the fixed prediction",
+   "ok": false,
+   "detail": "Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: Meets the brief: both beds in range, air under control, reserve kept. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A."
+  },
+  {
+   "name": "C2 a change after the result does not rewrite what was predicted",
+   "ok": false,
+   "detail": "Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: Meets the brief: both beds in range, air under control, reserve kept. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A."
+  },
+  {
+   "name": "C2 after a session reload the same prediction and summary",
+   "ok": false,
+   "detail": ""
+  },
+  {
+   "name": "C3 section completed",
+   "ok": false,
+   "detail": "Cannot read properties of undefined (reading 'prediction')"
+  },
+  {
+   "name": "C4 a new attempt: no fixed prediction yet, and the choices are enabled again",
+   "ok": false,
+   "detail": "{\"attempt\":2}"
+  },
+  {
+   "name": "D1 the list's flow values changed over 12 steps while a list button had keyboard focus",
+   "ok": true,
+   "detail": "640 → 621 chars"
+  },
+  {
+   "name": "D1 keyboard focus stayed on the same button (the same element) through those updates",
+   "ok": false,
+   "detail": "{\"focusedKey\":\"irrigation-hose-3\",\"still\":{\"key\":null,\"mark\":null}}"
+  },
+  {
+   "name": "D1 Enter on it still works: it selects that part",
+   "ok": false,
+   "detail": ""
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

@@ -1,0 +1,13 @@
+$ node <scratch>/gh/scripts/e2e-greenhouse-join.mjs http://127.0.0.1:4176 <scratch>/r3/final/e2e-greenhouse-join-results.json
+(cwd: wt-abd2f51; started 2026-10-30T09:27:15Z)
+  [ready] TabA entered: 2 s (+3 frames)
+  [ready] TabB entered: 7 s (+3 frames)
+PASS A and B start on the brief's day, idle — [[1,11,"idle",0],[1,11,"idle",0]]
+PASS 1. A steps run 1 to tick 4; B accepts it — [[1,11,"paused",4],[1,11,"paused",4]]
+PASS 2. B steps to tick 8 with its update held; A still at tick 4 — [[1,11,"paused",4],[1,11,"paused",8]]
+  [ready] TabC entered: 11 s (+3 frames)
+PASS 3. C joins and holds A's run 1 at tick 4 — [[1,11,"paused",4]]
+PASS 4. B's held step is delivered: A, B and C all end at tick 8 — 3 held message(s) released · [[1,11,"paused",8],[1,11,"paused",8],[1,11,"paused",8]]
+FAIL run completed — page.click: Timeout 240000ms exceeded.
+e2e greenhouse join: 5/6 checks passed
+exit 1 · 885 s

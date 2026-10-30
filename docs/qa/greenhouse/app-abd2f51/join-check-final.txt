@@ -1,0 +1,12 @@
+$ node scripts/greenhouse-join-check.mjs
+(cwd: wt-abd2f51; started 2026-10-30T07:43:24Z)
+PASS 1a A steps run 1 to tick 4; B accepts it — A run 1 tick 4, B run 1 tick 4
+PASS 1b B steps to tick 8; its update is held from A and C — B run 1 tick 8
+PASS 1c C joins and gets A's run at tick 4 (B's step is still held) — C run 1 tick 4
+PASS 1d once B's step is delivered, all three tabs are at tick 8 — A run 1 tick 8, B run 1 tick 8, C run 1 tick 8
+PASS 2a a tab joining an idle room holds the brief's day, idle — C run 1 tick 0 idle
+PASS 2b the first step by the newest tab reaches every tab (the idle copy never outranks it) — A run 1 tick 4, B run 1 tick 4, C run 1 tick 4
+PASS 3a C joins with A's run 1 at tick 8 while B's reset is held — C run 1 tick 8
+PASS 3b B's reset (run 2) reaches all three; no tab keeps the old run — A run 2 tick 0, B run 2 tick 0, C run 2 tick 0
+greenhouse join: 8/8 checks passed (source: <scratch>/wt-abd2f51)
+exit 0 · 0 s

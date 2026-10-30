@@ -353,4 +353,78 @@ for (const [kind, raw] of [
   ok(parseProject(JSON.stringify(buildProject(sno, {}, [{ op: "wait", ms: 50 }])), () => sno).ok, "older Snapino projects without a design still import");
 }
 
+// ── Greenhouse projects (Episode 3): version 3, typed ports, no run state, v1 migration ──────
+{
+  const { GH_FIXTURE_IDS, GH_LINE_IDS, GH_PROBE_ID, greenhousePropKind } = await import("../cloudflare/greenhouse-rules.js");
+  const { GREENHOUSE_PROJECT_VERSION, GREENHOUSE_MODEL_VERSION } = await import("../src/desktop/project-file.ts");
+  const parts = {};
+  for (const id of [...GH_FIXTURE_IDS, ...GH_LINE_IDS, GH_PROBE_ID]) parts[id] = greenhousePropKind(id);
+  const gh = { studio: "greenhouse", parts, socketCount: 18, switches: [], sharedSockets: false, fixtures: GH_FIXTURE_IDS };
+  const catalog = (studio) => (studio === "greenhouse" ? gh : null);
+  const fixture = (id, props) => ({ position: [0, 0, 0], rotation: [0, 0, 0], sockets: null, ...(props ? { props } : {}) });
+  const line = (sockets) => ({ position: [0, 0.16, 0], rotation: [0, 0, 0], sockets, endpoints: [[0, 0, 0], [1, 0, 0]] });
+  const brief = {
+    "valve-manifold": fixture("valve-manifold", { valveA: 30, valveB: 50 }),
+    "farm-controller": fixture("farm-controller", { pumpBelow: 60, fanAbove: 26 }),
+    "irrigation-hose": line([0, 1]), "irrigation-hose-2": line([2, 3]), "irrigation-hose-3": line([4, 6]), "irrigation-hose-4": line([5, null]),
+    "power-cable-1": line([8, 9]), "power-cable-2": line([10, 12]), "power-cable-3": line([11, 13]),
+    "soil-sensor": line([14, 15]),
+  };
+  // A run state in the room never reaches a file, even if a transform map carried extra keys.
+  const project = buildProject(gh, brief, null, new Date(0));
+  eq([project.version, project.solver, project.studio], [GREENHOUSE_PROJECT_VERSION, GREENHOUSE_MODEL_VERSION, "greenhouse"], "greenhouse projects are version 3 with the model stamp");
+  eq(Object.keys(project).sort(), ["format", "parts", "savedAt", "solver", "studio", "version"], "only build keys: no run, resources, model time, names or notes");
+  const byId = Object.fromEntries(project.parts.map((part) => [part.id, part]));
+  eq(byId["irrigation-hose-4"].sockets, [5, null], "a half-plugged hose keeps its one plugged end");
+  eq(byId["soil-sensor"].sockets, [14, 15], "the probe's slot");
+  eq(byId["valve-manifold"], { id: "valve-manifold", sockets: null, props: { valveA: 30, valveB: 50 } }, "fixtures carry values, never sockets");
+  const back = parseProject(JSON.stringify(project), catalog);
+  ok(back.ok && !back.notice, "a version-3 greenhouse file imports");
+  eq(back.ok && back.project.parts, project.parts, "and round-trips exactly");
+  const variant = (mutate) => {
+    const copy = JSON.parse(JSON.stringify(project));
+    mutate(copy, Object.fromEntries(copy.parts.map((part) => [part.id, part])));
+    let result;
+    assert.doesNotThrow(() => { result = parseProject(JSON.stringify(copy), catalog); });
+    return result;
+  };
+  const refused = [
+    ["a hose in a power port", (_, p) => { p["irrigation-hose"].sockets = [0, 12]; }],
+    ["a power cable in a water port", (_, p) => { p["power-cable-1"].sockets = [8, 1]; }],
+    ["a cable in a probe slot", (_, p) => { p["power-cable-1"].sockets = [8, 14]; }],
+    ["the probe across two beds", (_, p) => { p["soil-sensor"].sockets = [14, 16]; }],
+    ["the probe in water ports", (_, p) => { p["soil-sensor"].sockets = [6, 7]; }],
+    ["two lines in one port", (_, p) => { p["irrigation-hose-2"].sockets = [2, 1]; }],
+    ["a half-plugged line on a taken port", (_, p) => { p["irrigation-hose-4"].sockets = [null, 6]; }],
+    ["both ends in one port", (_, p) => { p["irrigation-hose"].sockets = [0, 0]; }],
+    ["a fixture with sockets", (_, p) => { p["water-pump"].sockets = [1, 2]; }],
+    ["a port that does not exist", (_, p) => { p["irrigation-hose"].sockets = [0, 18]; }],
+    ["a fractional port", (_, p) => { p["irrigation-hose"].sockets = [0, 1.5]; }],
+    ["a valve off its 5 % step", (_, p) => { p["valve-manifold"].props = { valveA: 33, valveB: 50 }; }],
+    ["a rule out of range", (_, p) => { p["farm-controller"].props = { pumpBelow: 95, fanAbove: 26 }; }],
+    ["a value as a string", (_, p) => { p["farm-controller"].props = { pumpBelow: "60", fanAbove: 26 }; }],
+    ["values on a line", (_, p) => { p["irrigation-hose"].props = { valveA: 30, valveB: 50 }; }],
+    ["a switch state", (_, p) => { p["vent-fan"].on = true; }],
+    ["an unknown part", (copy) => { copy.parts.push({ id: "sprinkler", sockets: null }); }],
+    ["a run (model time, tank) in the file", (copy) => { copy.run = { tick: 40, tank: 40 }; }],
+    ["version 2 for the greenhouse", (copy) => { copy.version = 2; }],
+    ["a hostile sockets object", (_, p) => { p["irrigation-hose"].sockets = { 0: 0, 1: 1, length: 2 }; }],
+    ["a hostile value", (_, p) => { p["valve-manifold"].props = { valveA: { valueOf: () => 30 }, valveB: 50 }; }],
+  ];
+  for (const [label, mutate] of refused) eq(variant(mutate).ok, false, `refused: ${label}`);
+  eq(parseProject(JSON.stringify({ ...project, studio: "circuit" }), (studio) => (studio === "circuit" ? { studio: "circuit", parts: {}, socketCount: 100 } : null)).ok, false, "a version-3 file naming another studio is refused");
+  // The earlier placeholder greenhouse (version 1): migrated to the default rig, with a notice.
+  const old = { format: PROJECT_FORMAT, version: 1, solver: "dc-mna-1", studio: "greenhouse", savedAt: "2026-01-01T00:00:00.000Z", parts: [{ id: "soil-sensor", sockets: [0, 1] }, { id: "water-pump", sockets: [12, 14] }, { id: "irrigation-hose", sockets: [15, 18] }] };
+  const migrated = parseProject(JSON.stringify(old), catalog);
+  ok(migrated.ok && typeof migrated.notice === "string" && /version 1/.test(migrated.notice), "a version-1 greenhouse file migrates, with a notice");
+  ok(migrated.ok && migrated.project.version === GREENHOUSE_PROJECT_VERSION && migrated.project.parts.every((part) => part.sockets === null && part.props === undefined), "to the default rig: everything unplugged, default values");
+  eq(migrated.ok && migrated.project.parts.length, Object.keys(parts).length, "every greenhouse part, once");
+  eq(parseProject(JSON.stringify({ ...old, parts: "x" }), catalog).ok, false, "a malformed version-1 greenhouse file is still refused");
+  // Recovery: the default rig is empty; any plugged line or changed value is worth saving.
+  const defaults = (id) => (id === "valve-manifold" ? { valveA: 100, valveB: 100 } : id === "farm-controller" ? { pumpBelow: 50, fanAbove: 30 } : null);
+  ok(isDefaultProject(buildProject(gh, { "valve-manifold": fixture("valve-manifold", { valveA: 100, valveB: 100 }) }), defaults), "the default rig is not offered for recovery");
+  ok(!isDefaultProject(buildProject(gh, { "irrigation-hose": line([0, null]) }), defaults), "a half-plugged hose is worth saving");
+  ok(!isDefaultProject(buildProject(gh, { "farm-controller": fixture("farm-controller", { pumpBelow: 60, fanAbove: 30 }) }), defaults), "a changed rule is worth saving");
+}
+
 console.log(`project state: ${checks} checks passed`);

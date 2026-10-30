@@ -1,0 +1,4 @@
+PASS a step gives a paused day at tick 4 — paused 4
+FAIL after the last socket closed, a rejoin gets the same paused day (tick 4), not a fresh idle day — idle tick 0
+PASS the bench itself reset (as in the Durable Object)
+greenhouse relay: 2/3 checks passed (relay: <scratch>/old-faa7c09/server/collaboration.mjs)

@@ -1,0 +1,43 @@
+  [ready] host entered: 3 s (+3 frames)
+  [ready] member entered: 5 s (+4 frames)
+PASS DI host sees the worked example; PF member does not
+PASS no AudioContext on either page before any click
+  [ready] host after plug A0: 15 s (+3 frames)
+  [ready] member after plug B0: 19 s (+3 frames)
+  [ready] member after plug B1: 11 s (+3 frames)
+  [ready] member after plug C0: 11 s (+3 frames)
+PASS pointer-dragged plugs: both makers hold the same patch Source → Filter → Drive → Speaker — {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]} | {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]}
+  [ready] member before occupied: 11 s (+3 frames)
+PASS occupied: the plug dropped on Filter IN (taken) stays out, for both; Filter IN keeps the red cable — member C [4,null], host C [4,null]; status "Filter IN already holds a plug (one plug per jack) · Blue cable end B stays out"
+  [ready] member after occupied: 10 s (+3 frames)
+PASS host Test on the default knobs: not met (C2 tone fails), measured values shown — ["C1:met","C2:not","C3:met","C4:met","C5:met"]
+PASS host's Source edit (220 Hz sawtooth, by keyboard) accepted and received by the member — {"hz":220,"wave":"sawtooth"}; host note: Set Source to sawtooth 220 Hz · shared with the room; host drafts {}
+PASS member's unapplied draft (650) survives the host's accepted cutoff 300; the member's model shows the room's 300 — draft "650"
+PASS member applies the draft: accepted, the host sees 650
+PASS member Undo: both back to 300
+PASS member Redo: both at 650
+PASS stale: one simultaneous gain edit is refused; that maker holds the room's value and keeps their draft — attempt 3: ["Not applied · a teammate changed it first, so their value is kept; nothing changed. Your draft is kept below.","Set Drive gain to ×2.13 (+6.6 dB) · shared with the room"]; room gain 2.13; loser draft 1.13
+  [ready] host before hold: 9 s (+3 frames)
+PASS declined: while the host holds the yellow cable, the member's Unplug is disabled and says who holds it — {"disabled":true,"note":"free (on the mat or loose) ↔ Drive INNow: one end is loose: carries nothing.host is holding this cable.\n      Drag either plug in 3D into a jack. Plugging is shared with ever
+PASS after the hold: the patch is unchanged for both — {"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]}
+PASS host: a click starts audio (one AudioContext, running) — {"contexts":1,"audio":"running"}
+PASS host: Mute applies at once
+PASS teammate edits never unmute, raise or restart the host's audio; the member never had audio — {"host":{"contexts":1,"muted":true,"volume":0.5},"member":0}
+PASS member: losing the connection stops audio; after reconnecting it holds the room's gain (1.60) and audio stays off until a click — {"dropped":"off","gain":1.6,"audio":"off","contexts":1}
+  [ready] late entered: 16 s (+4 frames)
+PASS late joiner receives the canonical patch and knobs; no audio on its page — {"cables":{"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]},"source":{"hz":220,"wave":"sawtooth"},"filter":{"cutoff":300},"drive":{"gain":1.6},"speakerOn":true}
+PASS host Test on the fixed patch: all five criteria met — ["C1:Source → Filter → Drive → Speaker","C2:sawtooth at 220 Hz","C3:660 Hz is 22.3 dB below 220 Hz","C4:no clipping","C5:peak −6.6 dBFS"]
+PASS host: explanation saved → brief met and explained
+PASS PF member: explanatory notes withheld before their first Test, unlocked after it
+PASS export: version 2 Sound project, allowed keys only, patch and knobs, no names/chat/predictions — ["format","version","solver","studio","savedAt","parts"]
+PASS an older version-1 Circuit Bench file is refused here with the reason — Import refused · this project is for the circuit studio; switch studios first
+PASS Reset bench: every cable on the mat and every knob at its default, for both — {"cables":{"snd-cable-a":[null,null],"snd-cable-b":[null,null],"snd-cable-c":[null,null]},"source":{"hz":440,"wave":"sine"},"filter":{"cutoff":2000},"drive":{"gain":1},"speakerOn":true}
+PASS import of the exported file restores the patch and knobs for both (one room edit) — {"cables":{"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]},"source":{"hz":220,"wave":"sawtooth"},"filter":{"cutoff":300},"drive":{"gain":1.6},"speakerOn":true}
+  [ready] host before leaving: 8 s (+3 frames)
+  [ready] host entered: 3 s (+4 frames)
+PASS after everyone left the room reset; returning, the host is offered its saved bench — {"snd-cable-a":[null,null],"snd-cable-b":[null,null],"snd-cable-c":[null,null]}
+  [ready] member entered: 7 s (+3 frames)
+PASS restore: the room holds the recovered patch; the member rejoining sees it — {"cables":{"snd-cable-a":[0,1],"snd-cable-b":[2,3],"snd-cable-c":[4,5]},"source":{"hz":220,"wave":"sawtooth"},"filter":{"cutoff":300},"drive":{"gain":1.6},"speakerOn":true}
+PASS rejoining never starts audio — {"host":0,"member":0}
+PASS no page errors
+e2e sound: 29/29 checks passed (room SZSB; artifacts <scratch>/final-faa/e2e-sound)

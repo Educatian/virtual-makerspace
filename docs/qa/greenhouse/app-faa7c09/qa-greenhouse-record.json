@@ -1,0 +1,520 @@
+{
+ "app": "faa7c09",
+ "base": "http://127.0.0.1:4173",
+ "shots": [
+  {
+   "name": "01-overview",
+   "file": "01-overview.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 252,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "03-top",
+   "file": "03-top.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 241,
+   "triangles": 53422,
+   "camera": {
+    "position": [
+     0.20000000000000018,
+     9.808885676708526,
+     2.2742925605039828
+    ],
+    "target": [
+     0.20000000000000018,
+     0.45,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": "key 2"
+  },
+  {
+   "name": "04-beds",
+   "file": "04-beds.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 199,
+   "triangles": 50358,
+   "camera": {
+    "position": [
+     -0.7946886136141733,
+     5.690677922918111,
+     2.401556931929133
+    ],
+    "target": [
+     -1.375,
+     0.7000000000000001,
+     -0.5
+    ],
+    "moving": false
+   },
+   "note": "key 3"
+  },
+  {
+   "name": "05-wrong-build",
+   "file": "05-wrong-build.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 261,
+   "triangles": 57394,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "05b-wrong-build-flow",
+   "file": "05b-wrong-build-flow.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#gh-flow-card",
+   "calls": 261,
+   "triangles": 57394,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "06-built-midday",
+   "file": "06-built-midday.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "06b-day-card",
+   "file": "06b-day-card.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#gh-day-card",
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "07-closeup-pump-manifold",
+   "file": "07-closeup-pump-manifold.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 227,
+   "triangles": 52074,
+   "camera": {
+    "position": [
+     -0.4,
+     2.7,
+     4.7
+    ],
+    "target": [
+     -0.4,
+     0.6,
+     1.95
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "08-closeup-beds-probe",
+   "file": "08-closeup-beds-probe.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 128,
+   "triangles": 34838,
+   "camera": {
+    "position": [
+     -1.6000000000000005,
+     2.9,
+     2.5
+    ],
+    "target": [
+     -1.5000000000000004,
+     0.5500000000000002,
+     -0.4500000000000001
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "09-failure",
+   "file": "09-failure.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2600004885069882,
+     8.382003517250311,
+     7.599003370698216
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "09b-failure-verdict",
+   "file": "09b-failure-verdict.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#gh-verdict",
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2600004885069882,
+     8.382003517250311,
+     7.599003370698216
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "10-recovery",
+   "file": "10-recovery.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": null,
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2600004885069882,
+     8.382003517250311,
+     7.599003370698216
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "10b-recovery-verdict",
+   "file": "10b-recovery-verdict.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#gh-verdict",
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2600004885069882,
+     8.382003517250311,
+     7.599003370698216
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "11-selected-manifold",
+   "file": "11-selected-manifold.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#gh-part-card",
+   "calls": 253,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2600004885069882,
+     8.382003517250311,
+     7.599003370698216
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "02-overview-1280",
+   "file": "02-overview-1280.png",
+   "viewport": {
+    "width": 1280,
+    "height": 720
+   },
+   "element": null,
+   "calls": 251,
+   "triangles": 53574,
+   "camera": {
+    "position": [
+     1.1715664292937529,
+     7.745278290915019,
+     6.9888083621268935
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "12-phone-top",
+   "file": "12-phone-top.png",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "element": null,
+   "calls": 233,
+   "triangles": 52074,
+   "camera": {
+    "position": [
+     1.5968605915391567,
+     10.807396259081925,
+     9.92333808162018
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  },
+  {
+   "name": "13-phone-dock",
+   "file": "13-phone-dock.png",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "element": null,
+   "calls": 233,
+   "triangles": 52074,
+   "camera": {
+    "position": [
+     1.5968605915391567,
+     10.807396259081925,
+     9.92333808162018
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": "after wheel + Tab"
+  },
+  {
+   "name": "14-pf-panel",
+   "file": "14-pf-panel.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "element": "#gh-panel",
+   "calls": 252,
+   "triangles": 53682,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   },
+   "note": ""
+  }
+ ],
+ "checks": [
+  {
+   "name": "1440×900 overview: the greenhouse fills ≥ 60 % of the free width",
+   "ok": true,
+   "detail": "0.914"
+  },
+  {
+   "name": "camera keys 2 and 3 frame different views",
+   "ok": true,
+   "detail": "[0.20000000000000018,0.45,0.28500000000000014] | [-1.375,0.7000000000000001,-0.5]"
+  },
+  {
+   "name": "wrong build drawn as built: no pump, OUT→OUT and loose; nothing flows",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"no-pump\",\"irrigation-hose-2\":\"unplugged\",\"irrigation-hose-3\":\"out-out\",\"irrigation-hose-4\":\"unplugged\",\"power-cable-1\":\"loose\",\"power-cable-2\":\"unplugged\",\"power-cable-3\":\"unplugged\"}"
+  },
+  {
+   "name": "mid-day (paused): resources from the model, ledgers balanced",
+   "ok": true,
+   "detail": "{\"tick\":28,\"tank\":25.6,\"balance\":{\"water\":0,\"energy\":0}}"
+  },
+  {
+   "name": "dock collapsed: the day keeps running and the HUD clock follows it",
+   "ok": true,
+   "detail": "{\"collapsedAt\":{\"tick\":7,\"clock\":\"07:45\"},\"collapsedLater\":{\"tick\":11,\"clock\":\"08:45\",\"dockHidden\":true}}"
+  },
+  {
+   "name": "failure: the default allocation fails the brief (bed B out of range too long)",
+   "ok": true,
+   "detail": "[\"G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed\",\"G2:bed A stressed 0 h\",\"G3:bed B stressed 9.5 h\",\"G4:air above 35 °C for 1.5 h\",\"G5:16.0 L left\"]"
+  },
+  {
+   "name": "recovery: the worked allocation meets all five criteria",
+   "ok": true,
+   "detail": "[\"G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed\",\"G2:bed A stressed 0 h\",\"G3:bed B stressed 1 h\",\"G4:air above 35 °C for 0 h\",\"G5:11.2 L left\"]"
+  },
+  {
+   "name": "1280×720 overview: the greenhouse fills ≥ 60 % of the free width",
+   "ok": true,
+   "detail": "0.919"
+  },
+  {
+   "name": "phone: no horizontal overflow",
+   "ok": true,
+   "detail": "0"
+  },
+  {
+   "name": "phone: Start the day reached by keyboard after wheel scrolling; target ≥ 44 px",
+   "ok": true,
+   "detail": "{\"x\":23,\"y\":400.25,\"width\":129.828125,\"height\":44}"
+  },
+  {
+   "name": "phone: every visible control in the greenhouse tab is at least 44 px tall",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "name": "PF: no worked example",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "issues": [],
+ "ok": true
+}

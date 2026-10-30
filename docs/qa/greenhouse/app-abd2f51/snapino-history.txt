@@ -1,0 +1,35 @@
+$ node <scratch>/gh/scripts/e2e-snapino-history.mjs
+(cwd: wt-abd2f51; started 2026-10-30T08:18:20Z)
+PASS both makers are in the Snapino room
+PASS the lamp wiring P reaches both peers — teammate 17226 ms; importer already there; history already ready · [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]]
+PASS P/S reaches the teammate (wiring + running program) — member [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500},{"op":"write","pin":"D5","value":false},{"op":"wait","ms":500}] running=true · host [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D5","value":true},{"op":"wait","ms":500},{"op":"write","pin":"D5","value":false},{"op":"wait","ms":500}] · teammate 5685 ms; importer already there; history already ready
+PASS import Q/T reaches both peers — teammate 17069 ms; importer already there; history already ready · member [["sno-l1",{"sockets":[30,12]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}] · host [["sno-l1",{"sockets":[30,12]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sockets":[30,33]}]] [{"op":"write","pin":"D6","value":true},{"op":"wait","ms":300}]
+PASS an imported program is loaded stopped (policy)
+PASS the import is one undo step for the importer — teammate 17069 ms; importer already there; history already ready · Loaded a project · shared with the room (program stopped)
+PASS Undo restores P/S on the teammate — [["sno-l1",{"sockets":[12,30]}],["sno-w2a",{"sockets":[33,15]}],["sno-w3",{"sock · teammate 16364 ms; importer already there; history already ready
+PASS Undo restores P/S on the importer — teammate 16364 ms; importer already there; history already ready · Undid · Loaded a project · program restored, stopped
+PASS an undone program stays stopped (policy)
+PASS the accepted undo is redoable for the importer — teammate 16364 ms; importer already there; history already ready · Undid · Loaded a project · program restored, stopped
+PASS Redo brings Q/T back on both peers — teammate 16436 ms; importer already there; history already ready · Redid · Loaded a project · program restored, stopped
+PASS a program-only import reaches both peers — teammate 16612 ms; importer already there; history already ready
+PASS and is traced as one edit — 1 → 2 "Loaded a project" edit traces
+PASS its undo is exactly one step back to T — teammate 5781 ms; importer already there; history already ready · Undid · Loaded a project · program restored, stopped
+PASS the teammate's program R reaches both peers, running — teammate 12 ms; importer already there; history already ready
+PASS a stale undo never overwrites the teammate's newer program R — Can't undo "Loaded a project" — a teammate changed the program since, so their work is kept
+PASS and the parts stay as the room has them
+PASS R is running on both peers before the import
+PASS same parts + same running program: the import stops it on the teammate — teammate 15523 ms; importer already there; history already ready
+PASS and on the importer — teammate 15523 ms; importer already there; history already ready · Loaded a project · same program, now stopped for everyone
+PASS a stop alone adds no undo step
+PASS R runs again on both peers — teammate 10639 ms; importer already there; history already ready
+PASS changed parts + same running program: parts and stop arrive together on the teammate — teammate 16181 ms; importer already there; history already ready
+PASS and on the importer — teammate 16181 ms; importer already there; history already ready · Loaded a project · shared with the room (program stopped)
+PASS (precondition for export, autosave and recovery) the room program is R on both peers
+PASS export carries the room's program (R) and the unsaved draft (D) separately
+PASS autosave holds the latest room program and the draft
+PASS rejoining after everyone left: the bench was reset but the room kept its program
+PASS recovery is offered (saved parts and program differ from the room's)
+PASS restoring brings back the saved parts and program as one edit
+
+30/30 passed · room HD68
+exit 0 · 687 s

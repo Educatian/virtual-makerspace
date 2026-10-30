@@ -6,12 +6,12 @@ episode at a time**. Each episode is reviewed before the next one starts.
 | # | Episode | Studio | Status |
 |---|---|---|---|
 | 1 | Rescue Signal Workshop | Snapino Bridge | Accepted at the parent gate (PR head `a0aaaec`, app `6cd66df`). Merged into the `desktop` release branch with PRs #2–#4 (`db85d85`); production deployment and live checks are recorded outside this document. |
-| 2 | Sound Flow Studio | Sound Flow Studio (new) | **Implemented on `feat/sound-flow-studio`** (PR #5 against `desktop`, final app `63a3421`). Review findings fixed; awaiting the final gate. Not merged or deployed. |
-| 3 | Resource-Limited Greenhouse | Greenhouse | Planned. The acceptance contract is below; not started. |
+| 2 | Sound Flow Studio | Sound Flow Studio (new) | Accepted at the parent gate as a development gate (PR #5 head `8e87371`, app `63a3421`). Not merged or deployed. |
+| 3 | Resource-Limited Greenhouse | Greenhouse | **Implemented on `feat/resource-limited-greenhouse`** (PR #6, stacked on PR #5). The first independent gate did not accept app `faa7c09`; its findings are corrected in app `b8d099a`, which awaits the gate's recheck. Not merged or deployed. The model and criteria below were fixed before the code. |
 | 4 | Smart Sorting Center | new | Planned. The acceptance contract is below; not started. |
 | 5 | Structural Test Yard | new | Planned. The acceptance contract is below; not started. |
 
-Episodes 3–5 are not in the app. There are no placeholder buttons, rooms or stubs for them.
+Episodes 4–5 are not in the app. There are no placeholder buttons, rooms or stubs for them.
 
 ## Quality contract (applies to every episode)
 
@@ -440,8 +440,225 @@ Their causes were not established. They are listed with their logs, not counted 
 - **Same-device peer rooms** (no server) do not get the server's one-plug-per-jack refusal; the client still refuses an occupied jack, and the model ignores two plugs in one jack if a race ever produces them.
 - **The PF notes gate is personal**: it opens on this learner's own first Test in this browser session, not on a teammate's.
 - **Predictions, explanations and attempts are per learner and per tab session** (sessionStorage): they are not shared, synced or exported, so a teammate sees only the `test`/`reflect` activity traces.
+- **An edit whose answer is lost with the connection** (not merely late) stays uncertain: the room may have applied it; it is not added to undo, and the next Undo of that entry is refused as stale.
+- **Rescue Signal (Episode 1) peer state responses** still re-stamp the episode copy they hand a joiner, the pattern corrected here for the greenhouse run; it was left unchanged in this round.
 - **Desktop only.** The WebXR path does not include the studio.
 - **Software-rendered evidence.** Captures and frame counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured.
+
+## Episode 3 · Resource-Limited Greenhouse
+
+### Goal and model (fixed before the code was written)
+
+**Story.** A school greenhouse must get through one hot, dry day on the water already in its tank. Two raised beds need different amounts of water, the solar panel cannot run the pump and the vent fan at full power together, and clouds pass over. The team plumbs and wires the existing rig, sets the controller and valves, predicts, runs the day, inspects what happened, explains it and revises.
+
+**The bounded goal: brief "Dry-spell day".** One complete run of the brief's day (scenario seed **11**, 06:00 to 06:00) meets all five criteria. They are task rules, visible in both conditions:
+
+| # | Criterion | Measured on |
+|---|---|---|
+| G1 | **Plumbed and wired.** Water can reach both beds through the pump (tank → pump → bed A and bed B), the pump and fan are powered from the controller's channels, the solar panel feeds the controller, and the soil probe is in a bed. | The build |
+| G2 | **Bed A.** Dry (θ < 30 %) or waterlogged (θ > 90 %) for at most 2 h of the day. | The run's record |
+| G3 | **Bed B.** The same. | The run's record |
+| G4 | **Air.** Greenhouse air above 35 °C for at most 1 h. | The run's record |
+| G5 | **Reserve.** At least 8 L left in the tank at the end. | The run's record |
+
+In the model, the brief cannot be met by plugging everything in at the default settings: the default allocation leaves bed B dry for 9.5 h on the brief's day. The DI worked example meets it: valve A 30 %, valve B 50 %, pump below 60 %, fan above 26 °C. The success region is narrow: `scripts/greenhouse-model-check.mjs` finds 1,106 of 149,940 strategies (0.74 %) in a 5 % / 5-point grid of valve, threshold, priority and probe choices.
+
+These are the genuine tradeoffs:
+- **Water:** the tank cannot keep both beds wet all day. Bed B transpires half as much again as bed A, and over-watering is lost to drainage.
+- **Power:** the solar panel's 18 W peak is less than the 20 W the pump and fan draw together, and the 12 Wh battery covers the gap only briefly. The controller's channel 1 is served first.
+- **Climate:** the fan is the only cooling, and the heat peaks when the pump is busiest.
+- **Sensing:** there is one soil probe. The bed it sits in decides when the pump runs; the other bed is watered blind.
+
+**The learning loop** (the same structure as Episode 2):
+1. **Predict / design.** A private prediction per attempt: meets the brief, a bed dries out, a bed gets waterlogged, overheating, or the tank runs low. The learner adds why. When the attempt's day begins (started or stepped), the prediction and the why are fixed for that attempt — or recorded as "none made" — and the day's result is compared with that; changing them takes a new attempt.
+2. **Build / allocate.** Hoses, power cables, the soil probe, the valves, the controller thresholds. Every change is a room edit, and edits are refused while the day is running.
+3. **Run / test / inspect.** Start, pause, step one hour, resume, speed ×1 or ×4, reset. The live resource graph, sensors and inspector show the current model time. The verdict and the measured values appear when the day ends.
+4. **Explain.** What happened and why. The goal counts as met only for a passing run with a **saved** explanation. Editing or erasing the text afterwards never changes the saved one; the page says the draft differs until it is saved again.
+5. **Revise.** A new attempt resets the day (the tank refills only by an explicit reset, which starts a new run) and keeps the history of earlier attempts.
+
+There are no points, XP or countdowns. The model clock is a time control, not a challenge timer.
+
+**Whose attempt a day is.** A finished day counts for this learner's current attempt only if they were present for it before it ended (this tab showed it before 06:00 the next morning) and it is inside the attempt's boundary. The first attempt's boundary is set by the first day this tab sees: a day that had already ended when the learner arrived (a teammate's, or one that ended while they were away) is the room's result — shown in *The day*, never their attempt, never their `test` trace, and it does not open the PF notes.
+
+**PF / DI.**
+- **Both conditions:** the brief and criteria, the part ratings and safety limits, the live graph and sensors, and the measured values after each finished run.
+- **DI only:** a worked example (one strategy that meets the brief, checked by the model's own test) and, after a run, a reason for each failed criterion.
+- **PF:**
+  - no solution, hint or auto-build;
+  - explanatory fault notes on the diagram appear after the learner's own first finished run in this browser session (a personal gate);
+  - safety notes (invalid hose carries nothing, no unregulated power) appear in both conditions.
+- **Bolt** keeps to the Circuit Bench.
+
+**Model (a teaching water-balance and climate abstraction; not a validated botanical, crop or weather prediction).**
+
+| Quantity | Model |
+|---|---|
+| Time | 96 steps of 15 min (dt = 0.25 h), 06:00 → 06:00. Sensors are read at the start of a step; the controller decides the step's loads from those readings. |
+| Weather (seeded) | Outside air T_out = T_min + (T_max − T_min)·(0.5 − 0.5·cos(2π(h − 4)/24)), peaking at 16:00. Sun S = sin(π(h − 6)/14) from 06:00 to 20:00, else 0. The seed sets T_max (31–37 °C), T_min (16–20 °C) and one or two cloud spells of 1–3 h (sun × 0.35). A seeded xorshift32 generator gives the same day everywhere. |
+| Greenhouse air | T_air = T_out + 4 °C·S − 7 °C if the fan ran that step (steady state per step, no thermal mass). |
+| Solar panel | 18 W × S, only when its cable reaches the controller's SOLAR IN. |
+| Controller | A 12 Wh battery (starts at 6 Wh). Channel 1 is served before channel 2. A load runs a whole step only if solar + battery can supply its energy; otherwise it is starved for the step. Solar surplus charges the battery; the rest is curtailed. |
+| Rules | The pump runs when the probed bed's soil θ < "pump below" (10–90 %, 5 % steps). The fan runs when the last air reading > "fan above" (20–40 °C, 1 °C steps). There is no probe reading without a probe, so the pump never runs. |
+| Pump | 12 W, 0.4 L/min (6 L per step) when both valves allow it. It needs a hose from TANK OUT to PUMP IN and a hose from PUMP OUT to the manifold or a bed. Without a supply or an outlet it runs dry: it uses its power and delivers 0 L. |
+| Valves | Manifold outlets A and B, 0–100 % in 5 % steps. Outlet flow q_i = Q·v_i / max(1, v_A + v_B). The pump delivers Q·min(1, v_A + v_B), and less if the tank holds less. An unconnected outlet is closed. |
+| Fan | 8 W, cools the air by 7 °C for the step. |
+| Beds | Water store W (L) of capacity 20 L, starting at 11 L; θ = W / 20. Uptake and evaporation ET = k·(0.5 + 0.05·(T_air − 20 °C))·dt·min(1, θ/0.4), with k = 0.8 L/h (bed A) and 1.2 L/h (bed B), never more than W. Gravity drainage removes 25 % of the water above θ = 0.8 per step, and anything above 20 L overflows. |
+| Tank | 40 L at the start. It falls only by what the pump delivers. It is refilled only by resetting the day, which starts a new run. |
+| Plant state | Shown per bed from θ and air: wilting below 30 %, severe below 15 %, waterlogged above 90 %, heat-stressed above 35 °C, otherwise healthy. There is no growth or yield model. |
+
+**Water and energy balance.** Every step is accounted, and the tests check it to 1e-9 L or Wh:
+- **Water:** tank₀ + W_A₀ + W_B₀ = tank + W_A + W_B + ET_total + drainage_total + overflow_total. Hoses hold no water, and nothing is created.
+- **Energy:** solar_in + battery₀ = loads_used + battery + curtailed.
+- No quantity is ever negative.
+
+**Wrong builds are drawn as built, never repaired.** Each of these carries zero flow or power and is marked in the 3D rig, the diagram and the inspector:
+- OUT→OUT and IN→IN hoses;
+- loose hose ends;
+- a hose from the tank straight to a bed (no pump, and the tank sits below the beds);
+- the pump fed from its own outlet (a loop);
+- solar wired straight to a load (unregulated, not supported);
+- a power cable in a hose port or the reverse (the room refuses it: wrong connector type);
+- two plugs in one port (refused, as in Episode 2).
+
+An empty tank, a pump without supply, starved loads, no probe, extreme soil and heat are all reachable and named.
+
+**One authoritative state.** The room's versioned parts drive the 3D rig, the model inputs, the graph, the inspector and project files: hose and cable ports, the probe slot, the valves and the thresholds. The room's **run state** drives model time and resources:
+- seed, status, speed, attempt counter;
+- the anchor tick and its server time (back-dated by the part of a step already elapsed, so no action discards elapsed time; a paused day keeps that fraction as `sub`);
+- the resource snapshot at the anchor: tank, beds, battery, last air reading, and running totals for the balance and stress;
+- the per-step record up to the anchor;
+- once the day has ended, the build it ended with (`endBuild`: G1 of its verdict).
+
+The current state at server time t is `simulate(anchor, current build, ticks since anchor)`. That is deterministic, so every client computes the same values regardless of frame rate.
+
+**Time and collaboration policy.**
+- Run actions are start, pause, resume, step one hour, speed ×1 (2.5 s per step) or ×4, and reset. Each is a room action, ordered and answered (accepted or refused) like an edit.
+- Pause and step settle the model on the server: the snapshot and record advance to the current tick. A speed action at the current speed changes nothing.
+- **A day that reaches 06:00 is settled before anything else.** The end unlocks the rig, so before the room handles any message after the end (an edit, a cable move, an import, Undo/Redo, a pause, a hello on reconnect) it settles the day with the rig it ran on, ends it, records its build, persists it and tells everyone — before the change that follows. A change after the end therefore never rewrites the finished day's water, records or verdict.
+- While a day is running, every change to the rig is refused (`running`): edits, cable moves, imports, reset bench, Undo/Redo. Pause first. A change and a pause that race are ordered by the room.
+- When the last participant leaves, the run pauses at that model time and its resources are kept. The bench resets as in every studio, and Recovery restores it. Nobody gets elapsed time or water for being away.
+- A late joiner or a reconnecting client receives the run state and the server time, and so shows the same model time and resources.
+- The run ends at step 96. If the server restarts mid-run, it continues from its persisted anchor by server time, up to that end.
+- Project files hold the build only, never resources or model time, so importing cannot refill the tank or resurrect an old run.
+- Same-device peer rooms (no server) apply the run actions in each tab with a shared clock, like Episode 1. Their stamped run states are ordered by run id first (a reset's new run always wins over an action on the old run; an older run never replaces a newer one), then by Lamport stamp within one run. A tab settles a day that reached its end before it changes the rig.
+- The local development relay (`server/collaboration.mjs`) keeps a room's day in memory when everyone leaves, as the Durable Object does; restarting that process forgets it.
+
+**Assumptions stated in the studio.**
+- These are teaching numbers. Water uptake, weather and plant response are not validated crop, weather or botanical models.
+- The greenhouse has no thermal mass, the pump has fixed flow, hoses are lossless, and valves split flow linearly.
+- Power is accounted per 15-minute step.
+
+### On screen
+
+- **The greenhouse** fills the space between the parts rail and the dock: a glasshouse frame with glazing over two raised timber beds (four plants each, soil that darkens when wet and puddles when waterlogged, leaves that pale and droop when dry and curl in heat), the 40 L tank with its water level and a dial gauge, the equipment plinth (pump; the valve manifold, whose two ball valves are turned by red handwheels on square position plates at the front of the plinth, SHUT to OPEN; the farm controller with its display, channel LEDs and the CH1/CH2/SOLAR IN sockets, and a sloped console on top with the PUMP BELOW and FAN ABOVE knobs on their scale plates — all four controls face the room, with nothing that can be plugged in front of them), the vent fan at the gable, the solar panel on its stand, the climate and light sensors, four green hoses coiled in the aisle and three black power cables coiled on the floor in front of the plinth, below its sockets, and the soil probe in its holder. Water ports are blue couplers, power ports keyed black sockets, probe slots two brass pins in a bed. A plugged end stands in its port; a free end lies on the floor or plinth; a carried end hangs under the pointer.
+- **Everything that moves follows the model:** the pump rotor and its LED, the fan, water marks in hoses that carried water in the shown step, the tank level and gauge, soil colour, plants, the controller's display and channel LEDs (red when a load was starved), the sensors' displays and the probe's reading. Wrong hoses and cables wear red fault collars at their ports.
+- **Camera views:** Overview `1`, Top `2`, Beds `3`, Fit selected `F`, as buttons and keys.
+- **One contextual dock tab, *Greenhouse*** (the rest stay: Chat, Voice, Activity, Notes), with a jump bar (Day · Flow · Selected · Attempt):
+  - the brief and its five criteria, the teaching-numbers note and (DI) the worked example;
+  - **The day:** the model clock (`HH:MM`, step k of 96, a progress line), *Start the day* / *Pause* / *Resume*, *Step 1 h*, ×1 / ×4, *Reset day…* (the brief's seed 11 or a practice seed), the outcome of the last run control, the live resource graph (tank with the 8 L reserve, soil θ of both beds with the 30–90 % band, greenhouse and outside air with 35 °C, battery, a strip of the steps the pump and fan ran or were starved), a text summary and an hourly table, and the verdict when the day ends;
+  - **Live resource flow:** the diagram (power column: solar → controller → fan, sensors; water column: tank → pump → manifold → beds; edges with litres or watts in the shown step, idle dashes, wrong or loose dots with ✕), fault notes and the text connection list;
+  - **Selected:** Overview / Ports / Behaviour & limits for any fixture, hose, cable or the probe; valve and rule fields with steppers (drafts until *Apply to the room* or Enter), *Unplug and coil it on the floor*, *Back to its holder*;
+  - **Your attempt:** predict (five choices and why), build, run, explain, revise (*New attempt* resets the day for everyone after confirmation), earlier attempts.
+- **HUD** over the viewport: model time, run status, tank, probed soil, air and battery, from the model.
+- **Collapsing the dock** never stops the day: model time comes from the room's clock.
+- **Cross-link:** selecting a part in 3D, in the parts rail, on the diagram or in the connection list selects it everywhere; clicking a valve handwheel or a controller knob (anywhere on its plate) in 3D selects the part and focuses that field.
+
+### Collaboration, files and persistence
+
+- **Room authority.** Plugging and unplugging are line-end moves with claims; valve and rule values are atomic edits with the revision the sender saw. The server refuses moved fixtures, wrong connector types, both ends in one port, a second line in a port (`occupied`), the probe outside a slot pair, out-of-range or off-step values (never clamped), and every rig change while the day runs (`running`). Wrong plumbing a learner makes on purpose (OUT→OUT, IN→IN, tank to bed, loops, solar to a load) is allowed and drawn.
+- **Run actions** are ordered and answered by the room like edits and carry the run id the sender saw; an action for another run is refused (`stale`), so a reset decided on an old view never wipes a newer day. If an answer is lost (timeout, closed connection), the copy is uncertain. The room tags each accepted action's run state with that action's op id and type, and only a run state naming this action's op id confirms it; a teammate's action, however similar, never does — the copy then says only what the room now shows.
+- **Late join and reconnect** receive the run state and the server time with the rig, and show the same model time and resources. Peer rooms (no server) start the brief's day in the first tab and share stamped run states.
+- **Undo/Redo** covers value edits, line moves, imports and reset, with the existing stale/held rules; while the day runs the room refuses them (`running`).
+- **Project files.** Greenhouse projects are **version 3**: valve and rule values, each line's two ports (one end may be out) and the probe's slot; never the run, resources or model time. Version-1 greenhouse files (the earlier placeholder) migrate to the default rig with a notice. Predictions, explanations, attempts, names and chat are never exported.
+- **Local only (this browser tab, sessionStorage):** predictions, explanations, attempts and the PF notes gate. The room's activity record gets one `test` trace per finished day (attempt, seed and criterion codes) and one `reflect` trace per saved explanation (no text); run controls are `edit` traces.
+
+### Tests (developer environment)
+
+| Command | What it checks |
+|---|---|
+| `npm run test:greenhouse` (in `npm test`) | `scripts/greenhouse-model-check.mjs`: the model against an independent oracle written in the test (weather for 200 seeds, rig derivation on 30,000 random builds, 2,000 whole days step by step), both ledgers every step, the brief and the named failures, the grid search for the success region, 60 random pause schedules equal to an uninterrupted day (and a JSON round trip), run actions and refusals including stale run ids, the server rules (typed ports, bounds, poses, slots), and RoomCore: occupied ports, never-stored lines, the running lock for edits and live moves, pause settling at the room's tick, a late joiner, a stale resume and a stale reset, the room emptying mid-run. |
+| `npm run test:project` (in `npm test`) | `scripts/project-state-check.mjs`, greenhouse part: version 3 round trip with a half-plugged hose, 21 refused files (wrong connector, probe across beds, shared port, off-step and hostile values, a run in the file, wrong version), version-1 migration, recovery emptiness. |
+| `node scripts/e2e-greenhouse-worker.mjs` | Two real browsers (separate processes) and a late joiner over wrangler dev (Durable Object + WebSocket), with real pointer and keyboard input; see the list at the top of the script. |
+| `node scripts/qa-greenhouse.mjs` | Render evidence (peer mode): see [`docs/images/episodes/greenhouse/`](images/episodes/greenhouse/README.md). |
+| `npm test` also runs `greenhouse-join-check.mjs` and `history-late-ack-check.mjs` | The real `DesktopRoom` for three same-device tabs with a held message (a join keeps the accepted run revision); the real room, replica, history and workbench tools with the sender's answer delayed past the 8 s timeout (import, undo, redo, stale, program-only, dropped connection), each against an immediate-answer control. Both take another commit's source directory as a negative control. |
+| `node scripts/e2e-greenhouse-join.mjs` | The join counterexample with three real tabs and the app's QA message hold, then a held reset against a joiner's copy of the old run. |
+| `node scripts/e2e-snapino-import-probe.mjs` | Diagnostic: per edit, when the room relayed it, when each tab's page handled it, and whether the 8 s timer fired. |
+| `node scripts/qa-greenhouse-controls.mjs` | Real pointer clicks on the 3D valve levers and controller dials of the plumbed rig in the overview (peer mode): what is in front of each grip or dial centre, how much of each control is visible around it, and a click on a visible pixel that must select the part and focus its field. |
+
+### Results of the last developer-environment run
+
+**Second correction round, final app `abd2f51`.** The review of `d06712c` kept the gate blocked on four items, corrected in `abd2f51`:
+- the room reads its clock once per operation, so a day can no longer be unlocked at its end without being settled first;
+- a peer join keeps the run revision the answering tab accepted;
+- an edit, undo or redo answered after the 8 s timeout now reaches the history once;
+- the verdict says G1 is judged on the build recorded when the day ended.
+
+Every failure, the old-code controls and the Snapino timing measurements are in [the test records](qa/greenhouse/README.md#second-correction-round-review-of-d06712c-final-app-abd2f51).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, all model and room checks; **end 62/62** incl. end − 1 / end / end + 1 ms, **join 8/8**, **history late answer 27/27**, time 5/5, relay 3/3, peer 5/5) | `abd2f51` | All passed |
+| The same new checks on the old code | `b8d099a` / `faa7c09` | Fail: end 50/62, join 7/8 (A 8, B 8, C 4), history late answer 15/27 and 15/27 (all immediate-answer controls pass) |
+| `npx vite build`, `greenhouse-panel-check.mjs` | `abd2f51` | OK; **39/39** (attempt 1 found no browser: path not set) |
+| `e2e-greenhouse-join.mjs` (three real tabs, held step; a held reset) | `abd2f51` | **8/8** on attempt 2 (attempt 1: 5/6, the counterexample passed, then a fourth tab timed out opening); on `b8d099a`: 7/8, A 8, B 8, **C 4** |
+| `e2e-greenhouse-fixes-worker.mjs`, `e2e-greenhouse-peer.mjs` | `abd2f51` | **11/11**, **7/7** |
+| `e2e-snapino-history.mjs` (both peers and the history waited for; dependent steps stop at the first failure) | `abd2f51` | **30/30** (one run) |
+| `e2e-worker-sync`, `e2e-room-sync`, `e2e-cable-end` | `abd2f51` | 18/18, 13/13, 12/12 |
+| `qa-greenhouse.mjs` (renders) | `abd2f51` | **12/12** |
+
+Not rerun on `abd2f51`, inherited as `b8d099a` runs: the 3D controls (33/33), pointer plugging (7/7) and the same-camera comparison (their files did not change). The full two-client run `e2e-greenhouse-worker` (40/40) is a `b8d099a` result only.
+
+**Correction round, app `b8d099a`.** This round reran only what the corrections touch. The full list, every failure and the old-code counterexamples are in [the test records](qa/greenhouse/README.md#correction-round-after-the-first-gate-app-b8d099a).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, all model and room checks; greenhouse model 2,835,645, **end 25/25, time 5/5, relay 3/3, peer 5/5**) | `b8d099a` | All passed |
+| `npx vite build` | `b8d099a` | OK |
+| The original counterexamples on `faa7c09`'s code: end, time, relay, peer and panel checks | `faa7c09` | Fail: 7/24, 0/5, 2/3, 1/5, 7/37 |
+| `greenhouse-panel-check.mjs` (participation, run-control answers, saved explanation, fixed prediction, list focus) | `b8d099a` | **38/38** |
+| `e2e-greenhouse-worker.mjs` (two makers plus a late joiner, Worker) | `b8d099a` | **40/40** (on `b9dde3c`: **failed**, cables 1 and 3 could not be plugged by pointer; fixed in `b8d099a`) |
+| `e2e-greenhouse-fixes-worker.mjs` (all four 3D controls by pointer across two makers; a finished day unchanged by an unplug; a late PF joiner not credited) | `b8d099a` | **11/11** |
+| `qa-greenhouse-controls.mjs` (44 px squares, five fixed click points, poses, running lock, neighbouring hose end, 1440 and 1280) | `b8d099a` | **33/33** |
+| `qa-greenhouse-plug.mjs` (14 ends by pointer at 1440, 1280 and 960) | `b8d099a` | **7/7** |
+| `e2e-greenhouse-peer.mjs` (two tabs: reset vs step, both orders) | `b8d099a` | **7/7** |
+| `qa-greenhouse.mjs` (renders) | `b8d099a` | **12/12** on attempt 2. Attempt 1 timed out in the script, which chose a prediction after its own steps had fixed it; the script now starts a new attempt there. |
+| `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync` | `b8d099a` | 18/18, 12/12, 13/13 (room sync on attempt 2: attempt 1 was cut off by a container restart) |
+| `e2e-snapino-history` | `b8d099a` | **failed twice** (24/25, 22/25). The same suite on `faa7c09`, run right after in the same environment, also failed (24/25), the same check as attempt 1; before the restart, `faa7c09` passed 25/25. Cause not established. (Measured and corrected in the second round, above.) |
+
+The Sound, bench-inspector, Rescue Signal and AI-teammate suites were not rerun; their results below are for `faa7c09` only.
+
+**First submission, app `faa7c09`.** The run used headless Chromium with SwiftShader, wrangler dev and the local access proxy, on 2 CPU cores. It is not GitHub CI. Every room was a fresh random QA room; 7K3M was never used. Every command, its exit code, its duration and every non-passing attempt are in [the test records](qa/greenhouse/README.md), per app (`app-faa7c09/`, `app-fe4fdf8/`).
+
+| Command | App | Result |
+|---|---|---|
+| `npm test` (typecheck, circuit 17,742, project 306, sync 858, tools 36, rescue signal 17,751, episode sync 55, diagram 66,886, sound model 89,528, sound engine 47, **greenhouse model 2,835,644**) | `faa7c09` | All passed |
+| `npx vite build` | `faa7c09` | OK |
+| `npm run test:sound:dsp` | `faa7c09` | 101/101 |
+| **`e2e-greenhouse-worker.mjs`** (two makers plus a late joiner, Worker) | `faa7c09` | **40/40** |
+| **`qa-greenhouse-controls.mjs`** (3D valve levers and dials, plumbed rig) | `faa7c09` | **6/6** on attempt 2. Attempt 1 (clicking each grip or dial centre) failed 3/6: a hose fitting or cable was in front of three of the four points. |
+| **`qa-greenhouse.mjs`** (renders) | `faa7c09` | **12/12**, no issues: fill 0.914 at 1440 and 0.919 at 1280; phone *Start the day* reached by keyboard (44 px), no control under 44 px; PF without the worked example ([renders](images/episodes/greenhouse/README.md)) |
+| `e2e-sound-worker.mjs` (Episode 2) | `faa7c09` | 29/29 |
+| `e2e-worker-sync`, `e2e-cable-end`, `e2e-room-sync`, `e2e-snapino-history` | `faa7c09` | 18/18, 12/12, 13/13, 25/25 |
+| `e2e-ai-teammate-worker` | `faa7c09` | 10/10 |
+| `e2e-bench-inspector` | `faa7c09` | 30/30, one attempt |
+| `e2e-rescue-signal` (Episode 1) | `faa7c09` | 60/60, one bounded attempt |
+| `qa-sound.mjs` (Episode 2 renders) | `faa7c09` | 7/7 |
+| `e2e-ai-teammate` (peer) | `faa7c09` | 37/37 |
+
+**On `fe4fdf8` (the previous candidate), the two-client run failed one check**, 39/40: clicking the valve B handle in 3D did not focus its field. That run recorded only the focus, not what was picked. The diagnosis afterwards found hose 4's fitting and its larger grab sphere around the valve grip. `faa7c09` lets a visible control win over a grab sphere; its two-client run clicks the controller's PUMP BELOW dial instead of the valve handle, and the valve handles are covered by `qa-greenhouse-controls.mjs` above.
+
+### Limits (honest)
+
+- **A teaching water-balance and climate abstraction.** Weather, uptake and plant response are not validated crop, weather or botanical models; there is no growth or yield.
+- **No thermal mass, fixed-flow pump, lossless hoses, linear valves**, power accounted per 15-minute step, ideal sensors.
+- **Model time is the room's clock.** A client whose clock estimate is off shows the same steps a little earlier or later; paused states are identical everywhere.
+- **The verdict's G1 is judged on the build the day ended with** (recorded by the room); a rig changed while paused mid-day still counts as one run.
+- **Same-device peer rooms** (no server) do not pause the day when everyone leaves.
+- **3D control targets are measured in the overview only** (1440×900 and 1280×720, the brief's plumbed rig). Other camera angles (orbiting, Top, Beds) were not measured.
+- **A free cable end dropped on the floor behind the controller** can lie under its knob console in the overview, where a press picks the knob; the line's card (its port selects, keyboard-operable) still connects it. Other camera views were not checked for this. Plugging all 14 ends by pointer from where they lie at the start was measured at 1440, 1280 and 960 px.
+- **The PF notes gate is personal**: it opens on this learner's own first finished day in this browser session.
+- **Desktop only.** The WebXR path does not include the studio.
+- **Software-rendered evidence.** Captures and counters come from SwiftShader in headless Chromium; no GPU, phone or Quest was measured; 390×844 is a viewport check, not phone testing.
 
 ---
 

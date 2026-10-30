@@ -1,0 +1,35 @@
+{
+ "base": "http://127.0.0.1:4176",
+ "results": [
+  {
+   "name": "A and B start on the brief's day, idle",
+   "ok": true,
+   "detail": "[[1,11,\"idle\",0],[1,11,\"idle\",0]]"
+  },
+  {
+   "name": "1. A steps run 1 to tick 4; B accepts it",
+   "ok": true,
+   "detail": "[[1,11,\"paused\",4],[1,11,\"paused\",4]]"
+  },
+  {
+   "name": "2. B steps to tick 8 with its update held; A still at tick 4",
+   "ok": true,
+   "detail": "[[1,11,\"paused\",4],[1,11,\"paused\",8]]"
+  },
+  {
+   "name": "3. C joins and holds A's run 1 at tick 4",
+   "ok": true,
+   "detail": "[[1,11,\"paused\",4]]"
+  },
+  {
+   "name": "4. B's held step is delivered: A, B and C all end at tick 8",
+   "ok": true,
+   "detail": "3 held message(s) released · [[1,11,\"paused\",8],[1,11,\"paused\",8],[1,11,\"paused\",8]]"
+  },
+  {
+   "name": "run completed",
+   "ok": false,
+   "detail": "page.click: Timeout 240000ms exceeded."
+  }
+ ]
+}

@@ -1,0 +1,343 @@
+{
+ "base": "http://127.0.0.1:4173",
+ "checks": [
+  {
+   "name": "1440x900: no grab point lies under a 3D control (each end is picked up, not a knob)",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "name": "1440x900: 14 real pointer drags build the brief's rig, every line in its ports",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}"
+  },
+  {
+   "name": "1280x720: no grab point lies under a 3D control (each end is picked up, not a knob)",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "name": "1280x720: 14 real pointer drags build the brief's rig, every line in its ports",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}"
+  },
+  {
+   "name": "960x640: no grab point lies under a 3D control (each end is picked up, not a knob)",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "name": "960x640: 14 real pointer drags build the brief's rig, every line in its ports",
+   "ok": true,
+   "detail": "{\"irrigation-hose\":\"supply\",\"irrigation-hose-2\":\"delivery\",\"irrigation-hose-3\":\"branch\",\"irrigation-hose-4\":\"branch\",\"power-cable-1\":\"charging\",\"power-cable-2\":\"feed\",\"power-cable-3\":\"feed\"}"
+  },
+  {
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "steps": {
+  "1440x900": [
+   {
+    "line": "irrigation-hose",
+    "end": 0,
+    "port": 0,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose",
+    "end": 1,
+    "port": 1,
+    "status": "supply",
+    "firstAtGrab": "irrigation-hose:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-2",
+    "end": 0,
+    "port": 2,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose:hose_pvc_reinforced"
+   },
+   {
+    "line": "irrigation-hose-2",
+    "end": 1,
+    "port": 3,
+    "status": "delivery",
+    "firstAtGrab": "irrigation-hose-2:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-3",
+    "end": 0,
+    "port": 4,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose-3:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-3",
+    "end": 1,
+    "port": 6,
+    "status": "branch",
+    "firstAtGrab": "irrigation-hose-3:fitting_steel"
+   },
+   {
+    "line": "irrigation-hose-4",
+    "end": 0,
+    "port": 5,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose-4:fitting_steel"
+   },
+   {
+    "line": "irrigation-hose-4",
+    "end": 1,
+    "port": 7,
+    "status": "branch",
+    "firstAtGrab": "irrigation-hose-4:fitting_steel"
+   },
+   {
+    "line": "power-cable-1",
+    "end": 0,
+    "port": 8,
+    "status": "loose",
+    "firstAtGrab": "power-cable-1:housing_black_abs"
+   },
+   {
+    "line": "power-cable-1",
+    "end": 1,
+    "port": 9,
+    "status": "charging",
+    "firstAtGrab": "power-cable-1:housing_black_abs"
+   },
+   {
+    "line": "power-cable-2",
+    "end": 0,
+    "port": 10,
+    "status": "loose",
+    "firstAtGrab": "power-cable-2:housing_black_abs"
+   },
+   {
+    "line": "power-cable-2",
+    "end": 1,
+    "port": 12,
+    "status": "feed",
+    "firstAtGrab": "power-cable-2:housing_black_abs"
+   },
+   {
+    "line": "power-cable-3",
+    "end": 0,
+    "port": 11,
+    "status": "loose",
+    "firstAtGrab": "power-cable-3:housing_black_abs"
+   },
+   {
+    "line": "power-cable-3",
+    "end": 1,
+    "port": 13,
+    "status": "feed",
+    "firstAtGrab": "power-cable-3:housing_black_abs"
+   }
+  ],
+  "1280x720": [
+   {
+    "line": "irrigation-hose",
+    "end": 0,
+    "port": 0,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose",
+    "end": 1,
+    "port": 1,
+    "status": "supply",
+    "firstAtGrab": "irrigation-hose:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-2",
+    "end": 0,
+    "port": 2,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose:hose_pvc_reinforced"
+   },
+   {
+    "line": "irrigation-hose-2",
+    "end": 1,
+    "port": 3,
+    "status": "delivery",
+    "firstAtGrab": "irrigation-hose-2:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-3",
+    "end": 0,
+    "port": 4,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose-3:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-3",
+    "end": 1,
+    "port": 6,
+    "status": "branch",
+    "firstAtGrab": "irrigation-hose-3:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-4",
+    "end": 0,
+    "port": 5,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose-4:fitting_steel"
+   },
+   {
+    "line": "irrigation-hose-4",
+    "end": 1,
+    "port": 7,
+    "status": "branch",
+    "firstAtGrab": "irrigation-hose-4:fitting_steel"
+   },
+   {
+    "line": "power-cable-1",
+    "end": 0,
+    "port": 8,
+    "status": "loose",
+    "firstAtGrab": "power-cable-1:housing_black_abs"
+   },
+   {
+    "line": "power-cable-1",
+    "end": 1,
+    "port": 9,
+    "status": "charging",
+    "firstAtGrab": "power-cable-1:housing_black_abs"
+   },
+   {
+    "line": "power-cable-2",
+    "end": 0,
+    "port": 10,
+    "status": "loose",
+    "firstAtGrab": "power-cable-2:housing_black_abs"
+   },
+   {
+    "line": "power-cable-2",
+    "end": 1,
+    "port": 12,
+    "status": "feed",
+    "firstAtGrab": "power-cable-2:housing_black_abs"
+   },
+   {
+    "line": "power-cable-3",
+    "end": 0,
+    "port": 11,
+    "status": "loose",
+    "firstAtGrab": "power-cable-3:housing_black_abs"
+   },
+   {
+    "line": "power-cable-3",
+    "end": 1,
+    "port": 13,
+    "status": "feed",
+    "firstAtGrab": "power-cable-3:housing_black_abs"
+   }
+  ],
+  "960x640": [
+   {
+    "line": "irrigation-hose",
+    "end": 0,
+    "port": 0,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose:fitting_steel"
+   },
+   {
+    "line": "irrigation-hose",
+    "end": 1,
+    "port": 1,
+    "status": "supply",
+    "firstAtGrab": "irrigation-hose:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-2",
+    "end": 0,
+    "port": 2,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose:hose_pvc_reinforced"
+   },
+   {
+    "line": "irrigation-hose-2",
+    "end": 1,
+    "port": 3,
+    "status": "delivery",
+    "firstAtGrab": "irrigation-hose-2:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-3",
+    "end": 0,
+    "port": 4,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose-3:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-3",
+    "end": 1,
+    "port": 6,
+    "status": "branch",
+    "firstAtGrab": "irrigation-hose-3:fitting_steel"
+   },
+   {
+    "line": "irrigation-hose-4",
+    "end": 0,
+    "port": 5,
+    "status": "loose",
+    "firstAtGrab": "irrigation-hose-4:fitting_brass"
+   },
+   {
+    "line": "irrigation-hose-4",
+    "end": 1,
+    "port": 7,
+    "status": "branch",
+    "firstAtGrab": "irrigation-hose-4:fitting_steel"
+   },
+   {
+    "line": "power-cable-1",
+    "end": 0,
+    "port": 8,
+    "status": "loose",
+    "firstAtGrab": "power-cable-1:housing_black_abs"
+   },
+   {
+    "line": "power-cable-1",
+    "end": 1,
+    "port": 9,
+    "status": "charging",
+    "firstAtGrab": "power-cable-1:housing_black_abs"
+   },
+   {
+    "line": "power-cable-2",
+    "end": 0,
+    "port": 10,
+    "status": "loose",
+    "firstAtGrab": "power-cable-2:housing_black_abs"
+   },
+   {
+    "line": "power-cable-2",
+    "end": 1,
+    "port": 12,
+    "status": "feed",
+    "firstAtGrab": "power-cable-2:housing_black_abs"
+   },
+   {
+    "line": "power-cable-3",
+    "end": 0,
+    "port": 11,
+    "status": "loose",
+    "firstAtGrab": "power-cable-3:housing_black_abs"
+   },
+   {
+    "line": "power-cable-3",
+    "end": 1,
+    "port": 13,
+    "status": "feed",
+    "firstAtGrab": "power-cable-3:housing_black_abs"
+   }
+  ]
+ },
+ "issues": []
+}

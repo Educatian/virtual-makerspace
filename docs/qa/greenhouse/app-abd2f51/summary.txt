@@ -1,0 +1,35 @@
+app abd2f511bff3da9ce22763d8e143d58e0126a96d
+(a worktree exactly at the app commit, with its own dist/; wrangler dev + access proxy from it; scripts from the evidence head unless the line says scripts/ in the worktree)
+build | exit 0 | 19 s | (cwd wt-abd2f51) npx vite build — entry index-CKwhT_ME.js (build.txt)
+../old-b8d099a and ../old-faa7c09: `git archive` of those commits' cloudflare/, src/ and server/collaboration.mjs (the old-code controls)
+<scratch>/gh/scripts: the evidence head's scripts. The snapino-import-probe line (attempt 1) ran its first version on the final app (90 s lamp wait); attempt 2 the 300 s fail-fast version. e2e-greenhouse-join (attempt 1) opened a fourth tab; attempt 2 closes C first.
+
+end-check-final | exit 0 | 0 s | (cwd wt-abd2f51) node --experimental-strip-types scripts/greenhouse-end-check.mjs
+control-b8-end-check | exit 1 | 1 s | (cwd wt-abd2f51) node --experimental-strip-types scripts/greenhouse-end-check.mjs ../old-b8d099a/cloudflare
+join-check-final | exit 0 | 0 s | (cwd wt-abd2f51) node scripts/greenhouse-join-check.mjs
+control-b8-join-check | exit 1 | 0 s | (cwd wt-abd2f51) node scripts/greenhouse-join-check.mjs ../old-b8d099a
+history-late-final | exit 0 | 78 s | (cwd wt-abd2f51) node scripts/history-late-ack-check.mjs . <scratch>/r3/final/history-late-final.json
+control-b8-history-late | exit 1 | 107 s | (cwd wt-abd2f51) node scripts/history-late-ack-check.mjs ../old-b8d099a <scratch>/r3/final/control-b8-history-late.json
+control-faa-history-late | exit 1 | 107 s | (cwd wt-abd2f51) node scripts/history-late-ack-check.mjs ../old-faa7c09 <scratch>/r3/final/control-faa-history-late.json
+npm-test | exit 0 | 182 s | (cwd wt-abd2f51) npm test
+panel (attempt 1: CHROMIUM_PATH not set, browser did not launch; log panel-attempt1-no-browser-path) | exit 1 | 1 s | (cwd wt-abd2f51) node scripts/greenhouse-panel-check.mjs <scratch>/r3/final/panel-results.json
+panel | exit 0 | 7 s | (cwd wt-abd2f51) env CHROMIUM_PATH=/opt/pw-browsers/chromium node scripts/greenhouse-panel-check.mjs <scratch>/r3/final/panel-results.json
+worker-sync | exit 0 | 3 s | (cwd wt-abd2f51) node --experimental-strip-types <scratch>/gh/scripts/e2e-worker-sync.mjs
+snapino-history | exit 0 | 687 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-snapino-history.mjs
+snapino-import-probe | exit 0 | 471 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-snapino-import-probe.mjs http://vm.test:8800 8 <scratch>/r3/final/snapino-import-probe.json
+room-sync | exit 0 | 646 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-room-sync.mjs http://vm.test:8800 <scratch>/r3/final/room-sync
+cable-end | exit 0 | 274 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-cable-end.mjs http://vm.test:8800 <scratch>/r3/final/cable-end
+e2e-greenhouse-fixes | exit 0 | 1021 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-greenhouse-fixes-worker.mjs http://vm.test:8800 <scratch>/r3/final/e2e-greenhouse-fixes
+chain-worker-done
+snapino-import-probe-attempt2 | exit 0 | 1013 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-snapino-import-probe.mjs http://vm.test:8800 8 <scratch>/r3/final/snapino-import-probe-attempt2.json
+e2e-greenhouse-join | exit 1 | 885 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-greenhouse-join.mjs http://127.0.0.1:4176 <scratch>/r3/final/e2e-greenhouse-join-results.json
+control-b8-e2e-greenhouse-join | exit 1 | 909 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-greenhouse-join.mjs http://127.0.0.1:4177 <scratch>/r3/final/control-b8-e2e-greenhouse-join-results.json
+e2e-greenhouse-peer | exit 0 | 359 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-greenhouse-peer.mjs http://127.0.0.1:4176 <scratch>/r3/final/e2e-greenhouse-peer-results.json
+qa-greenhouse | exit 0 | 2227 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/qa-greenhouse.mjs http://127.0.0.1:4176 <scratch>/r3/final/qa-greenhouse abd2f51
+chain-2-done
+e2e-greenhouse-join-attempt2 | exit 0 | 969 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-greenhouse-join.mjs http://127.0.0.1:4176 <scratch>/r3/final/e2e-greenhouse-join-attempt2-results.json
+control-b8-e2e-greenhouse-join-attempt2 | exit 1 | 986 s | (cwd wt-abd2f51) node <scratch>/gh/scripts/e2e-greenhouse-join.mjs http://127.0.0.1:4177 <scratch>/r3/final/control-b8-e2e-greenhouse-join-attempt2-results.json
+
+b8d099a controls run from the b8d099a worktree (its own dist/ and Worker):
+control-b8-probe-attempt1 | exit 0 | — | e2e-snapino-import-probe.mjs (first version), 8 iterations — invalid: the lamp was read before it was seated, so iterations 2–8 changed no parts
+control-b8-probe | exit 0 | — | e2e-snapino-import-probe.mjs (lamp waited for), 8 iterations

@@ -1,0 +1,11 @@
+  [ready] TabA entered: 6 s (+3 frames)
+  [ready] TabZ entered: 83 s (+7 frames)
+PASS round 1: both tabs start on the same run — [[1,"idle",0],[1,"idle",0]]
+PASS round 1: before delivery, tab a holds its reset (new run) and tab z its step of the old run — [[2,6,0],[1,11,4]]
+PASS round 1 (tab a's message delivered first): both tabs end on the reset — run 2, practice seed 6, 06:00 — never back on the stepped old run — [[2,6,"idle",0],[2,6,"idle",0]]
+PASS round 2: both tabs start on the same run — [[2,"idle",0],[2,"idle",0]]
+PASS round 2: before delivery, tab a holds its reset (new run) and tab z its step of the old run — [[3,7,0],[2,6,4]]
+PASS round 2 (tab z's message delivered first): both tabs end on the reset — run 3, practice seed 7, 06:00 — never back on the stepped old run — [[3,7,"idle",0],[3,7,"idle",0]]
+PASS no page errors
+e2e greenhouse peer: 7/7 checks passed
+exit=0

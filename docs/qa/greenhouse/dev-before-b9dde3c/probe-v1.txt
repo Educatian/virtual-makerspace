@@ -1,0 +1,9 @@
+1440 valveA {"centre":{"x":566.8118232837389,"y":586.2056564723473},"plate":{"w":52.13728802925198,"h":52.37737333963537},"own":132,"total":144,"handleInFront":0,"misses":{"nothing":11,"power-cable-2:power_cable_rubber":1}}
+1440 valveB {"centre":{"x":629.4832179351621,"y":593.649152272197},"plate":{"w":52.837364340050044,"h":52.725074266056254},"own":132,"total":144,"handleInFront":0,"misses":{"nothing":11,"power-cable-2:power_cable_rubber":1}}
+1440 pumpBelow {"centre":{"x":701.3818806967661,"y":550.2473111392785},"plate":{"w":51.36952776507303,"h":50.93671206003762},"own":131,"total":144,"handleInFront":0,"misses":{"farm-controller:radiation_shield_white":13}}
+1440 fanAbove {"centre":{"x":780.7232099649777,"y":559.2352813537341},"plate":{"w":52.23102193621378,"h":51.36357099560939},"own":132,"total":144,"handleInFront":0,"misses":{"farm-controller:radiation_shield_white":12}}
+1280 valveA {"centre":{"x":504.70629437495,"y":478.0556871569502},"plate":{"w":45.16834800260108,"h":45.37403211485304},"own":111,"total":144,"handleInFront":0,"misses":{"nothing":25,"valve-manifold:fitting_brass":2,"valve-manifold:housing_black_abs":2,"power-cable-2:power_cable_rubber":4}}
+1280 valveB {"centre":{"x":559.063347549205,"y":484.5994736998746},"plate":{"w":45.84209934116859,"h":45.70847945981291},"own":114,"total":144,"handleInFront":3,"misses":{"nothing":25,"valve-manifold:fitting_brass":2,"power-cable-2:power_cable_rubber":2,"farm-controller:radiation_shield_white":1}}
+1280 pumpBelow {"centre":{"x":621.4705845082153,"y":446.9867626249286},"plate":{"w":44.62289578298646,"h":44.18156221800757},"own":107,"total":144,"handleInFront":0,"misses":{"farm-controller:radiation_shield_white":37}}
+1280 fanAbove {"centre":{"x":690.4860246179907,"y":454.87439632475315},"plate":{"w":45.455394122399184,"h":44.593268927019665},"own":112,"total":144,"handleInFront":0,"misses":{"farm-controller:radiation_shield_white":32}}
+exit=0

@@ -1,0 +1,44 @@
+$ env CHROMIUM_PATH=/opt/pw-browsers/chromium node scripts/greenhouse-panel-check.mjs <scratch>/r3/final/panel-results.json
+(cwd: wt-abd2f51; started 2026-10-30T08:01:30Z)
+panel source: this checkout
+PASS A1 PF learner joining a room whose day already ended (unsettled run): the day is shown as over — tick 96
+PASS A1 that day is not this learner's attempt: no result, PF notes still locked, no personal test trace — {"resultRun":null,"notesUnlocked":false,"afterRun":1,"liveRuns":[],"traces":[]}
+PASS A1 the attempt card says the shown day finished without this learner (the room's result) — The day shown above finished without you (before you arrived): its result is the room's, not one of your attempts. Start a new attempt to run your own day.
+PASS A2 PF: joining after the day was settled as ended: no attempt result, no test trace, notes locked — {"resultRun":null,"notesUnlocked":false,"afterRun":1}
+PASS A2 DI: joining after the day was settled as ended: no attempt result, no test trace — {"resultRun":null,"notesUnlocked":true,"afterRun":1}
+PASS A3 present during the day (tick 10): the run is recorded as one this learner was present for — {"liveRuns":[1],"afterRun":0}
+PASS A3 after a studio switch, the day they were present for ends: it is their attempt, notes unlock, one test trace — {"resultRun":1,"notesUnlocked":true,"traces":["test Greenhouse day · attempt 1 · seed 11 · 3/5 (failed G3, G4)"]}
+PASS A4 present at tick 50, reconnected after the end: their attempt (run 1), notes unlocked — {"resultRun":1,"notesUnlocked":true}
+PASS A5 the observed day was not credited; after the learner's reset, the new day (run 2) is their attempt — {"sent":{"type":"reset","seed":11,"runId":1},"resultRun":2,"notesUnlocked":true}
+PASS A6 (boundary) a learner who arrived at tick 95, before the end, is credited with that day — {"resultRun":1,"liveRuns":[1]}
+PASS B1 my reset's answer timed out: the outcome is uncertain (pending confirmation) — Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed.
+PASS B1 a teammate's reset to seed 7 (run 2) is never reported as my reset; the note names what the room now shows — Your run control (Reset to the brief's day (seed 11)) is not confirmed: the room's answer did not arrive. Meanwhile someone else's reset; the room now shows practice day seed 7, run 2, not started at 06:00.
+PASS B1 a run state without a cause (a join or reconnect) does not confirm it either — Your run control (Reset to the brief's day (seed 11)) is not confirmed: the room's answer did not arrive. Meanwhile the room's current state arrived; the room now shows practice day seed 7, run 2, not started at 06:00.
+PASS B1 the room's state naming my op id confirms it (late answer) — Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)
+PASS B2 pause: after my pause timed out, a teammate's pause does not confirm mine — Your run control (Paused the day) is not confirmed: the room's answer did not arrive. Meanwhile someone else's pause; the room now shows the brief's day (seed 11), run 1, paused at 06:00.
+PASS B2 pause: the state naming my op id confirms it — Paused the day · for everyone in the room (the room's answer arrived after the wait)
+PASS B2 resume: after my resume timed out, a teammate's resume does not confirm mine — Your run control (Resumed the day) is not confirmed: the room's answer did not arrive. Meanwhile someone else's resume; the room now shows the brief's day (seed 11), run 1, running at 07:15.
+PASS B2 resume: the state naming my op id confirms it — Resumed the day · for everyone in the room (the room's answer arrived after the wait)
+PASS B2 step: after my step timed out, a teammate's step does not confirm mine — Your run control (Stepped one hour) is not confirmed: the room's answer did not arrive. Meanwhile someone else's step; the room now shows the brief's day (seed 11), run 1, paused at 07:15.
+PASS B2 step: the state naming my op id confirms it — Stepped one hour · for everyone in the room (the room's answer arrived after the wait)
+PASS B2 speed: after my speed timed out, a teammate's speed does not confirm mine — Your run control (Speed ×4) is not confirmed: the room's answer did not arrive. Meanwhile someone else's speed change; the room now shows the brief's day (seed 11), run 1, running at 11:00.
+PASS B2 speed: the state naming my op id confirms it — Speed ×4 · for everyone in the room (the room's answer arrived after the wait)
+PASS C1 the worked allocation's day, which this learner was present for, meets the brief — true
+PASS C1 the verdict says G1 is judged on the build recorded when the day ended (not the build as it is now) — "G1 is judged on the build recorded when the day ended; G2–G5 on the day's record."
+PASS C1 saved: the attempt is met and explained with the saved text — {"explained":true,"saved":"Bed B dried less because valve B gets 50 %."}
+PASS C1 erasing the draft does not erase the saved explanation: it stays saved, the page says the draft differs — {"saved":"Bed B dried less because valve B gets 50 %.","draft":"","explained":true,"pill":"Attempt 1 · brief met · explained","status":"Edited since you saved it: the saved explanation (\"Bed B dried less because valve B gets 50 %.\") stays until you save again."}
+PASS C1 a changed draft is not saved until Save: the saved text is still the first one — {"saved":"Bed B dried less because valve B gets 50 %."}
+PASS C1 re-saving replaces the saved explanation (a second reflect trace) — {"saved":"Valve B at 50 % kept bed B above 30 % all afternoon.","reflects":2}
+PASS C1 after a session reload (panel rebuilt from this tab's storage): the saved explanation and the result are kept — {"saved":"Valve B at 50 % kept bed B above 30 % all afternoon.","resultRun":1}
+PASS C2 mid-day (tick 6): the prediction made before the day is fixed (dry, with its why); the choices are disabled and a forced change does not alter it — {"prediction":"dry","why":"Both valves wide open starve bed B.","tick":6,"runId":1}
+PASS C2 the finished day's summary compares with the fixed prediction — Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: A bed dries out (too long below 30 %) (before the day began). Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A.
+PASS C2 a change after the result does not rewrite what was predicted — Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: A bed dries out (too long below 30 %) (before the day began). Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A.
+PASS C2 after a session reload the same prediction and summary
+PASS C3 no prediction made before the day: none is recorded or shown as made — Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: no prediction was made before the day began. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A.
+PASS C4 a new attempt: no fixed prediction yet, and the choices are enabled again — {"attempt":2,"predicted":null}
+PASS D1 the list's flow values changed over 12 steps while a list button had keyboard focus — 640 → 621 chars
+PASS D1 keyboard focus stayed on the same button (the same element) through those updates — {"focusedKey":"irrigation-hose-3","still":{"key":"irrigation-hose-3","mark":"kept"}}
+PASS D1 Enter on it still works: it selects that part
+PASS no page errors
+greenhouse panel: 39/39 checks passed
+exit 0 · 7 s

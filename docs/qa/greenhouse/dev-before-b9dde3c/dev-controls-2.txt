@@ -1,0 +1,34 @@
+  [ready] 1440 entered: 9 s (+3 frames)
+  [ready] 1440 overview: 51 s (+3 frames)
+PASS 1440 valve A handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 67×68 px; grab spheres behind the plate at 0 samples; other surfaces {}
+PASS 1440 valve A handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field — [{"dx":0,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":-15,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":15,"dy":0,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":0,"dy":-15,"focused":"gh-valveA","selected":"valve-manifold"},{"dx":0,"dy":15,"focused":"gh-valveA","selected":"valve-manifold"}]
+  [ready] 1440 valveA 0: 22 s (+3 frames)
+  [ready] 1440 valveA 50: 30 s (+3 frames)
+  [ready] 1440 valveA 100: 29 s (+3 frames)
+PASS 1440 valve A handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field — [{"value":0,"applied":true,"centreAfter":true},{"value":50,"applied":true,"centreAfter":true},{"value":100,"applied":true,"centreAfter":true}]
+  [ready] 1440 valveA drag, overview again: 8 s (+3 frames)
+PASS 1440 valve B handwheel: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 64×63 px; grab spheres behind the plate at 1 samples; other surfaces {}
+PASS 1440 valve B handwheel: a real click at each of 5 fixed points (centre, ±15 px) selects valve-manifold and focuses its field — [{"dx":0,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":-15,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":15,"dy":0,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":0,"dy":-15,"focused":"gh-valveB","selected":"valve-manifold"},{"dx":0,"dy":15,"focused":"gh-valveB","selected":"valve-manifold"}]
+  [ready] 1440 valveB 0: 9 s (+3 frames)
+  [ready] 1440 valveB 50: 9 s (+3 frames)
+  [ready] 1440 valveB 100: 9 s (+3 frames)
+FAIL 1440 valve B handwheel: values typed after the 3D click are applied (0, 50, 100), and in each resulting pose the centre still focuses the field — [{"value":0,"applied":false,"centreAfter":true},{"value":50,"applied":false,"centreAfter":true},{"value":100,"applied":true,"centreAfter":true}]
+  [ready] 1440 valveB drag, overview again: 9 s (+3 frames)
+PASS 1440 PUMP BELOW knob: its whole 44×44 px square around the declared centre shows the control first (144 samples), with no grab sphere in front — 144/144; plate 57×57 px; grab spheres behind the plate at 0 samples; other surfaces {}
+PASS 1440 PUMP BELOW knob: a real click at each of 5 fixed points (centre, ±15 px) selects farm-controller and focuses its field — [{"dx":0,"dy":0,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":-15,"dy":0,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":15,"dy":0,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":0,"dy":-15,"focused":"gh-pumpBelow","selected":"farm-controller"},{"dx":0,"dy":15,"focused":"gh-pumpBelow","selected":"farm-controller"}]
+  [ready] 1440 pumpBelow 10: 9 s (+3 frames)
+  [ready] 1440 pumpBelow 50: 9 s (+3 frames)
+  [ready] 1440 pumpBelow 90: 7 s (+3 frames)
+PASS 1440 PUMP BELOW knob: values typed after the 3D click are applied (10, 50, 90), and in each resulting pose the centre still focuses the field — [{"value":10,"applied":true,"centreAfter":true},{"value":50,"applied":true,"centreAfter":true},{"value":90,"applied":true,"centreAfter":true}]
+ERROR locator.click: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /opt/pw-browsers/chromium --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --use-gl=swiftshader --enable-unsafe-swiftshader --no-proxy-server --user-data-dir=<tmp> --remote-debugging-pipe --no-startup-window
+<launched> pid=4312
+Call log:
+[2m  - waiting for locator('.component-card[data-component-id="vent-fan"]')[22m
+[2m    - locator resolved to <button type="button" draggable="false" class="component-card" data-component-id="vent-fan" title="Vent Fan · 8 W · cools 7 °C" aria-label="Vent Fan, 8 W · cools 7 °C" data-tooltip="Vent Fan · 8 W · cools 7 °C">…</button>[22m
+[2m  - attempting click action[22m
+[2m    - waiting for element to be visible, enabled and stable[22m
+
+qa greenhouse controls: 8/9 checks passed (rooms QCMY)

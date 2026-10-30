@@ -1,0 +1,39 @@
+panel source: <scratch>/old-faa7c09
+PASS A1 PF learner joining a room whose day already ended (unsettled run): the day is shown as over — tick 96
+FAIL A1 that day is not this learner's attempt: no result, PF notes still locked, no personal test trace — {"resultRun":1,"notesUnlocked":true,"traces":["test Greenhouse day · attempt 1 · seed 11 · 3/5 (failed G3, G4)"]}
+FAIL A1 the attempt card says the shown day finished without this learner (the room's result) — Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: no prediction recorded. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A.
+FAIL A2 PF: joining after the day was settled as ended: no attempt result, no test trace, notes locked — {"resultRun":1,"notesUnlocked":true}
+FAIL A2 DI: joining after the day was settled as ended: no attempt result, no test trace — {"resultRun":1,"notesUnlocked":true}
+FAIL A3 present during the day (tick 10): the run is recorded as one this learner was present for — {}
+PASS A3 after a studio switch, the day they were present for ends: it is their attempt, notes unlock, one test trace — {"resultRun":1,"notesUnlocked":true,"traces":["test Greenhouse day · attempt 1 · seed 11 · 3/5 (failed G3, G4)"]}
+PASS A4 present at tick 50, reconnected after the end: their attempt (run 1), notes unlocked — {"resultRun":1,"notesUnlocked":true}
+FAIL A5 the observed day was not credited; after the learner's reset, the new day (run 2) is their attempt — {"sent":{"type":"reset","seed":11,"runId":1},"resultRun":1,"notesUnlocked":true}
+PASS A6 (boundary) a learner who arrived at tick 95, before the end, is credited with that day — {"resultRun":1}
+FAIL B1 my reset's answer timed out: the outcome is uncertain (pending confirmation) — Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed.
+FAIL B1 a teammate's reset to seed 7 (run 2) is never reported as my reset; the note names what the room now shows — Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)
+FAIL B1 a run state without a cause (a join or reconnect) does not confirm it either — Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)
+FAIL B1 the room's state naming my op id confirms it (late answer) — Reset to the brief's day (seed 11): tank refilled to 40 L · for everyone in the room (the room's answer arrived after the wait)
+FAIL B2 pause: after my pause timed out, a teammate's pause does not confirm mine — Paused the day · for everyone in the room (the room's answer arrived after the wait)
+FAIL B2 pause: the state naming my op id confirms it — Paused the day · for everyone in the room (the room's answer arrived after the wait)
+FAIL B2 resume: after my resume timed out, a teammate's resume does not confirm mine — Resumed the day · for everyone in the room (the room's answer arrived after the wait)
+FAIL B2 resume: the state naming my op id confirms it — Resumed the day · for everyone in the room (the room's answer arrived after the wait)
+FAIL B2 step: after my step timed out, a teammate's step does not confirm mine — Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed.
+FAIL B2 step: the state naming my op id confirms it — Not applied yet · the room did not confirm it in time. If the room accepted it, the new value will appear here on its own; otherwise nothing changed.
+FAIL B2 speed: after my speed timed out, a teammate's speed does not confirm mine — Speed ×4 · for everyone in the room (the room's answer arrived after the wait)
+FAIL B2 speed: the state naming my op id confirms it — Speed ×4 · for everyone in the room (the room's answer arrived after the wait)
+PASS C1 the worked allocation's day, which this learner was present for, meets the brief — true
+FAIL C1 saved: the attempt is met and explained with the saved text — {"explained":true}
+FAIL C1 erasing the draft does not erase the saved explanation: it stays saved, the page says the draft differs — {"explained":true,"pill":"Attempt 1 · brief met · explained","status":null}
+FAIL C1 a changed draft is not saved until Save: the saved text is still the first one — {}
+FAIL C1 section completed — locator.click: Timeout 30000ms exceeded.
+FAIL C2 mid-day (tick 6): the prediction made before the day is fixed (dry, with its why); the choices are disabled and a forced change does not alter it
+FAIL C2 the finished day's summary compares with the fixed prediction — Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: Meets the brief: both beds in range, air under control, reserve kept. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A.
+FAIL C2 a change after the result does not rewrite what was predicted — Day (brief's day) finished: G1 ✓ G2 ✓ G3 ✕ G4 ✕ G5 ✓. You predicted: Meets the brief: both beds in range, air under control, reserve kept. Built: tank → pump → manifold (A 100 %, B 100 %) · solar in · CH1 pump · CH2 fan · pump below 50 %, fan above 30 °C · probe in bed A.
+FAIL C2 after a session reload the same prediction and summary
+FAIL C3 section completed — Cannot read properties of undefined (reading 'prediction')
+FAIL C4 a new attempt: no fixed prediction yet, and the choices are enabled again — {"attempt":2}
+PASS D1 the list's flow values changed over 12 steps while a list button had keyboard focus — 640 → 621 chars
+FAIL D1 keyboard focus stayed on the same button (the same element) through those updates — {"focusedKey":"irrigation-hose-3","still":{"key":null,"mark":null}}
+FAIL D1 Enter on it still works: it selects that part
+PASS no page errors
+greenhouse panel: 7/37 checks passed

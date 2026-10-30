@@ -1,0 +1,72 @@
+  [ready] DI 1440 entered: 3 s (+3 frames)
+  [ready] 01-overview: 13 s (+3 frames)
+shot 01-overview: 265 calls, 57586 triangles
+PASS 1440×900 overview: the greenhouse fills ≥ 60 % of the free width — 0.914
+  [ready] 03-top: 11 s (+3 frames)
+shot 03-top: 254 calls, 57326 triangles
+  [ready] 04-beds: 14 s (+3 frames)
+shot 04-beds: 172 calls, 43112 triangles
+PASS camera keys 2 and 3 frame different views — [0.20000000000000018,0.45,0.28500000000000014] | [-1.375,0.7000000000000001,-0.5]
+PASS wrong build drawn as built: no pump, OUT→OUT and loose; nothing flows — {"irrigation-hose":"no-pump","irrigation-hose-2":"unplugged","irrigation-hose-3":"out-out","irrigation-hose-4":"unplugged","power-cable-1":"loose","power-cable-2":"unplugged","power-cable-3":"unplugged"}
+  [ready] 05-wrong-build: 10 s (+3 frames)
+shot 05-wrong-build: 274 calls, 61298 triangles
+  [ready] 05b-wrong-build-flow: 10 s (+3 frames)
+shot 05b-wrong-build-flow: 274 calls, 61298 triangles
+PASS mid-day (paused): resources from the model, ledgers balanced — {"tick":28,"tank":25.6,"balance":{"water":0,"energy":0}}
+  [ready] 06-built-midday: 4 s (+3 frames)
+shot 06-built-midday: 266 calls, 57586 triangles
+  [ready] 06b-day-card: 6 s (+3 frames)
+shot 06b-day-card: 266 calls, 57586 triangles
+  [ready] 07-closeup-pump-manifold: 8 s (+3 frames)
+shot 07-closeup-pump-manifold: 242 calls, 55888 triangles
+  [ready] 07b-closeup-controls: 8 s (+3 frames)
+shot 07b-closeup-controls: 210 calls, 48494 triangles
+  [ready] 08-closeup-beds-probe: 8 s (+3 frames)
+shot 08-closeup-beds-probe: 131 calls, 35968 triangles
+PASS dock collapsed: the day keeps running and the HUD clock follows it — {"collapsedAt":{"tick":8,"clock":"08:00"},"collapsedLater":{"tick":14,"clock":"09:30","dockHidden":true}}
+PASS failure: the default allocation fails the brief (bed B out of range too long) — ["G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed","G2:bed A stressed 0 h","G3:bed B stressed 9.5 h","G4:air above 35 °C for 1.5 h","G5:16.0 L left"]
+  [ready] 09-failure: 6 s (+3 frames)
+shot 09-failure: 266 calls, 57586 triangles
+  [ready] 09b-failure-verdict: 6 s (+3 frames)
+shot 09b-failure-verdict: 266 calls, 57586 triangles
+PASS recovery: the worked allocation meets all five criteria — ["G1:tank → pump → both beds; pump and fan on channels; solar in; probe in a bed","G2:bed A stressed 0 h","G3:bed B stressed 1 h","G4:air above 35 °C for 0 h","G5:11.2 L left"]
+  [ready] 10-recovery: 6 s (+3 frames)
+shot 10-recovery: 266 calls, 57586 triangles
+  [ready] 10b-recovery-verdict: 6 s (+3 frames)
+shot 10b-recovery-verdict: 266 calls, 57586 triangles
+  [ready] 11-selected-manifold: 6 s (+3 frames)
+shot 11-selected-manifold: 266 calls, 57586 triangles
+  [ready] DI 1280 entered: 2 s (+3 frames)
+  [ready] 02-overview-1280: 8 s (+3 frames)
+shot 02-overview-1280: 264 calls, 57478 triangles
+PASS 1280×720 overview: the greenhouse fills ≥ 60 % of the free width — 0.919
+  [ready] DI 390 entered: 1 s (+3 frames)
+  [ready] 12-phone-top: 4 s (+3 frames)
+shot 12-phone-top: 246 calls, 55978 triangles
+PASS phone: no horizontal overflow — 0
+PASS phone: Start the day reached by keyboard after wheel scrolling; target ≥ 44 px — {"x":23,"y":400.25,"width":129.828125,"height":44}
+  [ready] 13-phone-dock: 3 s (+3 frames)
+shot 13-phone-dock: 246 calls, 55978 triangles
+PASS phone: every visible control in the greenhouse tab is at least 44 px tall — []
+  [ready] PF 1440 entered: 3 s (+3 frames)
+PASS PF: no worked example
+  [ready] 14-pf-panel: 11 s (+3 frames)
+shot 14-pf-panel: 265 calls, 57586 triangles
+{
+ "ok": true,
+ "issues": [],
+ "checks": [
+  "PASS 1440×900 overview: the greenhouse fills ≥ 60 % of the free width",
+  "PASS camera keys 2 and 3 frame different views",
+  "PASS wrong build drawn as built: no pump, OUT→OUT and loose; nothing flows",
+  "PASS mid-day (paused): resources from the model, ledgers balanced",
+  "PASS dock collapsed: the day keeps running and the HUD clock follows it",
+  "PASS failure: the default allocation fails the brief (bed B out of range too long)",
+  "PASS recovery: the worked allocation meets all five criteria",
+  "PASS 1280×720 overview: the greenhouse fills ≥ 60 % of the free width",
+  "PASS phone: no horizontal overflow",
+  "PASS phone: Start the day reached by keyboard after wheel scrolling; target ≥ 44 px",
+  "PASS phone: every visible control in the greenhouse tab is at least 44 px tall",
+  "PASS PF: no worked example"
+ ]
+}

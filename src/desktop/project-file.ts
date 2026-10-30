@@ -22,10 +22,20 @@
  * carry knob values (`hz`/`wave`, `cutoff`, `gain`), the Speaker's switch and patch cables'
  * jacks. A version-1 file naming the sound studio, or a version-2 file naming another studio,
  * is refused. Fixture modules never carry sockets.
+ *
+ * Resource-Limited Greenhouse projects (Episode 3) are version 3: the equipment's values (valve
+ * openings, rule thresholds), each hose's and power cable's two ports (either end may be out,
+ * `null`), and the soil probe's slot. Ports are typed (a hose only in water couplers, a cable only
+ * in power sockets, the probe only in a bed's probe slot) and take one line each. A project never
+ * carries the day's run: model time, tank, beds, battery and records stay in the room, so an
+ * import can never refill the tank or add elapsed time. A version-1 greenhouse file (the earlier
+ * placeholder rig, whose generic terminals do not map onto the typed ports) is MIGRATED to the
+ * default rig: equipment at default values, every line and the probe out, with a notice.
  */
 import { SOLVER_VERSION } from "../circuit/dc-engine.ts";
 import { sanitizeProps, type PartProps, type PropKind } from "../circuit/part-props.ts";
 import { sanitizeSoundProps, type SoundPropKind, type SoundProps } from "../../cloudflare/sound-rules.js";
+import { GH_PORTS, GH_PROBE_ID, isGreenhouseFixture, isGreenhouseLine, lineType, probeBed, sanitizeGreenhouseProps, type GhPropKind, type GhProps } from "../../cloudflare/greenhouse-rules.js";
 import type { SharedTransform, StudioChoice } from "./collaboration.js";
 import { sanitizeProgram, type SnapinoStatement } from "./snapino.ts";
 import { isMission, isWord, MAX_WORDS, MISSIONS, type Word } from "../episodes/rescue-signal.ts";
@@ -46,30 +56,38 @@ export const PROJECT_FORMAT = "virtual-makerspace.project";
 export const PROJECT_VERSION = 1;
 /** Sound Flow Studio projects. */
 export const SOUND_PROJECT_VERSION = 2;
+/** Resource-Limited Greenhouse projects. */
+export const GREENHOUSE_PROJECT_VERSION = 3;
+/** Greenhouse projects carry no run: their stamp names the water/energy model the rig was built for. */
+export const GREENHOUSE_MODEL_VERSION = "greenhouse-water-energy-1";
 export const MAX_PROJECT_BYTES = 64 * 1024;
 const STUDIOS: readonly StudioChoice[] = ["circuit", "greenhouse", "snap", "snapino", "sound"];
-const versionFor = (studio: StudioChoice): 1 | 2 => (studio === "sound" ? SOUND_PROJECT_VERSION : PROJECT_VERSION);
+type ProjectVersion = 1 | 2 | 3;
+const versionFor = (studio: StudioChoice): ProjectVersion => (studio === "sound" ? SOUND_PROJECT_VERSION : studio === "greenhouse" ? GREENHOUSE_PROJECT_VERSION : PROJECT_VERSION);
+const stampFor = (studio: StudioChoice): string => (studio === "sound" ? SOUND_MODEL_VERSION : studio === "greenhouse" ? GREENHOUSE_MODEL_VERSION : SOLVER_VERSION);
 
-export type PartKind = PropKind | SoundPropKind;
-export type AnyPartProps = PartProps & SoundProps;
+export type PartKind = PropKind | SoundPropKind | GhPropKind;
+export type AnyPartProps = PartProps & SoundProps & GhProps;
 
-/** Values for either kind family (Circuit Bench parts, Sound modules), or null. */
+/** Values for any kind family (Circuit Bench parts, Sound modules, greenhouse equipment), or null. */
 export function sanitizePartProps(kind: PartKind | null | undefined, raw: unknown): AnyPartProps | null {
   if (!kind) return null;
+  if (kind === "manifold" || kind === "controller") return sanitizeGreenhouseProps(kind, raw) as AnyPartProps | null;
   return kind === "resistor" || kind === "battery" ? sanitizeProps(kind, raw) : sanitizeSoundProps(kind, raw);
 }
 
 export interface ProjectPart {
   id: string;
-  sockets: [number, number] | null;
+  /** Two sockets; greenhouse hoses and cables may have one end out (`null`). */
+  sockets: [number, number] | [number | null, number | null] | null;
   props?: AnyPartProps;
   on?: boolean;
 }
 
 export interface ProjectFile {
   format: typeof PROJECT_FORMAT;
-  version: 1 | 2;
-  /** The model behind any readings the learner saw (the DC solver, or the Sound Flow signal model); informative only. */
+  version: ProjectVersion;
+  /** The model behind any readings the learner saw (the DC solver, the Sound Flow signal model, the greenhouse model); informative only. */
   solver: string;
   studio: StudioChoice;
   savedAt: string;
@@ -116,6 +134,11 @@ export function buildProject(
     const sockets = transform?.sockets;
     const seated = Array.isArray(sockets) && Number.isInteger(sockets[0]) && Number.isInteger(sockets[1]);
     const part: ProjectPart = { id, sockets: seated ? [sockets[0] as number, sockets[1] as number] : null };
+    if (catalog.studio === "greenhouse" && isGreenhouseLine(id) && Array.isArray(sockets) && !seated) {
+      const one = (value: unknown): number | null => (Number.isInteger(value) ? value as number : null);
+      const half: [number | null, number | null] = [one(sockets[0]), one(sockets[1])];
+      if (half[0] !== null || half[1] !== null) part.sockets = half;
+    }
     const props = sanitizePartProps(kind, transform?.props);
     if (props) part.props = props;
     if (catalog.fixtures?.includes(id)) part.sockets = null;
@@ -125,7 +148,7 @@ export function buildProject(
   const project: ProjectFile = {
     format: PROJECT_FORMAT,
     version: versionFor(catalog.studio),
-    solver: catalog.studio === "sound" ? SOUND_MODEL_VERSION : SOLVER_VERSION,
+    solver: stampFor(catalog.studio),
     studio: catalog.studio,
     savedAt: now.toISOString(),
     parts,
@@ -144,7 +167,8 @@ export function buildProject(
   return project;
 }
 
-export type ParseResult = { ok: true; project: ProjectFile } | { ok: false; error: string };
+/** `notice`: the file was read under an older format and migrated (shown to the importer). */
+export type ParseResult = { ok: true; project: ProjectFile; notice?: string } | { ok: false; error: string };
 
 export function parseProject(text: unknown, catalogFor: (studio: StudioChoice) => StudioCatalog | null): ParseResult {
   try {
@@ -167,17 +191,28 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "The file is not a workbench project." };
   const input = raw as Record<string, unknown>;
   if (input.format !== PROJECT_FORMAT) return { ok: false, error: "The file is not a Virtual Makerspace project." };
-  if (input.version !== PROJECT_VERSION && input.version !== SOUND_PROJECT_VERSION) {
+  if (input.version !== PROJECT_VERSION && input.version !== SOUND_PROJECT_VERSION && input.version !== GREENHOUSE_PROJECT_VERSION) {
     // Only a plain number is echoed back; anything else (strings, objects) is not.
     const shown = typeof input.version === "number" && Number.isFinite(input.version) ? ` ${String(input.version).slice(0, 12)}` : "";
-    return { ok: false, error: `Project version${shown} is not supported (expected ${PROJECT_VERSION}, or ${SOUND_PROJECT_VERSION} for Sound Flow Studio).` };
+    return { ok: false, error: `Project version${shown} is not supported (expected ${PROJECT_VERSION}, ${SOUND_PROJECT_VERSION} for Sound Flow Studio or ${GREENHOUSE_PROJECT_VERSION} for the greenhouse).` };
   }
   if (!STUDIOS.includes(input.studio as StudioChoice)) return { ok: false, error: "The project names an unknown studio." };
   const studio = input.studio as StudioChoice;
-  if (input.version !== versionFor(studio)) {
-    return { ok: false, error: `Project version ${String(input.version)} is not supported for this studio (expected ${versionFor(studio)}${studio === "sound" ? ": Sound Flow Studio projects are version 2" : ""}).` };
-  }
   const catalog = catalogFor(studio);
+  if (studio === "greenhouse" && input.version === PROJECT_VERSION) {
+    // The earlier placeholder greenhouse: migrate to the default rig (nothing of its layout maps).
+    if (!catalog) return { ok: false, error: "That studio cannot be imported here." };
+    if (!Array.isArray(input.parts) || input.parts.length > 16) return { ok: false, error: "The part list is missing or too long." };
+    return {
+      ok: true,
+      project: { format: PROJECT_FORMAT, version: GREENHOUSE_PROJECT_VERSION, solver: GREENHOUSE_MODEL_VERSION, studio, savedAt: new Date(0).toISOString(), parts: Object.keys(catalog.parts).map((id) => ({ id, sockets: null })) },
+      notice: "This is an earlier greenhouse file (version 1). Its layout does not fit the typed water and power ports, so it loads as the default rig: everything unplugged, valves and rules at their defaults.",
+    };
+  }
+  if (input.version !== versionFor(studio)) {
+    const named = studio === "sound" ? ": Sound Flow Studio projects are version 2" : studio === "greenhouse" ? ": greenhouse projects are version 3" : "";
+    return { ok: false, error: `Project version ${String(input.version)} is not supported for this studio (expected ${versionFor(studio)}${named}).` };
+  }
   if (!catalog) return { ok: false, error: "That studio cannot be imported here." };
   if (!Array.isArray(input.parts) || input.parts.length > Object.keys(catalog.parts).length) {
     return { ok: false, error: "The part list is missing or too long." };
@@ -201,6 +236,21 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
       if (!Array.isArray(sockets) || sockets.length !== 2) return { ok: false, error: `${id} has malformed sockets.` };
       const [a, b] = sockets;
       const valid = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0 && value < catalog.socketCount;
+      if (studio === "greenhouse") {
+        const checked = greenhouseSockets(id, a, b, valid, usedSockets);
+        if (typeof checked === "string") return { ok: false, error: checked };
+        part.sockets = checked;
+        for (const socket of checked) if (socket !== null) usedSockets.add(socket);
+        const kind = catalog.parts[id];
+        if (item.props !== undefined) {
+          const props = sanitizePartProps(kind, item.props);
+          if (!props) return { ok: false, error: `${id} has a value outside the allowed range (or off its step).` };
+          part.props = props;
+        }
+        if (item.on !== undefined) return { ok: false, error: `${id} has an invalid switch state.` };
+        parts.push(part);
+        continue;
+      }
       if (!valid(a) || !valid(b) || a === b) return { ok: false, error: `${id} uses a socket that does not exist.` };
       if (!catalog.sharedSockets && (usedSockets.has(a) || usedSockets.has(b))) return { ok: false, error: studio === "sound" ? `${id} shares a jack with another cable (one plug per jack).` : `${id} shares a hole with another part.` };
       usedSockets.add(a);
@@ -210,7 +260,7 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
     const kind = catalog.parts[id];
     if (item.props !== undefined) {
       const props = sanitizePartProps(kind, item.props);
-      if (!props) return { ok: false, error: `${id} has ${studio === "sound" ? "a knob" : "an electrical"} value outside the allowed range.` };
+      if (!props) return { ok: false, error: `${id} has ${studio === "sound" ? "a knob" : studio === "greenhouse" ? "a" : "an electrical"} value outside the allowed range${studio === "greenhouse" ? " (or off its step)" : ""}.` };
       part.props = props;
     }
     if (item.on !== undefined) {
@@ -219,6 +269,7 @@ function parseUnsafe(text: unknown, catalogFor: (studio: StudioChoice) => Studio
     }
     parts.push(part);
   }
+  if (studio === "greenhouse" && input.run !== undefined) return { ok: false, error: "Greenhouse projects never carry a run (model time and resources stay in the room)." };
   const project: ProjectFile = {
     format: PROJECT_FORMAT,
     version: versionFor(studio),
@@ -271,4 +322,28 @@ export function isDefaultProject(project: ProjectFile, defaultsFor: (id: string)
 export function projectFileName(project: ProjectFile): string {
   const stamp = project.savedAt.slice(0, 16).replace(/[:T]/g, "-");
   return `makerspace-${project.studio}-${stamp}.json`;
+}
+
+/**
+ * A greenhouse part's sockets from a file: typed ports, one line per port, the probe only as a
+ * bed slot's pin pair, fixtures never. Returns the sockets, or the reason the file is refused.
+ */
+function greenhouseSockets(id: string, a: unknown, b: unknown, valid: (value: unknown) => value is number, used: Set<number>): [number | null, number | null] | string {
+  if (isGreenhouseFixture(id)) return `${id} is fixed in the greenhouse and cannot be placed in ports.`;
+  if (id === GH_PROBE_ID) {
+    if (!valid(a) || !valid(b) || !probeBed([a, b])) return "The soil probe can only sit in one bed's probe slot.";
+    return [a, b];
+  }
+  if (!isGreenhouseLine(id)) return "The project contains a part this studio does not have.";
+  const ends = [a, b].map((value) => (value === null ? null : value)) as [unknown, unknown];
+  if (ends.every((value) => value === null)) return [null, null];
+  const type = lineType(id);
+  for (const end of ends) {
+    if (end === null) continue;
+    if (!valid(end)) return `${id} uses a port that does not exist.`;
+    if (GH_PORTS[end].type !== type) return `${id} is a ${type === "water" ? "hose" : "power cable"} and cannot go into ${GH_PORTS[end].label}.`;
+    if (used.has(end)) return `${id} shares ${GH_PORTS[end].label} with another line (one line per port).`;
+  }
+  if (ends[0] !== null && ends[0] === ends[1]) return `${id} has both ends in one port.`;
+  return [ends[0] as number | null, ends[1] as number | null];
 }

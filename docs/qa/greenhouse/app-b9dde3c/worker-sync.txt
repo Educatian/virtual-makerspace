@@ -1,0 +1,20 @@
+PASS a fresh test room is created — SUCD
+PASS both clients get the room's state on join
+PASS edits are not applied before the room answers
+PASS exactly one concurrent edit is accepted, the other refused as stale — [{"ok":true},{"ok":false,"reason":"stale","componentId":"resistor-1k"}]
+PASS A and B end identical — 470
+PASS a late joiner gets the same state from the room — [["resistor-1k",{"position":[0,0.48,0],"rotation":[0,0,0],"sockets":[36,39],"props":{"ohms":470}}]]
+PASS A's cable-end claim is granted
+PASS a whole-part claim is denied while an end is held
+PASS an import/undo batch touching the held end is refused as held — {"ok":false,"reason":"held","holderName":"host","componentId":"wire-red"}
+PASS and nothing in the batch was committed
+PASS an end claim is denied while the whole cable is held
+PASS B's edit on a held part was refused — held
+PASS B's refused move was replaced by the room's state — {"position":[0,0.48,0],"rotation":[0,0,0],"sockets":[36,39],"props":{"ohms":470}}
+PASS B and a new joiner are identical though the holder left without a final move
+PASS a program-only import is accepted
+PASS the room orders both; the undo is refused as stale if R came first, else R wins after it — {"ok":false,"reason":"stale","componentId":"program"}
+PASS both clients run the same program — {"program":[{"op":"write","pin":"D6","value":true}],"running":true}
+PASS hostile messages are dropped and the connection keeps working
+
+18/18 passed · room SUCD

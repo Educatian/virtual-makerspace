@@ -1,0 +1,76 @@
+{
+ "app": "b8d099aeb680e9c610b41873532400d62751313e",
+ "base": "http://127.0.0.1:4173",
+ "shots": [
+  {
+   "name": "overview-1440",
+   "file": "overview-1440.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "calls": 265,
+   "triangles": 57586,
+   "camera": {
+    "position": [
+     1.2603707501035168,
+     8.384669400745324,
+     7.6015581757142705
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   }
+  },
+  {
+   "name": "closeup-controls",
+   "file": "closeup-controls.png",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "calls": 209,
+   "triangles": 48494,
+   "camera": {
+    "position": [
+     1.25,
+     2.6000000000000005,
+     4.700000000000001
+    ],
+    "target": [
+     1.25,
+     0.9,
+     2
+    ],
+    "moving": false
+   }
+  },
+  {
+   "name": "overview-1280",
+   "file": "overview-1280.png",
+   "viewport": {
+    "width": 1280,
+    "height": 720
+   },
+   "calls": 264,
+   "triangles": 57478,
+   "camera": {
+    "position": [
+     1.1715664292937529,
+     7.745278290915019,
+     6.9888083621268935
+    ],
+    "target": [
+     0.20000000000000018,
+     0.75,
+     0.28500000000000014
+    ],
+    "moving": false
+   }
+  }
+ ],
+ "issues": []
+}

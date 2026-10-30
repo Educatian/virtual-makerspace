@@ -1,0 +1,25 @@
+$ node <scratch>/gh/scripts/e2e-room-sync.mjs http://vm.test:8800 <scratch>/r3/final/room-sync
+(cwd: wt-abd2f51; started 2026-10-30T08:37:38Z)
+  [ready] host entered: 3 s (+3 frames)
+PASS host enters the chosen studio — Snapino
+PASS host sees studio tabs
+PASS member lobby shows the room's studio — This room runs Snapino Bridge
+PASS other studio cards are locked
+  [ready] member entered: 107 s (+4 frames)
+PASS member enters the room's studio — Snapino
+PASS member has no studio tabs
+  [ready] host after the lamp was placed: 27 s (+3 frames)
+  [ready] member after the lamp was placed: 32 s (+3 frames)
+  [ready] member after the program started: 31 s (+3 frames)
+PASS member receives the upload — Running on U1
+PASS member's D5 blinks
+PASS member's lamp lights from synced wiring + code
+  [ready] late joiner entered: 120 s (+4 frames)
+PASS late joiner loads the persisted running program — Running on U1
+PASS stop propagates to host — Stopped
+  [ready] late joiner after the studio switch: 15 s (+3 frames)
+PASS host studio switch moves the other maker — Circuit Bench
+PASS the other maker has no studio tabs
+
+13/13 passed · room TGMZ
+exit 0 · 646 s
