@@ -68,6 +68,7 @@ class Telemetry {
 
   async export(): Promise<TelemetryEvent[]> {
     if (!this.db) return [];
+    this.flush();
     return new Promise((resolve) => {
       const tx = this.db!.transaction(STORE, "readonly");
       const req = tx.objectStore(STORE).getAll();
